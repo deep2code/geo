@@ -141,7 +141,7 @@ func BuildBrandEngineFromEnv() *brand.Engine {
 // 环境变量：
 //   GEO_HISTORY_DB_ENABLED=true/false   总开关（默认 true）
 //   GEO_HISTORY_DB_PATH=/path/to.db     自定义库文件路径
-func newHistoryDBFromEnv() *history.DB {
+func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
 		fmt.Fprintln(os.Stderr, "[geo server] 审计历史 SQLite 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
@@ -242,15 +242,16 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 	return chinacheck.New(opts...)
 }
 
-// newOfflineDBFromEnv 打开/创建离线工商 SQLite 库。
+// newOfflineDBFromEnv 打开/创建离线工商库（多后端，默认 SQLite）。
 //
 // 环境变量：
 //   GEO_OFFLINE_DB_ENABLED=true/false   总开关（默认 true）
 //   GEO_OFFLINE_DB_PATH=/path/to.db     自定义库文件路径
-func newOfflineDBFromEnv() *offlinedb.DB {
+//   GEO_OFFLINE_DB_TYPE=sqlite/duckdb   后端类型（默认 sqlite）
+func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
-		fmt.Fprintln(os.Stderr, "[geo server] 离线工商 SQLite 库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
+		fmt.Fprintln(os.Stderr, "[geo server] 离线工商库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
 		return nil
 	}
 	path := config.Env("GEO_OFFLINE_DB_PATH", "")

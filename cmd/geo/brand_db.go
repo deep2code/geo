@@ -74,7 +74,7 @@ func newBrandDBCmd() *cobra.Command {
 	return cmd
 }
 
-func openOfflineDB(cmd *cobra.Command) (*offlinedb.DB, error) {
+func openOfflineDB(cmd *cobra.Command) (offlinedb.DB, error) {
 	path, _ := cmd.Flags().GetString("db")
 	return offlinedb.Open(path)
 }

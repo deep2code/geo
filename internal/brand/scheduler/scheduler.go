@@ -93,7 +93,7 @@ type AlertPayload struct {
 // Scheduler 定时审计调度器。
 type Scheduler struct {
 	engine     *brand.Engine
-	historyDB  *history.DB
+	historyDB  history.DB
 	configs    []ScheduleConfig
 	webhookURL string // 全局默认 webhook
 	mu         sync.Mutex
@@ -102,7 +102,7 @@ type Scheduler struct {
 }
 
 // New 创建调度器。
-func New(engine *brand.Engine, historyDB *history.DB, configs []ScheduleConfig, defaultWebhook string) *Scheduler {
+func New(engine *brand.Engine, historyDB history.DB, configs []ScheduleConfig, defaultWebhook string) *Scheduler {
 	return &Scheduler{
 		engine:     engine,
 		historyDB:  historyDB,

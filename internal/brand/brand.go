@@ -38,8 +38,8 @@ type Engine struct {
 	llmMgr        *llm.Manager
 	kb            *knowledge.Knowledge
 	chinaCheck    *chinacheck.Client // 可选：工商注册实时核验（GSXT / SAMR，免鉴权免费）
-	offlineDB     *offlinedb.DB      // 可选：1978-2019 离线工商注册库（SQLite，种子数据来自 guichong/-/tree/json）
-	historyDB     *history.DB        // 可选：审计历史时间序列库（SQLite）
+	offlineDB     offlinedb.DB       // 可选：1978-2019 离线工商注册库（接口，多后端）
+	historyDB     history.DB         // 可选：审计历史时间序列库（接口，多后端）
 	// configuredEngines 记录哪些引擎已配置真实 API Key。
 	configuredEngines map[models.EngineType]bool
 }
@@ -85,23 +85,23 @@ func WithChinaCheck(cc *chinacheck.Client) Option {
 	return func(e *Engine) { e.chinaCheck = cc }
 }
 
-// WithOfflineDB 注入离线工商注册 SQLite 数据库（1978-2019 种子数据）。
+// WithOfflineDB 注入离线工商注册存储（多后端，默认 SQLite；1978-2019 种子数据）。
 // 未注入时 Autocomplete / 知识库联想跳过离线库。
-func WithOfflineDB(db *offlinedb.DB) Option {
+func WithOfflineDB(db offlinedb.DB) Option {
 	return func(e *Engine) { e.offlineDB = db }
 }
 
-// OfflineDB 返回离线工商数据库（可能为 nil）。
-func (e *Engine) OfflineDB() *offlinedb.DB { return e.offlineDB }
+// OfflineDB 返回离线工商存储接口（可能为 nil）。
+func (e *Engine) OfflineDB() offlinedb.DB { return e.offlineDB }
 
-// WithHistoryDB 注入审计历史时间序列 SQLite 数据库。
+// WithHistoryDB 注入审计历史时间序列存储（多后端，默认 SQLite）。
 // 未注入时 Audit 结果不持久化（仅内存返回）。
-func WithHistoryDB(db *history.DB) Option {
+func WithHistoryDB(db history.DB) Option {
 	return func(e *Engine) { e.historyDB = db }
 }
 
-// HistoryDB 返回审计历史数据库（可能为 nil）。
-func (e *Engine) HistoryDB() *history.DB { return e.historyDB }
+// HistoryDB 返回审计历史存储接口（可能为 nil）。
+func (e *Engine) HistoryDB() history.DB { return e.historyDB }
 
 // New 创建品牌可见度评估引擎。
 //

@@ -230,7 +230,7 @@ func newBrandCacheImportCmd() *cobra.Command {
 // ---------- 工具函数 ----------
 
 // openCacheFromFlags 根据命令中 --cache-path flag + 环境变量打开缓存。
-func openCacheFromFlags(cmd *cobra.Command) (*chinacheck.Cache, error) {
+func openCacheFromFlags(cmd *cobra.Command) (chinacheck.Cache, error) {
 	path := ""
 	if cmd != nil {
 		if p, err := cmd.Flags().GetString("cache-path"); err == nil && p != "" {

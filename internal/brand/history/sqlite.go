@@ -1,62 +1,16 @@
-// Package history 品牌可见度审计时间序列存储（SQLite）。
-//
-// 每次 Audit 调用 Save 写入一行快照，前端通过 List 查询趋势数据。
-// 数据文件默认 ~/.local/share/geo/geo_brand_history.db。
 package history
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-// Record 一次审计快照的标量字段（用于趋势图表）。
-type Record struct {
-	ID        int64   `json:"id"`
-	BrandName string  `json:"brand_name"`
-	Generated int64   `json:"generated_at"` // unix 秒
-	Score     float64 `json:"score"`
-	Grade     string  `json:"grade"`
-	Tier      string  `json:"tier"`
-
-	// 实体完备度
-	EntityCompleteness float64 `json:"entity_completeness_score"`
-
-	// 6 维评分明细
-	MentionRate       float64 `json:"mention_rate"`
-	CitationRate      float64 `json:"citation_rate"`
-	ShareOfVoice      float64 `json:"share_of_voice"`
-	CitationPosition  float64 `json:"citation_position"`
-	Sentiment         float64 `json:"sentiment"`
-	EntityRecognition float64 `json:"entity_recognition"`
-
-	// 汇总计数
-	ContentGaps     int `json:"content_gaps_count"`
-	CompetitorCount int `json:"competitor_count"`
-	NegativeCount   int `json:"negative_count"`
-	ActionCount     int `json:"action_count"`
-
-	// 完整报告 JSON（用于前端回溯单次审计详情）
-	ReportJSON string `json:"report_json,omitempty"`
-}
-
-// Stats 历史库统计信息。
-type Stats struct {
-	Path      string `json:"path"`
-	Records   int64  `json:"records"`
-	Brands    int64  `json:"brands"`
-	FileSize  int64  `json:"file_size_bytes"`
-	OldestAt  int64  `json:"oldest_at,omitempty"`
-	NewestAt  int64  `json:"newest_at,omitempty"`
-}
-
-const sqlSchema = `
+const sqlSchemaSQLite = `
 CREATE TABLE IF NOT EXISTS audit_history (
 	id                    INTEGER PRIMARY KEY AUTOINCREMENT,
 	brand_name            TEXT    NOT NULL,
@@ -81,15 +35,17 @@ CREATE INDEX IF NOT EXISTS idx_history_brand_time ON audit_history(brand_name, g
 CREATE INDEX IF NOT EXISTS idx_history_time ON audit_history(generated_at DESC);
 `
 
-// DB 品牌审计历史数据库（并发安全，database/sql 内部池化）。
-type DB struct {
+// sqliteStore SQLite 实现的审计历史存储（零依赖默认后端）。
+type sqliteStore struct {
 	path string
 	db   *sql.DB
 }
 
-// Open 打开/创建历史数据库并完成 schema 初始化。
-// path 为空时使用默认路径 ~/.local/share/geo/geo_brand_history.db。
-func Open(path string) (*DB, error) {
+// Open 打开/创建 SQLite 历史数据库并完成 schema 初始化。
+// 保持与原实现完全一致的签名：path 为空时使用默认路径 ~/.local/share/geo/geo_brand_history.db。
+//
+// 返回值类型：兼容别名 DB（= Store）。上游代码无需任何修改。
+func Open(path string) (Store, error) {
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -103,40 +59,40 @@ func Open(path string) (*DB, error) {
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=mmap_size(1073741824)&_pragma=cache_size(-262144)&_pragma=foreign_keys(off)"
 	sqldb, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("history: 打开数据库失败: %w", err)
+		return nil, fmt.Errorf("history: 打开 SQLite 失败: %w", err)
 	}
 	sqldb.SetMaxOpenConns(4)
 	sqldb.SetMaxIdleConns(4)
-	if _, err := sqldb.Exec(sqlSchema); err != nil {
+	if _, err := sqldb.Exec(sqlSchemaSQLite); err != nil {
 		sqldb.Close()
-		return nil, fmt.Errorf("history: 初始化 schema 失败: %w", err)
+		return nil, fmt.Errorf("history: SQLite schema 初始化失败: %w", err)
 	}
-	return &DB{path: path, db: sqldb}, nil
+	return &sqliteStore{path: path, db: sqldb}, nil
 }
 
-// Close 关闭数据库。
-func (d *DB) Close() error {
+// Close 关闭底层数据库。
+func (d *sqliteStore) Close() error {
 	if d == nil || d.db == nil {
 		return nil
 	}
 	return d.db.Close()
 }
 
-// Path 返回数据库文件路径。
-func (d *DB) Path() string {
+// Path 返回 SQLite 文件路径。
+func (d *sqliteStore) Path() string {
 	if d == nil {
 		return ""
 	}
 	return d.path
 }
 
-// Save 写入一条审计快照。reportJSON 可为空。
-func (d *DB) Save(ctx context.Context, r Record) (int64, error) {
+// Save 写入一条审计快照。
+func (d *sqliteStore) Save(ctx context.Context, r Record) (int64, error) {
 	if d == nil || d.db == nil {
 		return 0, nil
 	}
 	if r.Generated == 0 {
-		r.Generated = time.Now().Unix()
+		r.Generated = TimeNow().Unix()
 	}
 	res, err := d.db.ExecContext(ctx, `INSERT INTO audit_history(
 		brand_name, generated_at, score, grade, tier,
@@ -152,14 +108,13 @@ func (d *DB) Save(ctx context.Context, r Record) (int64, error) {
 		r.ReportJSON,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("history: 写入审计快照失败: %w", err)
+		return 0, fmt.Errorf("history/sqlite: 写入失败: %w", err)
 	}
 	id, _ := res.LastInsertId()
 	return id, nil
 }
 
-// List 查询指定品牌的审计历史，按时间降序。limit<=0 表示默认 100。
-func (d *DB) List(ctx context.Context, brandName string, limit int) ([]Record, error) {
+func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -175,7 +130,7 @@ func (d *DB) List(ctx context.Context, brandName string, limit int) ([]Record, e
 		ORDER BY generated_at DESC
 		LIMIT ?`, brandName, limit)
 	if err != nil {
-		return nil, fmt.Errorf("history: 查询历史失败: %w", err)
+		return nil, fmt.Errorf("history/sqlite: List 失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -186,17 +141,14 @@ func (d *DB) List(ctx context.Context, brandName string, limit int) ([]Record, e
 			&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
 			&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 			&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount); err != nil {
-			return nil, fmt.Errorf("history: 扫描行失败: %w", err)
+			return nil, fmt.Errorf("history/sqlite: 扫描行失败: %w", err)
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
-// Latest 查询指定品牌最新一条审计记录的完整信息（含 report_json）。
-//
-// 用于报告导出等需要回溯单次审计详情的场景。无记录时返回 (nil, nil)。
-func (d *DB) Latest(ctx context.Context, brandName string) (*Record, error) {
+func (d *sqliteStore) Latest(ctx context.Context, brandName string) (*Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -220,14 +172,13 @@ func (d *DB) Latest(ctx context.Context, brandName string) (*Record, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("history: 查询最新记录失败: %w", err)
+		return nil, fmt.Errorf("history/sqlite: Latest 失败: %w", err)
 	}
 	r.ReportJSON = reportJSON.String
 	return &r, nil
 }
 
-// GetByID 查询单条审计记录的完整信息（含 report_json）。
-func (d *DB) GetByID(ctx context.Context, id int64) (*Record, error) {
+func (d *sqliteStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -246,20 +197,19 @@ func (d *DB) GetByID(ctx context.Context, id int64) (*Record, error) {
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
 		&reportJSON)
 	if err != nil {
-		return nil, fmt.Errorf("history: 查询记录失败: %w", err)
+		return nil, fmt.Errorf("history/sqlite: GetByID 失败: %w", err)
 	}
 	r.ReportJSON = reportJSON.String
 	return &r, nil
 }
 
-// Brands 列出所有有审计记录的品牌（用于前端下拉框）。
-func (d *DB) Brands(ctx context.Context) ([]string, error) {
+func (d *sqliteStore) Brands(ctx context.Context) ([]string, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
 	rows, err := d.db.QueryContext(ctx, `SELECT DISTINCT brand_name FROM audit_history ORDER BY brand_name`)
 	if err != nil {
-		return nil, fmt.Errorf("history: 查询品牌列表失败: %w", err)
+		return nil, fmt.Errorf("history/sqlite: Brands 失败: %w", err)
 	}
 	defer rows.Close()
 	var out []string
@@ -273,20 +223,20 @@ func (d *DB) Brands(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-// Stats 返回历史库统计信息。
-func (d *DB) Stats(ctx context.Context) (Stats, error) {
+func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
 	if d == nil || d.db == nil {
-		return Stats{}, nil
+		return Stats{Backend: "sqlite"}, nil
 	}
 	var s Stats
 	s.Path = d.path
+	s.Backend = "sqlite"
 	var oldest, newest sql.NullInt64
 	err := d.db.QueryRowContext(ctx, `SELECT
 		COUNT(*), COUNT(DISTINCT brand_name),
 		MIN(generated_at), MAX(generated_at)
 		FROM audit_history`).Scan(&s.Records, &s.Brands, &oldest, &newest)
 	if err != nil && err != sql.ErrNoRows {
-		return s, fmt.Errorf("history: 统计失败: %w", err)
+		return s, fmt.Errorf("history/sqlite: Stats 失败: %w", err)
 	}
 	s.OldestAt = oldest.Int64
 	s.NewestAt = newest.Int64
@@ -296,41 +246,30 @@ func (d *DB) Stats(ctx context.Context) (Stats, error) {
 	return s, nil
 }
 
-// Clear 清空所有历史记录并 VACUUM。
-func (d *DB) Clear(ctx context.Context) error {
+func (d *sqliteStore) Clear(ctx context.Context) error {
 	if d == nil || d.db == nil {
 		return nil
 	}
 	_, err := d.db.ExecContext(ctx, `DELETE FROM audit_history`)
 	if err != nil {
-		return fmt.Errorf("history: 清空失败: %w", err)
+		return fmt.Errorf("history/sqlite: Clear 失败: %w", err)
 	}
 	_, _ = d.db.ExecContext(ctx, `VACUUM`)
 	return nil
 }
 
-// DeleteOlderThan 删除指定天数之前的历史记录，返回删除条数。
-func (d *DB) DeleteOlderThan(ctx context.Context, days int) (int64, error) {
+func (d *sqliteStore) DeleteOlderThan(ctx context.Context, days int) (int64, error) {
 	if d == nil || d.db == nil {
 		return 0, nil
 	}
-	cutoff := time.Now().AddDate(0, 0, -days).Unix()
+	cutoff := TimeNow().AddDate(0, 0, -days).Unix()
 	res, err := d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE generated_at < ?`, cutoff)
 	if err != nil {
-		return 0, fmt.Errorf("history: 清理过期记录失败: %w", err)
+		return 0, fmt.Errorf("history/sqlite: DeleteOlderThan 失败: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
 }
 
-// --- JSON 辅助 ---
-
-// MarshalReport 将完整 VisibilityReport 序列化为 JSON 字符串。
-// 调用方传入任意结构体，这里只做 json.Marshal。
-func MarshalReport(v interface{}) (string, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
+// 编译期接口符合性断言（保证 sqliteStore 完整实现 Store）。
+var _ Store = (*sqliteStore)(nil)

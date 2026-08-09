@@ -50,7 +50,7 @@ const smokeSampleJSON = `
 ]
 `
 
-func openTestDB(t *testing.T) (*DB, func()) {
+func openTestDB(t *testing.T) (DB, func()) {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "geo-offlinedb-test")
 	if err != nil {

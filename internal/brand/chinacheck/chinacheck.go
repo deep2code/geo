@@ -37,7 +37,7 @@ type Client struct {
 	baseURL    string
 	language   string
 	httpClient *http.Client
-	cache      *Cache // 可选：本地持久化缓存（nil 表示不缓存）
+	cache      Cache // 可选：本地持久化缓存（nil 表示不缓存）
 
 	sessionID atomic.Value // string，首次 initialize 后填入
 	idSeq     atomic.Int64 // JSON-RPC request id 自增
@@ -77,12 +77,12 @@ func WithHTTPClient(hc *http.Client) Option {
 // WithCache 注入本地持久化缓存（nil 为禁用）。
 // 缓存命中时跳过网络，极大降低延迟并避开官方限流风险。
 // 推荐配合 server 的默认启用策略使用。
-func WithCache(ca *Cache) Option {
+func WithCache(ca Cache) Option {
 	return func(c *Client) { c.cache = ca }
 }
 
 // Cache 返回当前绑定的缓存实例（可能为 nil）。
-func (c *Client) Cache() *Cache { return c.cache }
+func (c *Client) Cache() Cache { return c.cache }
 
 // New 创建客户端。
 //

@@ -90,21 +90,23 @@ type Company struct {
 // Stats 数据库统计。
 type Stats struct {
 	Path      string            `json:"path"`
+	Backend   string            `json:"backend"` // 实际后端：sqlite / duckdb 等
 	Count     int64             `json:"count"`
 	FileSize  int64             `json:"file_size_bytes"`
 	SchemaAt  string            `json:"schema_created_at"`
 	Provinces map[string]int64  `json:"provinces,omitempty"` // 按省 Top10 统计
 }
 
-// DB 离线工商数据库封装（并发安全，database/sql 内部池化）。
-type DB struct {
+// sqliteStore SQLite 实现的 OfflineStore（零依赖默认后端）。
+type sqliteStore struct {
 	path string
 	db   *sql.DB
 }
 
-// Open 打开/创建 SQLite 数据库并完成 schema 初始化。
-// path 为空时使用默认路径 ~/.local/share/geo/geo_offline_companies.db。
-func Open(path string) (*DB, error) {
+// Open 打开/创建 SQLite 离线工商数据库并完成 schema 初始化。
+// 保持原签名兼容：path 为空用默认 ~/.local/share/geo/geo_offline_companies.db。
+// 返回 OfflineStore 接口（通过 DB 别名），调用方无需修改。
+func Open(path string) (OfflineStore, error) {
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -132,20 +134,23 @@ func Open(path string) (*DB, error) {
 		_ = sqldb.Close()
 		return nil, fmt.Errorf("初始化 schema 失败: %w", err)
 	}
-	return &DB{path: path, db: sqldb}, nil
+	return &sqliteStore{path: path, db: sqldb}, nil
 }
 
 // Close 关闭数据库。
-func (d *DB) Close() error { return d.db.Close() }
+func (d *sqliteStore) Close() error { return d.db.Close() }
 
 // Path 返回实际数据库文件路径。
-func (d *DB) Path() string { return d.path }
+func (d *sqliteStore) Path() string { return d.path }
+
+// Backend 返回后端类型标识。
+func (d *sqliteStore) Backend() string { return "sqlite" }
 
 // ---------- 统计 ----------
 
 // Stats 统计数据库体量与省分布。
-func (d *DB) Stats(ctx context.Context) (Stats, error) {
-	st := Stats{Path: d.path}
+func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
+	st := Stats{Path: d.path, Backend: "sqlite"}
 	if info, err := os.Stat(d.path); err == nil {
 		st.FileSize = info.Size()
 	}
@@ -183,7 +188,7 @@ type SearchOptions struct {
 }
 
 // Search 按查询词模糊搜索，返回 TopN 匹配结果（按 FTS bm25 评分排序，不支持 FTS 时降级 LIKE）。
-func (d *DB) Search(ctx context.Context, opt SearchOptions) ([]Company, error) {
+func (d *sqliteStore) Search(ctx context.Context, opt SearchOptions) ([]Company, error) {
 	q := strings.TrimSpace(opt.Query)
 	if q == "" {
 		return nil, fmt.Errorf("query 不能为空")
@@ -255,7 +260,7 @@ LIMIT ?
 	return out, nil
 }
 
-func (d *DB) searchLikeFallback(ctx context.Context, opt SearchOptions, q string, topN int) ([]Company, error) {
+func (d *sqliteStore) searchLikeFallback(ctx context.Context, opt SearchOptions, q string, topN int) ([]Company, error) {
 	cond := []string{"(c.name LIKE ? OR c.legal_representative LIKE ? OR c.address LIKE ?)"}
 	args := []interface{}{"%" + q + "%", "%" + q + "%", "%" + q + "%"}
 	if opt.Province != "" {
@@ -379,7 +384,7 @@ type ImportResult struct {
 // 支持两种格式（自动识别）：
 //  1. 标准 JSON 数组：[{...}, {...}, ...]
 //  2. JSONL：每行一个 {...}（处理大文件更省内存）
-func (d *DB) ImportJSONFile(ctx context.Context, path string, batchSize int) (ImportResult, error) {
+func (d *sqliteStore) ImportJSONFile(ctx context.Context, path string, batchSize int) (ImportResult, error) {
 	var res ImportResult
 	if batchSize <= 0 {
 		batchSize = 2000
@@ -409,7 +414,7 @@ func (d *DB) ImportJSONFile(ctx context.Context, path string, batchSize int) (Im
 }
 
 // ImportDir 递归导入目录下所有 .json 文件（按年份/省市分目录时常用）。
-func (d *DB) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
+func (d *sqliteStore) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
 	var total ImportResult
 	err := filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
 		if err != nil {
@@ -552,7 +557,7 @@ func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
 }
 
 // importJSONL 按行 JSONL 导入（流式，内存安全）。
-func (d *DB) importJSONL(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+func (d *sqliteStore) importJSONL(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 256*1024), 32*1024*1024)
@@ -597,7 +602,7 @@ func (d *DB) importJSONL(ctx context.Context, r io.Reader, batchSize int, res *I
 }
 
 // importJSONArray 导入 JSON 数组（用 json.Decoder Token 流式处理，避免一次性加载到内存）。
-func (d *DB) importJSONArray(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+func (d *sqliteStore) importJSONArray(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	dec := json.NewDecoder(r)
 	// 消费掉开头的 [
@@ -644,7 +649,7 @@ func (d *DB) importJSONArray(ctx context.Context, r io.Reader, batchSize int, re
 // importJSONObject 导入 {"erDataList": [...]} 等对象包裹数组格式。
 // 用 json.Decoder Token API 流式处理：读取外层 {，遍历 key-value，
 // 找到第一个值为数组的 key 后逐条 Decode，避免一次性加载大文件到内存。
-func (d *DB) importJSONObject(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+func (d *sqliteStore) importJSONObject(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	dec := json.NewDecoder(r)
 
@@ -729,7 +734,7 @@ func (d *DB) importJSONObject(ctx context.Context, r io.Reader, batchSize int, r
 }
 
 // insertBatch 在单事务中批量 INSERT 一批记录；利用 INSERT OR IGNORE 跳过 code 重复。
-func (d *DB) insertBatch(ctx context.Context, batch []rawRecord, importedAt int64) (inserted, skipped, failed int, err error) {
+func (d *sqliteStore) insertBatch(ctx context.Context, batch []rawRecord, importedAt int64) (inserted, skipped, failed int, err error) {
 	if len(batch) == 0 {
 		return 0, 0, 0, nil
 	}
@@ -791,7 +796,7 @@ func emptyToNull(s string) interface{} {
 // ---------- 清空 ----------
 
 // Clear 清空 companies 表（连带 FTS 索引），VACUUM 回收磁盘空间。
-func (d *DB) Clear(ctx context.Context) error {
+func (d *sqliteStore) Clear(ctx context.Context) error {
 	if _, err := d.db.ExecContext(ctx, `DELETE FROM companies`); err != nil {
 		return err
 	}
@@ -805,7 +810,7 @@ func (d *DB) Clear(ctx context.Context) error {
 // ---------- 工具 ----------
 
 // Provinces 返回数据库内所有省份（用于前端筛选项）。
-func (d *DB) Provinces(ctx context.Context) ([]string, error) {
+func (d *sqliteStore) Provinces(ctx context.Context) ([]string, error) {
 	rows, err := d.db.QueryContext(ctx, `SELECT DISTINCT province FROM companies WHERE province IS NOT NULL AND province <> '' ORDER BY province`)
 	if err != nil {
 		return nil, err
@@ -822,3 +827,6 @@ func (d *DB) Provinces(ctx context.Context) ([]string, error) {
 	sort.Strings(out)
 	return out, rows.Err()
 }
+
+// 编译期接口断言：确保 sqliteStore 完整实现 OfflineStore。
+var _ OfflineStore = (*sqliteStore)(nil)
