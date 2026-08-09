@@ -1,0 +1,104 @@
+@use '@/styles/tokens' as *;
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: var(--z-modal-backdrop);
+  animation: fadeIn 0.2s ease;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-modal);
+  max-width: 90vw;
+  max-height: 85vh;
+  background-color: var(--surface-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.25s ease;
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -48%) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  &-sm { width: 400px; }
+  &-md { width: 560px; }
+  &-lg { width: 720px; }
+  &-xl { width: 900px; }
+
+  &-header {
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-md);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  &-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  &-description {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    margin-top: var(--spacing-xs);
+  }
+
+  &-close {
+    flex-shrink: 0;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-size: var(--font-size-xl);
+    line-height: 1;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background-color: var(--bg-hover);
+      color: var(--text-primary);
+    }
+  }
+
+  &-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg);
+  }
+
+  &-footer {
+    padding: var(--spacing-md) var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+    border-top: 1px solid var(--border-primary);
+    background-color: var(--surface-secondary);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+  }
+}

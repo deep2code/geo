@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GEO 分析</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      padding: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e4e7ed;
+    }
+    .brand {
+      font-weight: 600;
+      font-size: 16px;
+      color: #1a73e8;
+    }
+    .btn {
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #1557b0;
+    }
+    .btn-secondary {
+      background: #fff;
+      color: #606266;
+      border: 1px solid #dcdfe6;
+    }
+    .btn-secondary:hover {
+      background: #f5f7fa;
+    }
+    .info-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .info-title {
+      font-size: 12px;
+      color: #909399;
+      margin-bottom: 4px;
+    }
+    .info-value {
+      font-size: 13px;
+      color: #303133;
+      word-break: break-all;
+    }
+    .score-section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .score-label {
+      font-size: 13px;
+      color: #606266;
+      margin-bottom: 8px;
+    }
+    .score-value {
+      font-size: 48px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #1a73e8, #4285f4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .score-good { background: linear-gradient(135deg, #52c41a, #73d13d); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .score-warn { background: linear-gradient(135deg, #faad14, #ffc53d); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .score-bad { background: linear-gradient(135deg, #ff4d4f, #ff7875); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+
+    .suggestions-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 16px 0 10px;
+      color: #303133;
+    }
+    .suggestion-item {
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border-left: 3px solid #1a73e8;
+    }
+    .suggestion-warn { border-left-color: #faad14; }
+    .suggestion-error { border-left-color: #ff4d4f; }
+    .suggestion-good { border-left-color: #52c41a; }
+    .suggestion-type {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .type-warn { background: #fdf6ec; color: #e6a23c; }
+    .type-error { background: #fef0f0; color: #f56c6c; }
+    .type-good { background: #f0f9eb; color: #67c23a; }
+    .type-info { background: #ecf5ff; color: #409eff; }
+    .suggestion-text {
+      font-size: 13px;
+      color: #606266;
+      line-height: 1.5;
+    }
+    .empty-state, .error-state {
+      background: #fff;
+      border-radius: 8px;
+      padding: 32px 20px;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; color: #303133; }
+    .empty-desc { font-size: 13px; color: #909399; margin-bottom: 16px; }
+    .error-state { border: 1px solid #fef0f0; }
+    .error-title { color: #f56c6c; }
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e4e7ed;
+      border-top-color: #1a73e8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .settings-link {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #1a73e8;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .settings-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="brand" id="brandName">GEO 分析</span>
+    <div>
+      <button class="btn-secondary btn" id="settingsBtn">⚙ 设置</button>
+      <button class="btn" id="analyzeBtn">分析此页</button>
+    </div>
+  </div>
+
+  <div id="content">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">准备分析页面</div>
+      <div class="empty-desc">点击「分析此页」按钮开始检测当前页面的内容质量</div>
+      <a class="settings-link" id="configureLink">先配置 Endpoint 和 Token →</a>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+@use '@/styles/tokens' as *;
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-lg);
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}
+
+.page-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  margin-top: var(--spacing-xs);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+
+  > * {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 var(--spacing-sm);
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-lg);
+
+  &-A, &-B {
+    background-color: var(--status-success-bg);
+    color: var(--status-success);
+    border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
+  }
+  &-C {
+    background-color: var(--status-info-bg);
+    color: var(--status-info);
+    border: 1px solid color-mix(in srgb, var(--status-info) 30%, transparent);
+  }
+  &-D {
+    background-color: var(--status-warning-bg);
+    color: var(--status-warning);
+    border: 1px solid color-mix(in srgb, var(--status-warning) 30%, transparent);
+  }
+  &-F {
+    background-color: var(--status-error-bg);
+    color: var(--status-error);
+    border: 1px solid color-mix(in srgb, var(--status-error) 30%, transparent);
+  }
+}

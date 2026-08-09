@@ -179,7 +179,7 @@ func (s *Scheduler) runAudit(cfg *ScheduleConfig) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[geo scheduler] 审计失败: %s: %v\n", cfg.BrandName, err)
 		// 审计失败也发告警
-		s.sendAlert(cfg, &AlertPayload{
+		s.sendAlert(ctx, cfg, &AlertPayload{
 			Type:      "audit_error",
 			BrandName: cfg.BrandName,
 			Timestamp: time.Now().Format(time.RFC3339),
@@ -204,7 +204,7 @@ func (s *Scheduler) runAudit(cfg *ScheduleConfig) {
 				if delta > 0 {
 					alertType = "bvs_rise"
 				}
-				s.sendAlert(cfg, &AlertPayload{
+				s.sendAlert(ctx, cfg, &AlertPayload{
 					Type:      alertType,
 					BrandName: cfg.BrandName,
 					OldScore:  prev.Score,
@@ -225,8 +225,12 @@ func (s *Scheduler) runAudit(cfg *ScheduleConfig) {
 	fmt.Fprintf(os.Stderr, "[geo scheduler] 定时审计完成: %s BVS=%.1f (%s)\n", cfg.BrandName, report.Score, report.Grade)
 }
 
+// webhookClient 告警 webhook 专用 HTTP 客户端（10s 超时，避免阻塞调度）。
+var webhookClient = &http.Client{Timeout: 10 * time.Second}
+
 // sendAlert 发送告警 webhook。
-func (s *Scheduler) sendAlert(cfg *ScheduleConfig, alert *AlertPayload) {
+// ctx 用于取消（继承自调度任务上下文，避免孤儿请求）。
+func (s *Scheduler) sendAlert(ctx context.Context, cfg *ScheduleConfig, alert *AlertPayload) {
 	url := cfg.WebhookURL
 	if url == "" {
 		url = s.webhookURL
@@ -241,14 +245,14 @@ func (s *Scheduler) sendAlert(cfg *ScheduleConfig, alert *AlertPayload) {
 	payload := buildWebhookPayload(alert)
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[geo scheduler 告警] 构造请求失败: %v\n", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := webhookClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[geo scheduler 告警] 发送失败: %v\n", err)
 		return

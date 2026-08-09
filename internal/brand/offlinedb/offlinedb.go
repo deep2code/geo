@@ -127,8 +127,11 @@ func Open(path string) (OfflineStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("打开 SQLite 失败: %w", err)
 	}
-	sqldb.SetMaxOpenConns(4) // modernc.org/sqlite 是文件锁，高并发写收益有限
-	sqldb.SetMaxIdleConns(4)
+	// WAL 模式支持多读单写，modernc.org/sqlite 是纯 Go 实现无 CGO 文件锁限制，
+	// 适当调高连接数以支撑并发审计（多 prompt × 多引擎场景）。
+	sqldb.SetMaxOpenConns(16)
+	sqldb.SetMaxIdleConns(8)
+	sqldb.SetConnMaxIdleTime(5 * time.Minute)
 	// schema 初始化（一次性事务）
 	if _, err := sqldb.Exec(sqlSchema); err != nil {
 		_ = sqldb.Close()

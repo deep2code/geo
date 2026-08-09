@@ -1,0 +1,118 @@
+@use '@/styles/tokens' as *;
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-sm);
+
+  &-thead {
+    background-color: var(--surface-secondary);
+
+    .table-th {
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-secondary);
+      text-align: left;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-bottom: 1px solid var(--border-primary);
+      white-space: nowrap;
+      user-select: none;
+
+      &-sortable {
+        cursor: pointer;
+
+        &:hover {
+          color: var(--brand-primary);
+        }
+      }
+
+      &-sorted {
+        color: var(--brand-primary);
+      }
+    }
+  }
+
+  &-tbody {
+    .table-tr {
+      transition: background-color var(--transition-fast);
+
+      &:hover {
+        background-color: var(--surface-secondary);
+      }
+
+      &-selected {
+        background-color: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-primary));
+      }
+
+      &-striped:nth-child(even) {
+        background-color: var(--surface-secondary);
+      }
+    }
+  }
+
+  &-td {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-primary);
+    color: var(--text-primary);
+    vertical-align: middle;
+
+    &:last-child {
+      text-align: right;
+    }
+  }
+
+  &-tr:last-child &-td {
+    border-bottom: none;
+  }
+
+  &-empty {
+    text-align: center;
+    padding: var(--spacing-2xl);
+    color: var(--text-tertiary);
+
+    &-icon {
+      font-size: 48px;
+      margin-bottom: var(--spacing-md);
+      opacity: 0.5;
+    }
+  }
+
+  &-loading {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-primary);
+  background-color: var(--surface-secondary);
+
+  &-info {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+  }
+
+  &-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+  }
+}
+
+.sort-icon {
+  display: inline-flex;
+  margin-left: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  opacity: 0.6;
+}

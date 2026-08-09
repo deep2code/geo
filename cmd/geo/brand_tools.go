@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"my-geo/internal/brand"
+	"my-geo/internal/brand/crawlability"
+	"my-geo/internal/brand/drift"
 	"my-geo/internal/brand/externalsignals"
+	"my-geo/internal/brand/history"
 	"my-geo/internal/brand/localseo"
 	"my-geo/internal/brand/readiness"
 	"my-geo/internal/brand/topsource"
@@ -98,6 +102,127 @@ func printReadinessResult(r *readiness.AuditResult, gate *readiness.CIGateResult
 		}
 	}
 	fmt.Println(divider)
+}
+
+// newCrawlabilityCmd AI 可爬取性审计命令。
+//
+// 审计网站对 27 个 AI 爬虫的可见性：robots.txt 放行状态、JSON-LD schema 丰富度、
+// llms.txt 存在性与深度、知识图谱（Wikidata/Wikipedia/百度百科）存在性。
+// 这是 GEO 的技术基础层：屏蔽 AI 爬虫会导致被引用率降低 73%。
+func newCrawlabilityCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "crawlability",
+		Short: "AI 可爬取性审计（robots.txt/llms.txt/schema/知识图谱）",
+		Long: `AI 可爬取性审计。
+
+检查网站是否允许 AI 爬虫访问、是否有结构化数据与 llms.txt、是否存在于知识图谱。
+这是 GEO 的技术基础层——在评估"内容是否被引用"之前，先确认"网站是否可被爬取"。
+
+数据显示：
+  • 65% 的网站在不知情的情况下屏蔽了 AI 爬虫
+  • 屏蔽 GPTBot 的网站被引用率降低 73%
+  • JSON-LD schema 使 GPT-4 提取准确率从 16% 提升到 54%
+  • 84.4 万站点已部署 llms.txt
+
+评分公式（透明公开）：
+  爬虫访问 40% + 结构化数据 30% + llms.txt 20% + 知识图谱 10%`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rawURL, _ := cmd.Flags().GetString("url")
+			if strings.TrimSpace(rawURL) == "" {
+				return fmt.Errorf("请通过 --url 指定目标网站")
+			}
+			result, err := crawlability.Audit(context.Background(), rawURL)
+			if err != nil {
+				return err
+			}
+			output, _ := cmd.Flags().GetString("output")
+			if output != "" {
+				data, _ := json.MarshalIndent(result, "", "  ")
+				return os.WriteFile(output, data, 0644)
+			}
+			printCrawlabilityResult(result)
+			return nil
+		},
+	}
+	cmd.Flags().String("url", "", "目标网站 URL（必填）")
+	cmd.Flags().StringP("output", "o", "", "输出 JSON 报告到文件")
+	return cmd
+}
+
+// printCrawlabilityResult 打印可爬取性审计结果。
+func printCrawlabilityResult(r *crawlability.AuditResult) {
+	divider := strings.Repeat("═", 50)
+	fmt.Println(divider)
+	fmt.Printf(" AI 可爬取性审计：%s\n", r.URL)
+	fmt.Println(divider)
+	fmt.Printf(" 综合得分：%.1f / 100   等级：%s\n\n", r.TotalScore, r.Grade)
+
+	// 爬虫检查摘要
+	allowed, blocked := 0, 0
+	for _, b := range r.BotChecks {
+		if b.Allowed {
+			allowed++
+		} else {
+			blocked++
+		}
+	}
+	fmt.Println("【AI 爬虫放行状态】")
+	fmt.Printf("  允许：%d  屏蔽：%d  共计：%d\n", allowed, blocked, len(r.BotChecks))
+	if blocked > 0 {
+		fmt.Println("  被屏蔽的爬虫：")
+		for _, b := range r.BotChecks {
+			if !b.Allowed {
+				fmt.Printf("    ✗ %-20s [%s] %s\n", b.Bot.UserAgent, b.Bot.Tier, b.Bot.Vendor)
+			}
+		}
+	}
+	fmt.Println()
+
+	// Schema 检查
+	fmt.Println("【JSON-LD 结构化数据】")
+	if r.SchemaCheck.HasJSONLD {
+		fmt.Printf("  ✓ 已部署  类型：%s  属性数：%d  丰富度：%s\n",
+			strings.Join(r.SchemaCheck.SchemaTypes, "/"), r.SchemaCheck.AttrCount, r.SchemaCheck.Richness)
+	} else {
+		fmt.Println("  ✗ 未部署 JSON-LD（建议添加 WebSite/Organization schema）")
+	}
+	fmt.Println()
+
+	// llms.txt 检查
+	fmt.Println("【llms.txt】")
+	if r.LlmsTxtCheck.Present {
+		fmt.Printf("  ✓ 已部署  深度：%s  分区：%d  链接：%d  H1:%v  摘要:%v  full.txt:%v\n",
+			r.LlmsTxtCheck.Depth, r.LlmsTxtCheck.Sections, r.LlmsTxtCheck.Links,
+			r.LlmsTxtCheck.HasH1, r.LlmsTxtCheck.HasQuote, r.LlmsTxtCheck.HasFullTxt)
+	} else {
+		fmt.Println("  ✗ 未部署 llms.txt（建议生成面向 LLM 的站点摘要）")
+	}
+	fmt.Println()
+
+	// 知识图谱检查
+	fmt.Println("【知识图谱存在性】")
+	fmt.Printf("  Wikidata:    %s\n", markBool(r.KGCheck.Wikidata))
+	fmt.Printf("  Wikipedia EN: %s\n", markBool(r.KGCheck.WikipediaEN))
+	fmt.Printf("  Wikipedia ZH: %s\n", markBool(r.KGCheck.WikipediaZH))
+	fmt.Printf("  百度百科:      %s\n", markBool(r.KGCheck.BaiduBaike))
+	fmt.Println()
+
+	// 建议
+	if len(r.Recommendations) > 0 {
+		fmt.Println("【优化建议】")
+		for _, rec := range r.Recommendations {
+			fmt.Printf("  • %s\n", rec)
+		}
+		fmt.Println()
+	}
+	fmt.Println(divider)
+}
+
+func markBool(b bool) string {
+	if b {
+		return "✓ 已收录"
+	}
+	return "✗ 未收录"
 }
 
 // newTopSourceCmd Top Source 归因分析命令。
@@ -458,4 +583,176 @@ func passLabel(passed bool) string {
 		return "通过"
 	}
 	return "未通过"
+}
+
+// newDriftCmd diff/drift 回归检测命令。
+//
+// 对比两次品牌审计结果，检测各维度漂移与回归，可作为 CI/CD 回归闸门。
+func newDriftCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "drift",
+		Short: "diff/drift 回归检测：对比两次审计结果",
+		Long: `diff/drift 回归检测。
+
+对比两次品牌审计结果，检测各维度漂移与回归，识别 BVS 评分、提及率、引用率、
+声量份额、引用位置、情感等维度的显著变化，用于：
+  - CI/CD 回归闸门：内容/SEO 改动后检测可见度是否退步
+  - 运营趋势监控：对比历史审计快照，定位退步维度
+
+两种输入方式：
+  1. 历史库模式（推荐）：--brand <品牌名>，从审计历史库取最近两条对比
+  2. 文件模式：--prev <prev.json> --cur <cur.json>，对比两份 history.Record JSON
+
+配合 --ci-gate <阈值> 可作为 CI 闸门：存在 critical 回归或 BVS 下降超阈值时
+返回非零退出码。`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			brandName, _ := cmd.Flags().GetString("brand")
+			prevFile, _ := cmd.Flags().GetString("prev")
+			curFile, _ := cmd.Flags().GetString("cur")
+
+			var report *drift.Report
+			if brandName != "" {
+				db, err := history.Open(os.Getenv("GEO_HISTORY_DB_PATH"))
+				if err != nil {
+					return fmt.Errorf("打开历史库失败: %w", err)
+				}
+				defer db.Close()
+				report, err = drift.CompareLatest(context.Background(), db, brandName)
+				if err != nil {
+					return err
+				}
+				if report == nil {
+					return fmt.Errorf("品牌 %s 历史记录不足两条，无法对比", brandName)
+				}
+			} else if prevFile != "" && curFile != "" {
+				prev, err := readRecordFile(prevFile)
+				if err != nil {
+					return err
+				}
+				cur, err := readRecordFile(curFile)
+				if err != nil {
+					return err
+				}
+				report = drift.Compare(*prev, *cur)
+			} else {
+				return fmt.Errorf("请通过 --brand <品牌名> 或 --prev/--cur <文件> 指定对比来源")
+			}
+
+			output, _ := cmd.Flags().GetString("output")
+			if output != "" {
+				data, _ := json.MarshalIndent(report, "", "  ")
+				return os.WriteFile(output, data, 0644)
+			}
+
+			ciGate, _ := cmd.Flags().GetFloat64("ci-gate")
+			if cmd.Flags().Changed("ci-gate") {
+				printDriftReport(report, &ciGate)
+				if !report.CIGate(ciGate) {
+					os.Exit(1)
+				}
+				return nil
+			}
+			printDriftReport(report, nil)
+			return nil
+		},
+	}
+	cmd.Flags().String("brand", "", "品牌名（历史库模式，从审计历史库取最近两条对比）")
+	cmd.Flags().String("prev", "", "上一次审计记录 JSON 文件（文件模式）")
+	cmd.Flags().String("cur", "", "当前审计记录 JSON 文件（文件模式）")
+	cmd.Flags().StringP("output", "o", "", "输出 JSON 报告到文件")
+	cmd.Flags().Float64("ci-gate", 0, "CI 门禁阈值（0-100），存在 critical 回归或 BVS 下降超阈值时非零退出")
+	return cmd
+}
+
+// readRecordFile 读取 history.Record JSON 文件。
+func readRecordFile(path string) (*history.Record, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取文件 %s 失败: %w", path, err)
+	}
+	var r history.Record
+	if err := json.Unmarshal(data, &r); err != nil {
+		return nil, fmt.Errorf("解析 history.Record JSON 失败: %w", err)
+	}
+	return &r, nil
+}
+
+// printDriftReport 打印漂移对比报告与可选的 CI 闸门判定。
+func printDriftReport(r *drift.Report, gateThreshold *float64) {
+	divider := strings.Repeat("═", 50)
+	fmt.Println(divider)
+	fmt.Printf(" diff/drift 回归检测：%s\n", r.BrandName)
+	fmt.Println(divider)
+	prevT := time.Unix(r.PreviousAt, 0).Format("2006-01-02 15:04")
+	curT := time.Unix(r.CurrentAt, 0).Format("2006-01-02 15:04")
+	fmt.Printf(" 对比区间：%s → %s\n", prevT, curT)
+	verdictLabel := map[string]string{
+		"improved":  "改善 ↑",
+		"regressed": "回归 ↓",
+		"stable":    "持平 →",
+	}[r.Verdict]
+	fmt.Printf(" 整体结论：%s   BVS 变化：%+.1f\n\n", verdictLabel, r.ScoreDelta)
+
+	fmt.Println("【维度漂移明细】")
+	for _, d := range r.Dimensions {
+		mark := "·"
+		switch d.Severity {
+		case "critical":
+			mark = "✗"
+		case "warning":
+			mark = "!"
+		case "none":
+			if d.Direction == "up" || d.Direction == "down" {
+				mark = "•"
+			}
+		}
+		arrow := "→"
+		if d.Direction == "up" {
+			arrow = "↑"
+		} else if d.Direction == "down" {
+			arrow = "↓"
+		}
+		sev := ""
+		if d.Severity == "critical" || d.Severity == "warning" {
+			sev = " [" + d.Severity + "]"
+		}
+		fmt.Printf("  %s %-14s %6.1f %s %6.1f  (%+.1f)%s\n", mark, d.Label, d.Previous, arrow, d.Current, d.Delta, sev)
+	}
+
+	if len(r.Engines) > 0 {
+		fmt.Println()
+		fmt.Println("【引擎级漂移】")
+		for _, ed := range r.Engines {
+			fmt.Printf("  ▸ %s\n", ed.Engine)
+			for _, d := range ed.Dims {
+				fmt.Printf("      %-12s %6.1f → %6.1f  (%+.1f)\n", d.Label, d.Previous, d.Current, d.Delta)
+			}
+		}
+	}
+
+	if len(r.Regressions) > 0 {
+		fmt.Println()
+		fmt.Println("【回归项】")
+		for _, reg := range r.Regressions {
+			fmt.Printf("  ✗ [%s] %s：%.1f → %.1f (%+.1f)\n", reg.Severity, reg.Label, reg.Previous, reg.Current, reg.Delta)
+		}
+	}
+	if len(r.Improvements) > 0 {
+		fmt.Println()
+		fmt.Println("【改善项】")
+		for _, imp := range r.Improvements {
+			fmt.Printf("  ✓ %s：%.1f → %.1f (%+.1f)\n", imp.Label, imp.Previous, imp.Current, imp.Delta)
+		}
+	}
+
+	if gateThreshold != nil {
+		fmt.Println()
+		fmt.Println("【CI 闸门判定】")
+		passMark := "✗ 未通过"
+		if r.CIGate(*gateThreshold) {
+			passMark = "✓ 通过"
+		}
+		fmt.Printf("  %s  BVS 阈值 %.1f  实际变化 %+.1f\n", passMark, *gateThreshold, r.ScoreDelta)
+	}
+	fmt.Println(divider)
 }

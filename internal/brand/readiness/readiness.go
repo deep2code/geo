@@ -25,8 +25,11 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"os"
 	"strings"
 	"time"
+
+	"my-geo/internal/util"
 )
 
 // CheckResult 单项检查结果。
@@ -105,11 +108,22 @@ var socialDomains = []string{
 // maxBodyBytes 单次响应体读取上限（避免拉取超大页面耗尽内存）。
 const maxBodyBytes = 2 << 20 // 2MB
 
-// httpClient 共享 HTTP 客户端（10 秒超时，容忍自签名证书以便内网/测试站点审计）。
+// insecureTLS 控制是否跳过 TLS 证书验证。
+// 默认 false（安全，启用证书验证）；通过环境变量 GEO_READINESS_INSECURE_TLS=true
+// 显式开启，仅用于内网/自签名证书测试场景。生产环境务必保持默认。
+var insecureTLS = parseInsecureTLS()
+
+func parseInsecureTLS() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("GEO_READINESS_INSECURE_TLS")))
+	return v == "true" || v == "1" || v == "yes"
+}
+
+// httpClient 共享 HTTP 客户端（10 秒超时）。
+// 默认启用 TLS 证书验证；GEO_READINESS_INSECURE_TLS=true 时跳过（仅限测试）。
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureTLS},
 	},
 }
 
@@ -130,6 +144,12 @@ func Audit(ctx context.Context, rawURL string) (*AuditResult, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
 		return nil, fmt.Errorf("readiness: 无效 URL %q: %w", rawURL, err)
+	}
+	// SSRF 防护：拒绝审计内网/回环地址（除非显式开启 GEO_READINESS_INSECURE_TLS）
+	if !insecureTLS {
+		if err := util.ValidateExternalURL(rawURL); err != nil {
+			return nil, fmt.Errorf("readiness: %w", err)
+		}
 	}
 	baseURL := u.Scheme + "://" + u.Host
 

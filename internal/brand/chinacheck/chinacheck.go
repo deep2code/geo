@@ -319,7 +319,11 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
 	})
-	req2, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(notif))
+	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(notif))
+	if err != nil {
+		// 构造通知请求失败不阻塞握手主流程，仅跳过通知
+		return nil
+	}
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Accept", "application/json, text/event-stream")
 	if sid != "no-session" {
@@ -327,12 +331,13 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		req2.Header.Set("Mcp-Protocol-Version", protocolVer)
 	}
 	go func() {
-		// 不阻塞主流程：best-effort 通知
+		// 不阻塞主流程：best-effort 通知。err/nil 都安全关闭 body。
 		r, err := c.httpClient.Do(req2)
-		if err == nil && r != nil {
+		if r != nil {
 			io.Copy(io.Discard, r.Body)
 			r.Body.Close()
 		}
+		_ = err
 	}()
 	return nil
 }

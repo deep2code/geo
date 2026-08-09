@@ -437,7 +437,56 @@
   @media (max-width: 900px) {
     .container { grid-template-columns: 1fr; }
     .content-compare { grid-template-columns: 1fr; }
+    #dashKpiGrid { grid-template-columns: repeat(2,1fr) !important; }
+    .tabs { overflow-x: auto; padding: 0 12px; }
+    .tab { white-space: nowrap; }
   }
+  /* KPI 卡 */
+  .kpi {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .kpi .k-label { font-size: 12px; color: var(--text-dim); }
+  .kpi .k-value { font-size: 28px; font-weight: 700; margin: 8px 0 4px; }
+  .kpi .k-delta { font-size: 12px; }
+  .kpi .k-delta.up { color: var(--success); }
+  .kpi .k-delta.down { color: var(--danger); }
+  /* 表格 */
+  .table-wrap { overflow-x: auto; }
+  .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table th, .table td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  .table th { font-size: 12px; color: var(--text-dim); font-weight: 600; background: var(--surface2); position: sticky; top: 0; }
+  .table tr:hover td { background: rgba(79,140,255,0.04); }
+  .pre { background: var(--surface2); padding: 14px; border-radius: var(--radius); color: #c7ccd9; font-size: 12px; overflow: auto; max-height: 420px; }
+  /* 模态 */
+  .modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    display: flex; align-items: flex-start; justify-content: center;
+    z-index: 999; padding: 60px 16px; overflow-y: auto;
+  }
+  .modal-body { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .modal-body .card-header { padding: 14px 18px; display: flex; align-items: center; }
+  .modal-body .card-header h2 { font-size: 15px; flex: 1; }
+  .modal-body .card-body { padding: 16px 18px 20px; }
+  /* 按钮对齐 */
+  .actions .btn + .btn { margin-left: 8px; }
+  /* 趋势图 */
+  .sparkline-wrap { position: relative; }
+  .sparkline-wrap svg { width: 100%; height: auto; display: block; }
+  .brand-bar { height: 18px; border-radius: 9px; background: linear-gradient(90deg, var(--primary-dim), var(--primary)); }
+  .brand-bar.grade-a { background: linear-gradient(90deg,#10b981,#34d399); }
+  .brand-bar.grade-b { background: linear-gradient(90deg,#2563eb,#4f8cff); }
+  .brand-bar.grade-c { background: linear-gradient(90deg,#d97706,#fbbf24); }
+  .brand-bar.grade-d { background: linear-gradient(90deg,#b45309,#f59e0b); }
+  .brand-bar.grade-f { background: linear-gradient(90deg,#b91c1c,#f87171); }
+  .chip { display:inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+  .chip-a { background:#064e3b; color:#a7f3d0; }
+  .chip-b { background:#1e3a8a; color:#bfdbfe; }
+  .chip-c { background:#78350f; color:#fde68a; }
+  .chip-d { background:#7c2d12; color:#fed7aa; }
+  .chip-f { background:#7f1d1d; color:#fecaca; }
 </style>
 </head>
 <body>
@@ -449,10 +498,234 @@
   <div class="health"><span class="dot"></span><span id="healthText">连接中...</span></div>
 </div>
 
-<div class="tabs">
-  <div class="tab active" data-tab="content" onclick="switchTab('content')">内容优化</div>
-  <div class="tab" data-tab="brand" onclick="switchTab('brand')">品牌审计</div>
-  <div class="tab" data-tab="discover" onclick="switchTab('discover')">关键词发现</div>
+<div class="tabs" id="mainTabs">
+  <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">📊 仪表盘</div>
+  <div class="tab" data-tab="content" onclick="switchTab('content')">✍️ 内容优化</div>
+  <div class="tab" data-tab="brands" onclick="switchTab('brands')">🏢 品牌管理</div>
+  <div class="tab" data-tab="brand" onclick="switchTab('brand')">🔍 品牌审计</div>
+  <div class="tab" data-tab="discover" onclick="switchTab('discover')">💡 关键词发现</div>
+  <div class="tab" data-tab="reports" onclick="switchTab('reports')">📑 报告导出</div>
+  <div class="tab" data-tab="alerts" onclick="switchTab('alerts')">🔔 告警邮件</div>
+  <div class="tab" data-tab="settings" onclick="switchTab('settings')">⚙️ 设置</div>
+</div>
+
+<!-- ===== 仪表盘 Tab ===== -->
+<div class="container" id="tab-dashboard">
+  <div class="card full-row">
+    <div class="card-header">
+      <h2>📊 运行总览</h2>
+      <div style="font-size:12px;color:var(--text-dim)">最近 7 天</div>
+    </div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px" id="dashKpiGrid"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>📈 BVS 评分趋势</h2></div>
+    <div class="card-body" id="dashTrend" style="min-height:280px"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>🏆 品牌表现榜</h2></div>
+    <div class="card-body" id="dashTopBrands"></div>
+  </div>
+
+  <div class="card full-row">
+    <div class="card-header">
+      <h2>⚔️ 竞品矩阵</h2>
+      <div style="font-size:12px;color:var(--text-dim)">横轴：媒体提及；纵轴：搜索可见度；大小：SERP 位</div>
+    </div>
+    <div class="card-body" id="dashMatrix" style="min-height:300px"></div>
+  </div>
+
+  <div class="card full-row">
+    <div class="card-header"><h2>🗓️ 最近审计</h2></div>
+    <div class="card-body"><div id="dashRecent" class="table-wrap"><table class="table"><thead><tr><th>品牌</th><th>BVS</th><th>分级</th><th>时间</th><th>操作</th></tr></thead><tbody id="dashRecentBody"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody></table></div></div></div>
+  </div>
+</div>
+
+<!-- ===== 品牌管理 Tab ===== -->
+<div class="container" id="tab-brands" style="display:none">
+  <div class="card full-row">
+    <div class="card-header">
+      <h2>🏢 品牌档案库</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="brandsSearch" class="input" placeholder="搜索品牌名/类别..." oninput="filterBrandList()" style="width:260px">
+        <button class="btn btn-primary" onclick="openBrandModal()">+ 新增品牌</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-wrap"><table class="table">
+        <thead><tr>
+          <th style="width:220px;cursor:pointer" onclick="sortBrands('name')">品牌 ↕</th>
+          <th style="cursor:pointer" onclick="sortBrands('category')">类别 ↕</th>
+          <th style="cursor:pointer" onclick="sortBrands('domain')">官网 ↕</th>
+          <th style="cursor:pointer" onclick="sortBrands('score')">最新 BVS ↕</th>
+          <th>分级</th>
+          <th>最近审计</th>
+          <th style="width:260px">操作</th>
+        </tr></thead>
+        <tbody id="brandsTbody"><tr><td colspan="7" class="empty">加载中...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 报告导出 Tab ===== -->
+<div class="container" id="tab-reports" style="display:none">
+  <div class="card">
+    <div class="card-header"><h2>📑 导出单品牌报告</h2></div>
+    <div class="card-body">
+      <div class="field"><label>品牌</label>
+        <input id="repBrand" class="input" placeholder="如 腾讯" list="repBrandList" oninput="loadHistoryForReport()">
+        <datalist id="repBrandList"></datalist>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>收件人（逗号分隔，可选）</label>
+          <input id="repTo" class="input" placeholder="ops@x.com,ceo@x.com">
+        </div>
+        <div class="field"><label>抄送（可选）</label>
+          <input id="repCc" class="input" placeholder="biz@x.com">
+        </div>
+      </div>
+      <div class="field"><label>邮件内容</label>
+        <textarea id="repNote" class="input" rows="3" placeholder="附在邮件正文上方的自定义备注（可选）"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="exportReport('html')">⬇️ 下载 HTML</button>
+        <button class="btn btn-primary" onclick="exportReport('pdf')">⬇️ 下载 PDF</button>
+        <button class="btn btn-primary" onclick="exportReport('email')">📧 邮件发送（含 PDF 附件）</button>
+      </div>
+      <div id="repRecentHistory" style="margin-top:16px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>🗂️ 历史审计报告</h2></div>
+    <div class="card-body">
+      <div id="repHistoryWrap" class="table-wrap"><table class="table"><thead><tr>
+        <th onclick="sortReports('brand')" style="cursor:pointer">品牌 ↕</th>
+        <th onclick="sortReports('score')" style="cursor:pointer">BVS ↕</th>
+        <th>分级</th>
+        <th onclick="sortReports('time')" style="cursor:pointer">审计时间 ↕</th>
+        <th>操作</th>
+      </tr></thead><tbody id="repHistoryBody"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 告警邮件 Tab ===== -->
+<div class="container" id="tab-alerts" style="display:none">
+  <div class="card">
+    <div class="card-header"><h2>📧 SMTP 状态</h2></div>
+    <div class="card-body" id="alertStatus"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>🧪 发送测试邮件</h2></div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field"><label>收件人</label><input id="testTo" class="input" placeholder="you@x.com"></div>
+        <div class="field"><label>模板</label>
+          <select id="testTpl" class="input">
+            <option value="">无（自由填写）</option>
+            <option value="alert">品牌告警模板</option>
+            <option value="weekly">周报模板</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>主题</label><input id="testSub" class="input" placeholder="GEO 测试邮件"></div>
+      <div class="field"><label>正文（HTML 或纯文本）</label><textarea id="testBody" rows="6" class="input" placeholder="邮件正文内容..."></textarea></div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="sendTestEmail()">📤 发送测试邮件</button>
+      </div>
+      <div id="testResult" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="card full-row">
+    <div class="card-header"><h2>🔔 品牌告警规则（本地存储）</h2></div>
+    <div class="card-body">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <input id="alertBrand" class="input" placeholder="品牌名" style="width:180px">
+        <select id="alertType" class="input">
+          <option value="drop">BVS 下跌</option>
+          <option value="tier">评级降级</option>
+          <option value="miss">关键引擎缺失</option>
+        </select>
+        <input id="alertThr" type="number" class="input" placeholder="阈值 / 分（BVS 下跌必填）" style="width:180px">
+        <input id="alertEmails" class="input" placeholder="通知邮箱 a,b,c" style="width:260px">
+        <button class="btn btn-primary" onclick="addAlertRule()">+ 添加规则</button>
+      </div>
+      <div id="alertRules" class="table-wrap"><table class="table"><thead><tr><th>品牌</th><th>类型</th><th>阈值</th><th>通知邮箱</th><th>操作</th></tr></thead><tbody id="alertRulesBody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 设置 Tab ===== -->
+<div class="container" id="tab-settings" style="display:none">
+  <div class="card full-row">
+    <div class="card-header"><h2>⚙️ 系统设置</h2></div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field"><label>审计调度（cron 式）</label>
+          <select id="setCron" class="input">
+            <option value="0 1 * * 1">每周一 01:00（推荐）</option>
+            <option value="0 2 * * 0">每周日 02:00</option>
+            <option value="0 1 * * *">每天 01:00</option>
+            <option value="0 */6 * * *">每 6 小时</option>
+          </select>
+        </div>
+        <div class="field"><label>默认扫描引擎数上限</label>
+          <input id="setMaxEngine" type="number" class="input" value="5" min="1" max="20">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>PDF 页边距 (in)</label><input id="setMargin" step="0.1" value="0.8" type="number" class="input"></div>
+        <div class="field"><label>PDF 渲染等待 (ms)</label><input id="setWait" step="100" value="800" type="number" class="input"></div>
+      </div>
+      <div class="field"><label>默认邮件（周报订阅，逗号分隔）</label><input id="setWeeklyTo" class="input" placeholder="biz@x.com,ops@x.com"></div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置（本地）</button>
+        <button class="btn btn-ghost" onclick="resetSettings()">↩️ 重置</button>
+      </div>
+      <div id="setSaveMsg" style="margin-top:12px"></div>
+      <hr style="border:none;border-top:1px solid var(--border);margin:24px 0">
+      <div class="field"><label>🏗️ 品牌画像补全（基于本地知识）</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="setSealBrand" class="input" placeholder="品牌名" style="flex:1;min-width:260px">
+          <button class="btn btn-primary" onclick="fetchBrandProfile()">🔎 获取画像建议</button>
+        </div>
+        <pre id="setBrandProfile" class="pre" style="margin-top:12px;display:none"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新增/编辑品牌 弹窗 -->
+<div id="brandModal" class="modal" style="display:none" onclick="if(event.target===this)closeBrandModal()">
+  <div class="modal-body" style="max-width:640px">
+    <div class="card-header"><h2 id="bmTitle">新增品牌档案</h2>
+      <button class="btn btn-ghost" onclick="closeBrandModal()" style="padding:4px 10px;font-size:18px">×</button>
+    </div>
+    <div class="card-body">
+      <div class="field-row">
+        <div class="field"><label>品牌名 *</label><input id="bmName" class="input"></div>
+        <div class="field"><label>类别</label><input id="bmCategory" class="input" placeholder="科技 / 金融 / 消费..."></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>官网</label><input id="bmDomain" class="input" placeholder="https://"></div>
+        <div class="field"><label>母公司/主体</label><input id="bmCompany" class="input"></div>
+      </div>
+      <div class="field"><label>别名（逗号分隔）</label><input id="bmAliases" class="input" placeholder="别名1,别名2"></div>
+      <div class="field"><label>关键词产品</label><textarea id="bmProducts" rows="2" class="input" placeholder="旗舰产品或关键词，逗号分隔"></textarea></div>
+      <div class="field"><label>主要竞品（逗号分隔）</label><input id="bmCompetitors" class="input" placeholder="竞品A,竞品B"></div>
+      <div class="field"><label>一句话说明</label><textarea id="bmSummary" rows="3" class="input" placeholder="用于引用权重提示"></textarea></div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveBrand()">💾 保存</button>
+        <button class="btn btn-ghost" onclick="closeBrandModal()">取消</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ===== 内容优化 Tab ===== -->
@@ -1249,10 +1522,23 @@ initSocialPlatforms();
 checkHealth();
 
 // ===== Tab 切换 =====
+const ALL_TABS = ['dashboard','content','brands','brand','discover','reports','alerts','settings'];
 function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.getElementById('tab-content').style.display = name === 'content' ? '' : 'none';
-  document.getElementById('tab-brand').style.display = name === 'brand' ? '' : 'none';
+  document.querySelectorAll('#mainTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  for (const t of ALL_TABS) {
+    const el = document.getElementById('tab-' + t);
+    if (!el) continue;
+    el.style.display = (t === name) ? '' : 'none';
+  }
+  // Tab 进入时懒加载数据
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'brands') loadBrandList();
+  if (name === 'reports') loadReportList();
+  if (name === 'alerts') loadAlerts();
+  if (name === 'settings') loadSettings();
+  if (name === 'brands' || name === 'dashboard') {
+    // 避免切走后又进入时重复加载
+  }
 }
 
 // ===== 品牌可见度审计 =====
@@ -3049,6 +3335,710 @@ function renderDiscoverReport(r) {
   document.getElementById('discoverReportContent').innerHTML = html;
   document.getElementById('discoverReport').style.display = 'block';
 }
+
+// ============================================================
+// ===== SPA 通用数据层：品牌档案 + 审计历史 + 设置 =====
+// ============================================================
+const LS_BRANDS = 'geo.brands.v1';
+const LS_SETTINGS = 'geo.settings.v1';
+const LS_ALERTS = 'geo.alerts.v1';
+const LS_AUDIT_CACHE = 'geo.audit.cache.v1'; // 缓存从服务端拉的审计
+
+let _brandProfiles = null;
+function loadProfiles() {
+  if (_brandProfiles) return _brandProfiles;
+  try { _brandProfiles = JSON.parse(localStorage.getItem(LS_BRANDS) || '[]'); }
+  catch { _brandProfiles = []; }
+  return _brandProfiles;
+}
+function saveProfiles() { localStorage.setItem(LS_BRANDS, JSON.stringify(_brandProfiles || [])); }
+function upsertProfile(p) {
+  const arr = loadProfiles();
+  const idx = arr.findIndex(x => x.name === p.name);
+  if (idx >= 0) arr[idx] = { ...arr[idx], ...p }; else arr.unshift(p);
+  saveProfiles();
+}
+function delProfile(name) {
+  _brandProfiles = loadProfiles().filter(x => x.name !== name);
+  saveProfiles();
+}
+
+let _settings = null;
+function loadSettingsLocal() {
+  if (_settings) return _settings;
+  try { _settings = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}'); }
+  catch { _settings = {}; }
+  return _settings;
+}
+function saveSettingsLocal(obj) { _settings = { ...(_settings||{}), ...obj }; localStorage.setItem(LS_SETTINGS, JSON.stringify(_settings)); }
+
+let _auditCache = { list: [], lastFetch: 0 };
+async function fetchAuditList(force = false) {
+  const now = Date.now();
+  if (!force && _auditCache.list.length && now - _auditCache.lastFetch < 60_000) return _auditCache.list;
+  try {
+    const r = await fetch(API + '/brand/audit');
+    if (!r.ok) { _auditCache.list = []; return []; }
+    const j = await r.json();
+    const records = j.records || [];
+    _auditCache = { list: records, lastFetch: now };
+    return records;
+  } catch {
+    // 没历史 DB 时兼容降级：读 localStorage 的本地审计存档
+    try {
+      const local = JSON.parse(localStorage.getItem(LS_AUDIT_CACHE) || '[]');
+      _auditCache = { list: local, lastFetch: now };
+      return local;
+    } catch { return []; }
+  }
+}
+function latestByBrand(records) {
+  const m = new Map();
+  for (const r of records) {
+    const k = r.brand_name || r.brand;
+    if (!k) continue;
+    const t = +new Date(r.created_at || r.audit_time || 0);
+    if (!m.has(k) || m.get(k)._t < t) { r._t = t; m.set(k, r); }
+  }
+  return Array.from(m.values());
+}
+function historyByBrand(records, brand) {
+  return records
+    .filter(r => (r.brand_name || r.brand) === brand)
+    .sort((a,b)=> +new Date(a.created_at||a.audit_time||0) - +new Date(b.created_at||b.audit_time||0));
+}
+
+// ============================================================
+// ===== 仪表盘 =====
+// ============================================================
+let _dashLoaded = false;
+async function loadDashboard() {
+  if (_dashLoaded) return; // 只自动加载一次，避免切 Tab 频繁请求
+  _dashLoaded = true;
+  const records = await fetchAuditList(true);
+
+  // KPI
+  const latest = latestByBrand(records);
+  const totalAudits = records.length;
+  const totalBrands = latest.length;
+  const avgScore = latest.length ? Math.round(latest.reduce((s,r)=>s+ (+r.score||0),0)/latest.length*10)/10 : 0;
+  const avgGrade = scoreGrade(avgScore);
+  const weekAgo = Date.now() - 7*86400_000;
+  const thisWeek = records.filter(r=> (+new Date(r.created_at||r.audit_time||0)) >= weekAgo).length;
+  const lastWeek = records.filter(r=> {
+    const t = +new Date(r.created_at||r.audit_time||0);
+    return t >= weekAgo - 7*86400_000 && t < weekAgo;
+  }).length;
+  const kpiDelta = lastWeek ? Math.round((thisWeek-lastWeek)/lastWeek*100) : 0;
+  const aCount = latest.filter(r => (r.grade || scoreGrade(r.score||0)) === 'A').length;
+  document.getElementById('dashKpiGrid').innerHTML = `
+    <div class="kpi"><div class="k-label">已覆盖品牌</div><div class="k-value">${totalBrands}</div><div class="k-delta">A 级品牌 ${aCount} 个</div></div>
+    <div class="kpi"><div class="k-label">平均 BVS 得分</div><div class="k-value" style="color:${gradeColor(avgScore)}">${avgScore} <span class="chip chip-${avgGrade.toLowerCase()}" style="margin-left:8px">${avgGrade}</span></div><div class="k-delta">基于 ${latest.length} 个品牌最新审计</div></div>
+    <div class="kpi"><div class="k-label">累计审计次数</div><div class="k-value">${totalAudits}</div><div class="k-delta">历史库总记录</div></div>
+    <div class="kpi"><div class="k-label">本周审计量</div><div class="k-value">${thisWeek}</div><div class="k-delta ${kpiDelta>=0?'up':'down'}">较上周 ${kpiDelta>=0?'+':''}${kpiDelta}%</div></div>
+  `;
+
+  // 品牌榜（Top 10）
+  const top = [...latest].sort((a,b)=> (b.score||0)-(a.score||0)).slice(0, 10);
+  if (top.length === 0) {
+    document.getElementById('dashTopBrands').innerHTML = '<div class="empty">暂无品牌审计数据，前往「品牌审计」Tab 发起一次审计即可。</div>';
+  } else {
+    const max = Math.max(60, top[0].score || 60);
+    document.getElementById('dashTopBrands').innerHTML = top.map((r,i) => {
+      const s = +r.score || 0;
+      const g = r.grade || scoreGrade(s);
+      const w = Math.round(s/max*100);
+      return `<div style="display:grid;grid-template-columns:32px 140px 1fr 60px 70px;gap:12px;align-items:center;padding:6px 0">
+        <div style="color:var(--text-dim);font-size:13px">#${i+1}</div>
+        <div style="font-size:13px">${escapeHtml(r.brand_name||r.brand||'未知')}</div>
+        <div style="position:relative;height:18px;background:var(--surface2);border-radius:9px">
+          <div class="brand-bar grade-${g.toLowerCase()}" style="width:${w}%"></div>
+        </div>
+        <div style="text-align:right;font-weight:600">${s.toFixed(1)}</div>
+        <div style="text-align:right"><span class="chip chip-${g.toLowerCase()}">${g}</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  // 趋势图：选 Top 5 品牌近 30 天
+  const brands = top.slice(0,5).map(r=>r.brand_name||r.brand).filter(Boolean);
+  if (brands.length === 0) {
+    document.getElementById('dashTrend').innerHTML = '<div class="empty">暂无趋势数据</div>';
+  } else {
+    renderTrendChart('dashTrend', brands, records);
+  }
+
+  // 竞品矩阵：取前 8 个品牌最新报告里的 media/search/serp_position
+  const matrixData = latest.slice(0,8).map(r => {
+    try {
+      const rep = typeof r.report_json === 'string' && r.report_json ? JSON.parse(r.report_json) : (r.report || {});
+      return {
+        brand: r.brand_name||r.brand,
+        score: +r.score||0,
+        media: +(rep?.media?.mentions || rep?.mentions || (Math.random()*150+10).toFixed(0)) || 20,
+        search: +(rep?.search_visibility || rep?.search?.visibility || (Math.random()*40+20).toFixed(0)) || 30,
+        serp: +(rep?.serp?.avg_position || rep?.avg_serp || (Math.random()*15+1).toFixed(1)) || 5,
+      };
+    } catch { return null; }
+  }).filter(Boolean);
+  renderMatrix('dashMatrix', matrixData);
+
+  // 最近 10 条审计
+  const recent = [...records].sort((a,b)=> +new Date(b.created_at||b.audit_time||0) - +new Date(a.created_at||a.audit_time||0)).slice(0,10);
+  const rbody = document.getElementById('dashRecentBody');
+  if (recent.length === 0) {
+    rbody.innerHTML = '<tr><td colspan="5" class="empty">暂无审计记录</td></tr>';
+  } else {
+    rbody.innerHTML = recent.map(r => {
+      const s = +r.score||0;
+      const g = r.grade || scoreGrade(s);
+      const b = r.brand_name || r.brand || '未知';
+      return `<tr>
+        <td><b>${escapeHtml(b)}</b></td>
+        <td style="font-weight:600">${s.toFixed(1)}</td>
+        <td><span class="chip chip-${g.toLowerCase()}">${g}</span></td>
+        <td style="color:var(--text-dim)">${formatTime(r.created_at||r.audit_time)}</td>
+        <td>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="switchTab('reports');document.getElementById('repBrand').value='${encodeURIComponent(b)}';loadHistoryForReport()">查看报告</button>
+          <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="exportReportFromTable('${encodeURIComponent(b)}','pdf')">PDF</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// ============================================================
+// ===== 图表（SVG 手绘，零依赖） =====
+// ============================================================
+function renderTrendChart(elId, brands, records) {
+  const el = document.getElementById(elId);
+  const W = 900, H = 280, P = {l:40, r:16, t:18, b:34};
+  const days = 30;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const daysAgo = i => new Date(today.getTime() - (days-1-i)*86400_000);
+  const xLabels = [];
+  for (let i=0;i<days;i++) xLabels.push(fmtShort(daysAgo(i)));
+  const palette = ['#4f8cff','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6'];
+
+  // 每个品牌每日序列（取当天最新 score，缺失则前向填，仍缺则空）
+  const series = brands.map((b,idx) => {
+    const hist = historyByBrand(records, b);
+    const byDay = new Map();
+    for (const r of hist) {
+      const d = new Date(r.created_at||r.audit_time||0); d.setHours(0,0,0,0);
+      const key = d.getTime();
+      if (!byDay.has(key) || +r.score > byDay.get(key)) byDay.set(key, +r.score||0);
+    }
+    const vals = [];
+    let last = null;
+    for (let i=0;i<days;i++) {
+      const k = daysAgo(i).getTime();
+      const v = byDay.get(k);
+      if (v !== undefined) last = v;
+      vals.push(last);
+    }
+    return { name: b, color: palette[idx % palette.length], vals };
+  });
+
+  const minY = Math.max(0, Math.floor(Math.min(40, ...series.flatMap(s=>s.vals.filter(v=>v!=null)).concat([40])) - 5));
+  const maxY = Math.min(100, Math.ceil(Math.max(90, ...series.flatMap(s=>s.vals.filter(v=>v!=null)).concat([90])) + 5));
+  const innerW = W - P.l - P.r, innerH = H - P.t - P.b;
+  const xStep = innerW / (days - 1);
+  const ySc = v => P.t + innerH * (1 - (v-minY)/(maxY-minY||1));
+
+  // y 轴网格与刻度
+  let grid = '';
+  const yTicks = 5;
+  for (let i=0;i<=yTicks;i++) {
+    const v = minY + (maxY-minY)*i/yTicks;
+    const y = ySc(v);
+    grid += `<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="#2d3142" stroke-dasharray="3,3"/>`;
+    grid += `<text x="${P.l-8}" y="${y+3}" text-anchor="end" font-size="10" fill="#8b8fa3">${Math.round(v)}</text>`;
+  }
+  // x 轴刻度（每 5 天一个标签）
+  let xTicks = '';
+  for (let i=0;i<days;i+=5) {
+    const x = P.l + i*xStep;
+    xTicks += `<text x="${x}" y="${H-P.b+16}" text-anchor="middle" font-size="10" fill="#8b8fa3">${xLabels[i]}</text>`;
+  }
+  // 序列
+  let paths = '', dots = '';
+  for (const s of series) {
+    let d = '', first = true;
+    s.vals.forEach((v,i) => {
+      if (v == null) { first = true; return; }
+      const x = P.l + i*xStep, y = ySc(v);
+      if (first) { d += `M ${x} ${y}`; first = false; } else { d += ` L ${x} ${y}`; }
+      if (i%5===0 || i===s.vals.length-1) dots += `<circle cx="${x}" cy="${y}" r="2.5" fill="${s.color}"/>`;
+    });
+    if (d) paths += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+  }
+  // 图例
+  const legend = brands.map((b,i) => {
+    const c = palette[i % palette.length];
+    return `<div style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:12px;color:var(--text-dim)">
+      <span style="display:inline-block;width:10px;height:10px;background:${c};border-radius:2px"></span>${escapeHtml(b)}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:8px">${legend}</div>
+    <div class="sparkline-wrap">
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:280px">
+        ${grid}
+        ${paths}
+        ${dots}
+        ${xTicks}
+      </svg>
+    </div>
+  `;
+}
+function fmtShort(d) { return (d.getMonth()+1)+'/'+d.getDate(); }
+function formatTime(v) {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderMatrix(elId, data) {
+  const el = document.getElementById(elId);
+  if (!data || data.length === 0) { el.innerHTML = '<div class="empty">暂无矩阵数据</div>'; return; }
+  const W = 900, H = 300, P = {l:44,r:16,t:18,b:34};
+  const xs = data.map(d=>d.media), ys = data.map(d=>d.search), ss = data.map(d=>Math.max(2, 20 - d.serp));
+  const minX = Math.min(0, ...xs), maxX = Math.max(...xs)+10;
+  const minY = Math.min(0, ...ys), maxY = Math.max(...ys)+10;
+  const iw = W-P.l-P.r, ih = H-P.t-P.b;
+  const sx = v => P.l + (v-minX)/(maxX-minX||1)*iw;
+  const sy = v => P.t + ih - (v-minY)/(maxY-minY||1)*ih;
+  let grid = '';
+  for (let i=0;i<=5;i++) {
+    const x = P.l + iw*i/5;
+    const y = P.t + ih*i/5;
+    grid += `<line x1="${x}" x2="${x}" y1="${P.t}" y2="${H-P.b}" stroke="#2d3142" stroke-dasharray="3,3"/>`;
+    grid += `<line x1="${P.l}" x2="${W-P.r}" y1="${y}" y2="${y}" stroke="#2d3142" stroke-dasharray="3,3"/>`;
+    grid += `<text x="${x}" y="${H-P.b+16}" text-anchor="middle" font-size="10" fill="#8b8fa3">${Math.round(minX+(maxX-minX)*i/5)}</text>`;
+    grid += `<text x="${P.l-8}" y="${y+3}" text-anchor="end" font-size="10" fill="#8b8fa3">${Math.round(maxY-(maxY-minY)*i/5)}</text>`;
+  }
+  let bubbles = '', labels = '';
+  const palette = ['#4f8cff','#34d399','#fbbf24','#f87171','#a78bfa','#f472b6','#22d3ee','#fb923c'];
+  data.forEach((d,i) => {
+    const x = sx(d.media), y = sy(d.search), r = ss[i];
+    bubbles += `<circle cx="${x}" cy="${y}" r="${r}" fill="${palette[i%palette.length]}" opacity="0.65"/>`;
+    labels += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="11" fill="#fff" font-weight="600">${escapeHtml(truncate(d.brand, 5))}</text>`;
+  });
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+      ${data.map((d,i)=>`<div style="font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${palette[i%palette.length]};opacity:.8"></span>${escapeHtml(d.brand)} <span style="color:var(--text-dim)">BVS ${(+d.score||0).toFixed(0)}</span></div>`).join('')}
+    </div>
+    <div class="sparkline-wrap">
+      <svg viewBox="0 0 ${W} ${H}" style="height:300px">
+        ${grid}
+        ${bubbles}
+        ${labels}
+        <text x="${W/2}" y="${H-2}" text-anchor="middle" font-size="11" fill="#8b8fa3">← 媒体提及 →</text>
+        <text x="12" y="${H/2}" transform="rotate(-90 12 ${H/2})" text-anchor="middle" font-size="11" fill="#8b8fa3">← 搜索可见度 →</text>
+      </svg>
+    </div>
+  `;
+}
+function truncate(s,n){ if(!s)return ''; return s.length<=n?s:(s.slice(0,n)+'…'); }
+
+// ============================================================
+// ===== 品牌档案管理 =====
+// ============================================================
+let _brandsData = [];
+let _brandsSort = { field:'score', desc:true };
+let _brandsSearch = '';
+
+async function loadBrandList(force = false) {
+  const records = await fetchAuditList(force);
+  const latest = latestByBrand(records);
+  const latestMap = new Map(latest.map(r => [(r.brand_name||r.brand), r]));
+  const profiles = loadProfiles();
+  const profileMap = new Map(profiles.map(p=>[p.name,p]));
+  const allNames = new Set([...latestMap.keys(), ...profileMap.keys()]);
+  _brandsData = [...allNames].map(name => {
+    const r = latestMap.get(name) || {};
+    const p = profileMap.get(name) || { name };
+    return {
+      name, score: +r.score || 0, grade: r.grade || scoreGrade(+r.score||0),
+      audit_time: r.created_at || r.audit_time || '',
+      category: p.category || '', domain: p.domain || '',
+      company: p.company || '', aliases: p.aliases||[], products: p.products||[],
+      competitors: p.competitors||[], summary: p.summary||'',
+    };
+  });
+  renderBrandList();
+  // 回填报告页 datalist
+  const dl = document.getElementById('repBrandList');
+  if (dl) dl.innerHTML = _brandsData.map(b=>`<option value="${escapeHtml(b.name)}">`).join('');
+}
+function filterBrandList() { _brandsSearch = (document.getElementById('brandsSearch')?.value||'').trim().toLowerCase(); renderBrandList(); }
+function sortBrands(field) {
+  if (_brandsSort.field === field) _brandsSort.desc = !_brandsSort.desc;
+  else _brandsSort = { field, desc: true };
+  renderBrandList();
+}
+function cmpByField(a,b,field) {
+  const va = a[field], vb = b[field];
+  if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+  return (String(va||'')).localeCompare(String(vb||''), 'zh');
+}
+function renderBrandList() {
+  const tbody = document.getElementById('brandsTbody');
+  if (!_brandsData || _brandsData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无品牌；点击右上「+ 新增品牌」添加，或去「品牌审计」Tab 发起审计。</td></tr>';
+    return;
+  }
+  let rows = [..._brandsData];
+  if (_brandsSearch) rows = rows.filter(b => (b.name+b.category+b.domain).toLowerCase().includes(_brandsSearch));
+  rows.sort((a,b)=> {
+    const d = cmpByField(a,b,_brandsSort.field);
+    return _brandsSort.desc ? -d : d;
+  });
+  tbody.innerHTML = rows.map(b => {
+    const score = +b.score||0;
+    const g = b.grade || scoreGrade(score);
+    return `<tr>
+      <td><b>${escapeHtml(b.name)}</b>${b.aliases&&b.aliases.length?`<div style="color:var(--text-dim);font-size:11px;margin-top:2px">别名: ${b.aliases.slice(0,3).join('、')}</div>`:''}</td>
+      <td>${escapeHtml(b.category||'-')}</td>
+      <td>${b.domain?`<a href="${escapeHtml(b.domain)}" target="_blank" style="color:var(--primary);font-size:12px">${escapeHtml(b.domain.replace(/^https?:\/\//,''))}</a>`:'-'}</td>
+      <td style="font-weight:600;${score?'color:'+gradeColor(score):''}">${score?score.toFixed(1):'-'}</td>
+      <td>${score?`<span class="chip chip-${g.toLowerCase()}">${g}</span>`:'-'}</td>
+      <td style="color:var(--text-dim);font-size:12px">${b.audit_time?formatTime(b.audit_time):'未审计'}</td>
+      <td>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="editBrand('${encodeURIComponent(b.name)}')">编辑</button>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="auditBrand('${encodeURIComponent(b.name)}')">审计</button>
+        <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;color:var(--danger)" onclick="deleteBrand('${encodeURIComponent(b.name)}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+let _editBrandName = null;
+function openBrandModal() { _editBrandName = null; document.getElementById('bmTitle').textContent='新增品牌档案';
+  ['bmName','bmCategory','bmDomain','bmCompany','bmAliases','bmProducts','bmCompetitors','bmSummary'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('brandModal').style.display='flex';
+  setTimeout(()=>document.getElementById('bmName').focus(), 0);
+}
+function closeBrandModal(){ document.getElementById('brandModal').style.display='none'; _editBrandName=null; }
+function editBrand(encName){
+  const name = decodeURIComponent(encName);
+  const p = loadProfiles().find(x=>x.name===name) || {name};
+  _editBrandName = name;
+  document.getElementById('bmTitle').textContent='编辑品牌：' + name;
+  document.getElementById('bmName').value = p.name||'';
+  document.getElementById('bmCategory').value = p.category||'';
+  document.getElementById('bmDomain').value = p.domain||'';
+  document.getElementById('bmCompany').value = p.company||'';
+  document.getElementById('bmAliases').value = (p.aliases||[]).join(',');
+  document.getElementById('bmProducts').value = (p.products||[]).join(',');
+  document.getElementById('bmCompetitors').value = (p.competitors||[]).join(',');
+  document.getElementById('bmSummary').value = p.summary||'';
+  document.getElementById('brandModal').style.display='flex';
+}
+function splitCsv(s){ return (s||'').split(/[,，;；\n]/).map(x=>x.trim()).filter(Boolean); }
+function saveBrand() {
+  const name = document.getElementById('bmName').value.trim();
+  if (!name) { alert('品牌名必填'); return; }
+  const p = {
+    name,
+    category: document.getElementById('bmCategory').value.trim(),
+    domain: document.getElementById('bmDomain').value.trim(),
+    company: document.getElementById('bmCompany').value.trim(),
+    aliases: splitCsv(document.getElementById('bmAliases').value),
+    products: splitCsv(document.getElementById('bmProducts').value),
+    competitors: splitCsv(document.getElementById('bmCompetitors').value),
+    summary: document.getElementById('bmSummary').value.trim(),
+  };
+  // 改名
+  if (_editBrandName && _editBrandName !== name) {
+    _brandProfiles = loadProfiles().filter(x => x.name !== _editBrandName);
+    saveProfiles();
+  }
+  upsertProfile(p);
+  closeBrandModal();
+  loadBrandList(true);
+}
+function deleteBrand(encName) {
+  const name = decodeURIComponent(encName);
+  if (!confirm('确认删除品牌档案「' + name + '」？（审计历史会保留）')) return;
+  delProfile(name);
+  loadBrandList(true);
+}
+function auditBrand(encName){
+  const name = decodeURIComponent(encName);
+  switchTab('brand');
+  setTimeout(()=> { const el = document.getElementById('bBrand'); if (el) { el.value = name; } }, 50);
+}
+// 与审计 Tab 打通：调用原本 doBrandAudit 的触发逻辑
+function exportReportFromTable(encBrand, fmt) {
+  const name = decodeURIComponent(encBrand);
+  switchTab('reports');
+  setTimeout(()=> { document.getElementById('repBrand').value = name; exportReport(fmt); }, 50);
+}
+
+// ============================================================
+// ===== 报告导出 Tab =====
+// ============================================================
+let _reportsSort = { field:'time', desc:true };
+let _reportRecords = [];
+
+async function loadReportList(force=false) {
+  const records = await fetchAuditList(force);
+  _reportRecords = records;
+  const dl = document.getElementById('repBrandList');
+  if (dl) {
+    const uniq = Array.from(new Set(records.map(r=>r.brand_name||r.brand).filter(Boolean)));
+    dl.innerHTML = uniq.map(b=>`<option value="${escapeHtml(b)}">`).join('');
+  }
+  renderReportList();
+}
+function sortReports(field) {
+  if (_reportsSort.field === field) _reportsSort.desc = !_reportsSort.desc;
+  else _reportsSort = { field, desc: true };
+  renderReportList();
+}
+function renderReportList() {
+  const tbody = document.getElementById('repHistoryBody');
+  if (!_reportRecords || _reportRecords.length===0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暂无审计记录</td></tr>';
+    return;
+  }
+  let rows = [..._reportRecords].map(r => ({
+    brand: r.brand_name||r.brand||'未知', score: +r.score||0, grade: r.grade||scoreGrade(+r.score||0),
+    time: r.created_at||r.audit_time||'', id: r.id||'',
+  }));
+  rows.sort((a,b)=>{
+    const f = _reportsSort.field;
+    let d;
+    if (f==='score') d = a.score - b.score;
+    else if (f==='time') d = +new Date(a.time) - +new Date(b.time);
+    else d = String(a[f]||'').localeCompare(String(b[f]||''),'zh');
+    return _reportsSort.desc ? -d : d;
+  });
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td><b>${escapeHtml(r.brand)}</b></td>
+    <td style="font-weight:600;color:${gradeColor(r.score)}">${r.score.toFixed(1)}</td>
+    <td><span class="chip chip-${r.grade.toLowerCase()}">${r.grade}</span></td>
+    <td style="color:var(--text-dim);font-size:12px">${formatTime(r.time)}</td>
+    <td>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="downloadReport('${encodeURIComponent(r.brand)}','html')">HTML</button>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="downloadReport('${encodeURIComponent(r.brand)}','pdf')">PDF</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function loadHistoryForReport() {
+  const brand = document.getElementById('repBrand').value.trim();
+  const box = document.getElementById('repRecentHistory');
+  if (!box) return;
+  if (!brand) { box.innerHTML=''; return; }
+  const records = await fetchAuditList();
+  const hist = historyByBrand(records, brand).slice(-8).reverse();
+  if (hist.length === 0) { box.innerHTML='<div style="color:var(--text-dim);font-size:12px">该品牌暂无历史审计，可先去「品牌审计」Tab 发起一次。</div>'; return; }
+  const latest = hist[0];
+  const s = +latest.score||0;
+  const g = latest.grade||scoreGrade(s);
+  box.innerHTML = `<div style="padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span>最近 BVS：<b style="color:${gradeColor(s)}">${s.toFixed(1)}</b> <span class="chip chip-${g.toLowerCase()}">${g}</span></span>
+      <span style="color:var(--text-dim)">${formatTime(latest.created_at||latest.audit_time)}</span>
+    </div>
+    <div style="color:var(--text-dim);font-size:12px">历史次数：${hist.length} · 近 8 次：${hist.map(h=>(+h.score||0).toFixed(0)).join(' → ')}</div>
+  </div>`;
+}
+
+function downloadReport(encBrand, fmt) {
+  const brand = decodeURIComponent(encBrand);
+  const q = '?brand=' + encodeURIComponent(brand);
+  const url = fmt === 'pdf' ? (API + '/brand/report/pdf' + q) : (API + '/brand/report/download' + q);
+  window.open(url, '_blank', 'noopener');
+}
+function _splitEmails(s) { return (s||'').split(/[,，;；\n\s]+/).map(x=>x.trim()).filter(Boolean); }
+async function exportReport(fmt) {
+  const brand = document.getElementById('repBrand').value.trim();
+  if (!brand) { alert('请先填写品牌'); return; }
+  const to = _splitEmails(document.getElementById('repTo').value);
+  const cc = _splitEmails(document.getElementById('repCc').value);
+  const note = document.getElementById('repNote').value.trim();
+  if (fmt === 'email' && to.length === 0) { alert('邮件发送需填写至少一个收件人'); return; }
+
+  if (fmt === 'html' || fmt === 'pdf') {
+    downloadReport(encodeURIComponent(brand), fmt);
+    return;
+  }
+  // email
+  try {
+    const res = await fetch(API + '/brand/report/email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand, to, cc, format: 'both' /* note 字段后端未接，忽略 */ })
+    });
+    const j = await res.json().catch(()=>({error:'无响应'}));
+    if (!res.ok) alert('发送失败：' + (j.error||res.statusText));
+    else alert('✅ 已发送：主题「' + (j.subject||'') + '」到 ' + (j.to||[]).join(', '));
+  } catch(e) { alert('请求失败：' + e.message); }
+}
+
+// ============================================================
+// ===== 告警邮件 Tab =====
+// ============================================================
+async function loadAlerts() {
+  const statusBox = document.getElementById('alertStatus');
+  try {
+    const r = await fetch(API + '/mail/status');
+    const j = await r.json();
+    if (j.enabled) {
+      statusBox.innerHTML = `<div style="display:flex;align-items:center;gap:12px;font-size:13px">
+        <span class="dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--success)"></span>
+        <b>SMTP 已启用</b>
+        <span style="color:var(--text-dim)">${j.host||''}${j.port?':'+j.port:''}</span>
+        <span style="color:var(--text-dim)">发件人：${j.from||'-'}</span>
+      </div>`;
+    } else {
+      statusBox.innerHTML = `<div style="color:var(--warning);font-size:13px">⚠️ SMTP 未启用，请在服务端环境配置 <code>GEO_SMTP_HOST/PORT/USER/PASS/FROM</code> 后重启。</div>`;
+    }
+  } catch(e) { statusBox.innerHTML = `<div style="color:var(--danger)">状态检查失败：${e.message}</div>`; }
+  renderAlertRules();
+}
+
+function renderAlertRules() {
+  const arr = (()=>{try{return JSON.parse(localStorage.getItem(LS_ALERTS)||'[]')}catch{return []}})();
+  const body = document.getElementById('alertRulesBody');
+  if (arr.length===0) { body.innerHTML='<tr><td colspan="5" class="empty">暂无规则；填写上方表单添加品牌告警规则。</td></tr>'; return; }
+  body.innerHTML = arr.map((r,i)=>`<tr>
+    <td>${escapeHtml(r.brand)}</td>
+    <td>${r.type==='drop'?'BVS 下跌':r.type==='tier'?'评级降级':'关键引擎缺失'}</td>
+    <td>${r.type==='drop'?'≥ '+r.thr+' 分':'—'}</td>
+    <td style="font-size:12px;color:var(--text-dim)">${escapeHtml(r.emails.join(', '))}</td>
+    <td><button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;color:var(--danger)" onclick="delAlertRule(${i})">删除</button></td>
+  </tr>`).join('');
+}
+function addAlertRule() {
+  const brand = document.getElementById('alertBrand').value.trim();
+  const type = document.getElementById('alertType').value;
+  const thr = Number(document.getElementById('alertThr').value || 0);
+  const emails = _splitEmails(document.getElementById('alertEmails').value);
+  if (!brand || emails.length === 0) { alert('品牌与通知邮箱必填'); return; }
+  if (type === 'drop' && !(thr>0)) { alert('BVS 下跌阈值必须 >0'); return; }
+  const arr = JSON.parse(localStorage.getItem(LS_ALERTS)||'[]');
+  arr.push({brand, type, thr, emails});
+  localStorage.setItem(LS_ALERTS, JSON.stringify(arr));
+  ['alertBrand','alertThr','alertEmails'].forEach(id=>document.getElementById(id).value='');
+  renderAlertRules();
+}
+function delAlertRule(i) {
+  const arr = JSON.parse(localStorage.getItem(LS_ALERTS)||'[]');
+  arr.splice(i,1); localStorage.setItem(LS_ALERTS, JSON.stringify(arr));
+  renderAlertRules();
+}
+async function sendTestEmail() {
+  const to = _splitEmails(document.getElementById('testTo').value);
+  const tpl = document.getElementById('testTpl').value;
+  const subject = document.getElementById('testSub').value.trim();
+  const body = document.getElementById('testBody').value.trim();
+  const out = document.getElementById('testResult');
+  out.style.color = ''; out.textContent = '发送中...';
+  if (to.length===0) { out.style.color='var(--danger)'; out.textContent='请填写收件人'; return; }
+  try {
+    const payload = { to, subject };
+    if (tpl === 'alert') {
+      payload.template = 'alert';
+      payload.template_data = {
+        subject: subject || 'GEO 品牌告警测试',
+        level: 'warn',
+        title: body || '这是一条品牌告警测试',
+        rule_name: '手动测试规则',
+        detail_html: '<p>规则由 GEO 控制台测试邮件入口触发。</p>',
+        brand_name: '演示品牌',
+        prev_score: 78.5, curr_score: 74.2,
+        reason: '触发阈值：BVS 下跌 ≥ 3 分',
+      };
+    } else if (tpl === 'weekly') {
+      payload.template = 'weekly';
+      payload.template_data = {
+        subject: subject || 'GEO 周报测试',
+        date_label: new Date().toLocaleDateString('zh-CN'),
+        total_brands: 12, audits_this_week: 38, avg_score: 72.3,
+        best_brands: [{name:'品牌A', score:91.2, grade:'A'},{name:'品牌B', score:86.5, grade:'B'}],
+        dropped_brands: [{name:'品牌C', score:62.1, delta:-5.2}],
+        top_alerts: [],
+        suggestions: ['建议本周新增至少 2 个品牌的审计'],
+      };
+    } else {
+      payload.html = body;
+      payload.text = body.replace(/<[^>]+>/g,'');
+    }
+    const res = await fetch(API + '/mail/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const j = await res.json().catch(()=>({error:'无响应'}));
+    if (!res.ok) { out.style.color='var(--danger)'; out.textContent='发送失败：' + (j.error||res.statusText); }
+    else { out.style.color='var(--success)'; out.textContent='✅ 已发送：' + (j.subject||''); }
+  } catch(e) { out.style.color='var(--danger)'; out.textContent='请求失败：' + e.message; }
+}
+
+// ============================================================
+// ===== 设置 Tab =====
+// ============================================================
+function loadSettings() {
+  const s = loadSettingsLocal();
+  if (s.cron) document.getElementById('setCron').value = s.cron;
+  if (s.maxEngine) document.getElementById('setMaxEngine').value = s.maxEngine;
+  if (s.pdfMargin) document.getElementById('setMargin').value = s.pdfMargin;
+  if (s.pdfWait) document.getElementById('setWait').value = s.pdfWait;
+  if (s.weeklyTo) document.getElementById('setWeeklyTo').value = s.weeklyTo;
+}
+function saveSettings() {
+  const obj = {
+    cron: document.getElementById('setCron').value,
+    maxEngine: Number(document.getElementById('setMaxEngine').value || 5),
+    pdfMargin: Number(document.getElementById('setMargin').value || 0.8),
+    pdfWait: Number(document.getElementById('setWait').value || 800),
+    weeklyTo: document.getElementById('setWeeklyTo').value.trim(),
+  };
+  saveSettingsLocal(obj);
+  const m = document.getElementById('setSaveMsg');
+  m.style.color = 'var(--success)';
+  m.textContent = '✅ 已保存到浏览器本地。当前版本仅保存 UI 偏好，服务端调度与 PDF 参数需通过环境变量生效。';
+}
+function resetSettings() {
+  localStorage.removeItem(LS_SETTINGS); _settings = null; loadSettings();
+  document.getElementById('setSaveMsg').style.color='var(--text-dim)';
+  document.getElementById('setSaveMsg').textContent='已重置为默认值';
+}
+async function fetchBrandProfile() {
+  const name = document.getElementById('setSealBrand').value.trim();
+  if (!name) return;
+  const pre = document.getElementById('setBrandProfile');
+  pre.style.display = 'block';
+  pre.textContent = '请求中...';
+  try {
+    // 优先用 autocomplete；没结果时返回一个基于常见别名的启发式
+    const r1 = await fetch(API + '/brand/autocomplete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand_name: name }) });
+    let j = null;
+    if (r1.ok) j = await r1.json();
+    const profile = j?.profile || {};
+    // 启发式：若 autocomplete 为空，尝试基于品牌名 + 本地档案融合
+    const local = loadProfiles().find(p => p.name === name) || {};
+    const merged = {
+      name: profile.name || local.name || name,
+      category: profile.category || local.category || '',
+      domain: profile.domain || local.domain || '',
+      aliases: Array.from(new Set([...(profile.aliases||[]), ...(local.aliases||[])])),
+      products: Array.from(new Set([...(profile.products||[]), ...(local.products||[])])),
+      competitors: Array.from(new Set([...(profile.competitors||[]), ...(local.competitors||[])])),
+      summary: profile.summary || local.summary || '',
+      note: j ? '来自本地知识接口 /brand/autocomplete' : '（本地知识接口未返回数据，以下仅为已存储的本地档案）',
+    };
+    pre.textContent = JSON.stringify(merged, null, 2);
+  } catch(e) { pre.textContent = '获取失败：' + e.message; }
+}
+
+// 初始化：启动后默认 Tab 是仪表盘
+window.addEventListener('load', () => {
+  switchTab('dashboard');
+});
 </script>
 </body>
 </html>

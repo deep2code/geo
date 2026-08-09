@@ -320,15 +320,53 @@ var engineEnvKeys = map[models.EngineType]string{
 	models.EngineGLM:        "GEO_GLM_KEY",
 	models.EngineDeepSeek:   "GEO_DEEPSEEK_KEY",
 	models.EngineKimi:       "GEO_KIMI_KEY",
-	models.EngineWenxin:     "GEO_WENXIN_KEY",
+	models.EngineWenxin:     "GEO_ERNIE_KEY",
 	models.EngineDoubao:     "GEO_DOUBAO_KEY",
 	models.EngineXiaomi:     "GEO_XIAOMI_KEY",
 	models.EngineXunfei:     "GEO_XUNFEI_KEY",
 	models.EngineYuanbao:    "GEO_YUANBAO_KEY",
 }
 
+// engineBaseEnvKeys 引擎 → BaseURL 环境变量名（仅配置了需要独立 BASE 的引擎）。
+var engineBaseEnvKeys = map[models.EngineType]string{
+	models.EngineWenxin: "GEO_ERNIE_BASE",
+	models.EngineQwen:   "GEO_QWEN_BASE",
+	models.EngineKimi:   "GEO_KIMI_BASE",
+	models.EngineDoubao: "GEO_DOUBAO_BASE",
+}
+
+// engineModelEnvKeys 引擎 → Model 环境变量名（仅配置了需要独立 MODEL 的引擎）。
+var engineModelEnvKeys = map[models.EngineType]string{
+	models.EngineWenxin: "GEO_ERNIE_MODEL",
+	models.EngineQwen:   "GEO_QWEN_MODEL",
+	models.EngineKimi:   "GEO_KIMI_MODEL",
+	models.EngineDoubao: "GEO_DOUBAO_MODEL",
+}
+
+// defaultBaseURLs 引擎的默认 BaseURL（官方常见地址）。
+var defaultBaseURLs = map[models.EngineType]string{
+	models.EngineWenxin: "https://qianfan.baidubce.com/v2",
+	models.EngineQwen:   "https://dashscope.aliyuncs.com/compatible-mode",
+	models.EngineKimi:   "https://api.moonshot.cn",
+	models.EngineDoubao: "https://ark.cn-beijing.volces.com/api/v3",
+}
+
+// defaultModels 引擎的默认模型名（官方常见模型）。
+var defaultModels = map[models.EngineType]string{
+	models.EngineWenxin: "ernie-speed-128k",
+	models.EngineQwen:   "qwen-plus",
+	models.EngineKimi:   "moonshot-v1-8k",
+	models.EngineDoubao: "doubao-pro-32k",
+}
+
 // EngineEnvKey 获取指定引擎的 API Key 环境变量名；不存在返回空串。
 func EngineEnvKey(engine models.EngineType) string { return engineEnvKeys[engine] }
+
+// EngineEnvBase 获取指定引擎的 BaseURL 环境变量名；不存在返回空串。
+func EngineEnvBase(engine models.EngineType) string { return engineBaseEnvKeys[engine] }
+
+// EngineEnvModel 获取指定引擎的 Model 环境变量名；不存在返回空串。
+func EngineEnvModel(engine models.EngineType) string { return engineModelEnvKeys[engine] }
 
 // AllEngineEnvKeys 返回所有「引擎 → 环境变量名」映射的副本。
 func AllEngineEnvKeys() map[models.EngineType]string {
@@ -339,16 +377,64 @@ func AllEngineEnvKeys() map[models.EngineType]string {
 	return m
 }
 
+// buildAdapterConfig 从环境变量构建指定引擎的适配器 Config。
+//
+// 优先级：环境变量 > 默认值（仅在配置了默认值的引擎上生效）。
+func buildAdapterConfig(engine models.EngineType) adapter.Config {
+	keyEnv := engineEnvKeys[engine]
+	baseEnv := engineBaseEnvKeys[engine]
+	modelEnv := engineModelEnvKeys[engine]
+
+	cfg := adapter.Config{
+		APIKey: os.Getenv(keyEnv),
+	}
+	if baseEnv != "" {
+		cfg.BaseURL = Env(baseEnv, defaultBaseURLs[engine])
+	}
+	if modelEnv != "" {
+		cfg.Model = Env(modelEnv, defaultModels[engine])
+	}
+	return cfg
+}
+
 // BrandAdaptersFromEnv 从环境变量批量构建品牌审计用适配器映射。
 //
-// 每引擎独立 API Key 环境变量；未配置 key 的引擎仍会创建适配器（返回模拟响应）。
+// 每引擎独立 API Key / BaseURL / Model 环境变量；未配置 key 的引擎仍会创建适配器（返回模拟响应）。
 // errs 返回创建失败的引擎 → error 映射（可忽略或打印警告），不影响其他引擎。
 func BrandAdaptersFromEnv() (adapters map[models.EngineType]adapter.Adapter, errs map[models.EngineType]error) {
 	adapters = map[models.EngineType]adapter.Adapter{}
 	errs = map[models.EngineType]error{}
-	for engine, envKey := range engineEnvKeys {
-		key := os.Getenv(envKey)
-		a, err := adapter.NewAdapter(engine, adapter.Config{APIKey: key})
+	for engine := range engineEnvKeys {
+		cfg := buildAdapterConfig(engine)
+		a, err := adapter.NewAdapter(engine, cfg)
+		if err != nil {
+			errs[engine] = err
+			continue
+		}
+		adapters[engine] = a
+	}
+	if len(errs) == 0 {
+		errs = nil
+	}
+	return adapters, errs
+}
+
+// LLMAdaptersFromEnv 从环境变量构建四大国内 LLM 的适配器映射（ERNIE / Qwen / Kimi / Doubao）。
+//
+// 专用于需要聚焦国内大模型的场景，仅包含 4 个国内主流模型，便于内容生成与评测流程使用。
+// 环境变量命名：GEO_ERNIE_* / GEO_QWEN_* / GEO_KIMI_* / GEO_DOUBAO_*（后缀：BASE / KEY / MODEL）。
+func LLMAdaptersFromEnv() (adapters map[models.EngineType]adapter.Adapter, errs map[models.EngineType]error) {
+	targets := []models.EngineType{
+		models.EngineWenxin,
+		models.EngineQwen,
+		models.EngineKimi,
+		models.EngineDoubao,
+	}
+	adapters = map[models.EngineType]adapter.Adapter{}
+	errs = map[models.EngineType]error{}
+	for _, engine := range targets {
+		cfg := buildAdapterConfig(engine)
+		a, err := adapter.NewAdapter(engine, cfg)
 		if err != nil {
 			errs[engine] = err
 			continue

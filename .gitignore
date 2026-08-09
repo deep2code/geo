@@ -22,3 +22,10 @@ logs/
 *.test
 *.out
 vendor/
+
+# 前端构建缓存
+*.tsbuildinfo
+web-app/dist-tsc-node/
+
+# 本地待做/路线图，不上传 GitHub
+docs/roadmap.md

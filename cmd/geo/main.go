@@ -52,12 +52,14 @@ func newRootCmd() *cobra.Command {
 		newBrandDBCmd(),
 		newMCPServerCmd(),
 		newReadinessCmd(),
+		newCrawlabilityCmd(),
 		newTopSourceCmd(),
 		newVerticalCmd(),
 		newLocalSEOCmd(),
 		newExternalSignalsCmd(),
 		newAutoRewriteCmd(),
 		newDiscoverCmd(),
+		newDriftCmd(),
 	)
 	return root
 }

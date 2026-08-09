@@ -203,6 +203,27 @@ make build    # 产物 bin/geo
 docker compose up -d    # 访问 http://localhost:8080
 ```
 
+### Web 前端构建（go:embed）
+
+> 后端使用 `//go:embed web/dist/*` 将前端构建产物内嵌到二进制中。若 `web/dist/` 为空，编译仍可通过（`.gitkeep` 占位），但运行时 Web 界面会**降级**到 `web/index.html`（简易开发版页面）。
+
+```bash
+# 完整构建（前端 + 后端）
+# 1. 先构建前端产物（假设前端源码位于 internal/server/web/ 下，有 package.json）
+cd internal/server/web && npm install && npm run build
+#    产物会输出到 internal/server/web/dist/（index.html + assets/*）
+
+# 2. 再构建 Go 二进制
+cd ../../.. && make build    # 或 go build ./cmd/geo
+```
+
+| 场景 | web/dist 内容 | 行为 |
+|---|---|---|
+| 生产构建 | `npm run build` 产物 | ✅ 完整 SPA 界面，`/assets/*` 静态资源 + 路由回退 |
+| 开发/CI 编译 | 仅 `.gitkeep` | ⚠️ 降级使用 `web/index.html`（dev fallback） |
+
+> 提示：`web/index.html` 始终保留作为开发兜底，不会被删除。
+
 ### 最小可用示例
 
 ```bash

@@ -1,0 +1,163 @@
+@use '@/styles/tokens' as *;
+
+.kpi {
+  padding: var(--spacing-lg);
+  background-color: var(--surface-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--surface-shadow);
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+
+  &:hover {
+    box-shadow: var(--surface-shadow-lg);
+    transform: translateY(-2px);
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(180deg, var(--chart-primary), var(--chart-secondary));
+    opacity: 0;
+    transition: opacity var(--transition-normal);
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+
+  &-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-md);
+  }
+
+  &-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+  }
+
+  &-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xl);
+    background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+    color: var(--text-inverse);
+    flex-shrink: 0;
+  }
+
+  &-value {
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    line-height: var(--line-height-tight);
+    margin-bottom: var(--spacing-sm);
+    font-variant-numeric: tabular-nums;
+
+    &-prefix,
+    &-suffix {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-tertiary);
+    }
+
+    &-prefix {
+      margin-right: var(--spacing-xs);
+    }
+
+    &-suffix {
+      margin-left: var(--spacing-xs);
+    }
+  }
+
+  &-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 2px var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    border-radius: var(--radius-full);
+
+    &-up {
+      background-color: var(--status-success-bg);
+      color: var(--status-success);
+    }
+
+    &-down {
+      background-color: var(--status-error-bg);
+      color: var(--status-error);
+    }
+
+    &-neutral {
+      background-color: var(--bg-tertiary);
+      color: var(--text-tertiary);
+    }
+  }
+
+  &-sparkline {
+    margin-top: var(--spacing-md);
+    height: 40px;
+  }
+
+  &-footer {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+  }
+
+  &-variant-success {
+    border-color: color-mix(in srgb, var(--status-success) 30%, var(--border-primary));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--status-success) 5%, var(--surface-primary)), var(--surface-primary));
+
+    .kpi-icon {
+      background: linear-gradient(135deg, var(--status-success), #059669);
+    }
+  }
+
+  &-variant-warning {
+    border-color: color-mix(in srgb, var(--status-warning) 30%, var(--border-primary));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--status-warning) 5%, var(--surface-primary)), var(--surface-primary));
+
+    .kpi-icon {
+      background: linear-gradient(135deg, var(--status-warning), #d97706);
+    }
+  }
+
+  &-variant-error {
+    border-color: color-mix(in srgb, var(--status-error) 30%, var(--border-primary));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--status-error) 5%, var(--surface-primary)), var(--surface-primary));
+
+    .kpi-icon {
+      background: linear-gradient(135deg, var(--status-error), #dc2626);
+    }
+  }
+
+  &-variant-info {
+    border-color: color-mix(in srgb, var(--status-info) 30%, var(--border-primary));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--status-info) 5%, var(--surface-primary)), var(--surface-primary));
+
+    .kpi-icon {
+      background: linear-gradient(135deg, var(--status-info), #2563eb);
+    }
+  }
+}

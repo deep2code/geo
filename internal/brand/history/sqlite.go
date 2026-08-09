@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -168,7 +169,7 @@ func (d *sqliteStore) Latest(ctx context.Context, brandName string) (*Record, er
 		&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
 		&reportJSON)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

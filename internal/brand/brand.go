@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"my-geo/internal/adapter"
@@ -132,6 +133,17 @@ func (e *Engine) Knowledge() *knowledge.Knowledge { return e.kb }
 // ChinaCheck 返回当前工商核验客户端（可能为 nil）。
 func (e *Engine) ChinaCheck() *chinacheck.Client { return e.chinaCheck }
 
+// Close 释放引擎持有的资源（离线库、历史库等连接）。
+// 应在服务退出时调用，避免连接泄漏。
+func (e *Engine) Close() {
+	if e.offlineDB != nil {
+		_ = e.offlineDB.Close()
+	}
+	if e.historyDB != nil {
+		_ = e.historyDB.Close()
+	}
+}
+
 // entryToCandidate 将知识库 Entry 转换为品牌引擎 AutocompleteCandidate。
 // 放在 brand 包内，knowledge 保持 leaf 无循环依赖。
 func entryToCandidate(e *knowledge.Entry) *AutocompleteCandidate {
@@ -233,10 +245,15 @@ func (e *Engine) Audit(ctx context.Context, profile BrandProfile) (*VisibilityRe
 	return &report, nil
 }
 
-// saveHistory 将审计报告写入历史库（best-effort，失败仅打印 stderr 不影响审计结果）。
+// saveHistory 将审计报告写入历史库（best-effort，失败记录 warning 日志不影响审计结果）。
 func (e *Engine) saveHistory(ctx context.Context, report *VisibilityReport) {
-	reportJSON, _ := history.MarshalReport(report)
-	_, _ = e.historyDB.Save(ctx, history.Record{
+	reportJSON, err := history.MarshalReport(report)
+	if err != nil {
+		slog.Warn("审计报告序列化失败，跳过历史写入",
+			slog.String("brand", report.BrandName), slog.String("err", err.Error()))
+		return
+	}
+	if _, err := e.historyDB.Save(ctx, history.Record{
 		BrandName:          report.BrandName,
 		Generated:          report.GeneratedAt.Unix(),
 		Score:              report.Score,
@@ -254,7 +271,10 @@ func (e *Engine) saveHistory(ctx context.Context, report *VisibilityReport) {
 		NegativeCount:      len(report.NegativeMentions),
 		ActionCount:        len(report.Actions),
 		ReportJSON:         reportJSON,
-	})
+	}); err != nil {
+		slog.Warn("审计历史写入失败",
+			slog.String("brand", report.BrandName), slog.String("err", err.Error()))
+	}
 }
 
 // AutocompleteRequest 品牌智能补全请求。

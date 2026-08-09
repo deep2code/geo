@@ -47,24 +47,34 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; }
 step()  { echo -e "${CYAN}==>${NC} $*"; }
 
 # ===== 1. 杀死旧进程 =====
+# 优雅退出：先发 SIGTERM，等待最多 10s（graceful shutdown 处理在途请求），
+# 仍未退出再 SIGKILL 强杀。避免 kill -9 直接中断审计导致数据丢失。
 kill_old_process() {
   step "检查并停止旧版本进程..."
 
   local killed=0
+
+  # graceful_stop <pid>：发 SIGTERM，轮询等待最多 10s，超时强杀
+  graceful_stop() {
+    local pid=$1
+    kill "$pid" 2>/dev/null || true
+    for i in $(seq 1 10); do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        return 0
+      fi
+      sleep 1
+    done
+    warn "进程 $pid 10s 内未退出，强制杀死"
+    kill -9 "$pid" 2>/dev/null || true
+  }
 
   # 方式1：通过 PID 文件
   if [[ -f "$PID_FILE" ]]; then
     local old_pid
     old_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
     if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-      info "通过 PID 文件发现旧进程 (PID: $old_pid)，正在停止..."
-      kill "$old_pid" 2>/dev/null || true
-      sleep 1
-      # 如果还在运行，强制杀死
-      if kill -0 "$old_pid" 2>/dev/null; then
-        warn "进程未响应，强制杀死 (PID: $old_pid)"
-        kill -9 "$old_pid" 2>/dev/null || true
-      fi
+      info "通过 PID 文件发现旧进程 (PID: $old_pid)，正在优雅停止..."
+      graceful_stop "$old_pid"
       info "已停止旧进程 (PID: $old_pid)"
       killed=1
     fi
@@ -77,13 +87,8 @@ kill_old_process() {
   if [[ -n "$port_pids" ]]; then
     for pid in $port_pids; do
       if kill -0 "$pid" 2>/dev/null; then
-        info "端口 $PORT 被占用 (PID: $pid)，正在停止..."
-        kill "$pid" 2>/dev/null || true
-        sleep 1
-        if kill -0 "$pid" 2>/dev/null; then
-          warn "进程未响应，强制杀死 (PID: $pid)"
-          kill -9 "$pid" 2>/dev/null || true
-        fi
+        info "端口 $PORT 被占用 (PID: $pid)，正在优雅停止..."
+        graceful_stop "$pid"
         info "已停止占用端口的进程 (PID: $pid)"
         killed=1
       fi
@@ -98,13 +103,8 @@ kill_old_process() {
       # 排除当前脚本自身
       if [[ "$pid" == "$$" ]]; then continue; fi
       if kill -0 "$pid" 2>/dev/null; then
-        info "发现 geo serve 进程 (PID: $pid)，正在停止..."
-        kill "$pid" 2>/dev/null || true
-        sleep 1
-        if kill -0 "$pid" 2>/dev/null; then
-          warn "进程未响应，强制杀死 (PID: $pid)"
-          kill -9 "$pid" 2>/dev/null || true
-        fi
+        info "发现 geo serve 进程 (PID: $pid)，正在优雅停止..."
+        graceful_stop "$pid"
         info "已停止 geo serve 进程 (PID: $pid)"
         killed=1
       fi

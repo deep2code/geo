@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GEO 分析 - 选项设置</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f7fa;
+      color: #303133;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 560px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a73e8, #4285f4);
+      color: #fff;
+      padding: 28px 32px;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .header p {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    .form {
+      padding: 28px 32px;
+    }
+    .field {
+      margin-bottom: 22px;
+    }
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 8px;
+    }
+    .field label .required { color: #f56c6c; margin-left: 2px; }
+    .field input[type="text"],
+    .field input[type="url"],
+    .field input[type="password"] {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      border: 1px solid #dcdfe6;
+      border-radius: 8px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+      font-family: inherit;
+      color: #303133;
+      background: #fff;
+    }
+    .field input:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+    }
+    .field input::placeholder {
+      color: #c0c4cc;
+    }
+    .field .hint {
+      font-size: 12px;
+      color: #909399;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .password-wrap {
+      position: relative;
+    }
+    .toggle-pw {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      color: #909399;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+    .toggle-pw:hover { background: #f5f7fa; color: #606266; }
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 20px;
+      border-top: 1px solid #ebeef5;
+    }
+    .status {
+      font-size: 13px;
+      min-height: 20px;
+    }
+    .status-success { color: #67c23a; }
+    .status-error { color: #f56c6c; }
+    .btn {
+      padding: 9px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #1a73e8, #4285f4);
+      color: #fff;
+      box-shadow: 0 2px 6px rgba(26, 115, 232, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(26, 115, 232, 0.35);
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .test-result {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+    .test-result.show { display: block; }
+    .test-success { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
+    .test-fail { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 id="brandHeader">GEO 分析扩展设置</h1>
+      <p>配置 API Endpoint、访问 Token 和白标名称</p>
+    </div>
+
+    <div class="form">
+      <div class="field">
+        <label for="endpoint">GEO Endpoint<span class="required">*</span></label>
+        <input type="url" id="endpoint" placeholder="https://your-geo-service.example.com" autocomplete="off">
+        <div class="hint">GEO CMS 分析服务的基础 URL，会自动拼接 <code>/api/v1/cms/check</code></div>
+      </div>
+
+      <div class="field">
+        <label for="token">访问 Token</label>
+        <div class="password-wrap">
+          <input type="password" id="token" placeholder="可选，Bearer Token 形式" autocomplete="off">
+          <button type="button" class="toggle-pw" id="togglePw">显示</button>
+        </div>
+        <div class="hint">如果服务端启用了鉴权，请在此填入访问令牌（将作为 Authorization: Bearer xxx 发送）</div>
+      </div>
+
+      <div class="field">
+        <label for="brandName">白标名称</label>
+        <input type="text" id="brandName" placeholder="留空默认显示「GEO 分析」" autocomplete="off">
+        <div class="hint">自定义侧边栏和设置页的品牌标题，如「Acme 内容体检」</div>
+      </div>
+
+      <div class="test-result" id="testResult"></div>
+
+      <div class="actions">
+        <div class="status" id="status"></div>
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="btn" id="testBtn" style="background:#f5f7fa;color:#606266;border:1px solid #dcdfe6;">测试连接</button>
+          <button type="button" class="btn btn-primary" id="saveBtn">保存设置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

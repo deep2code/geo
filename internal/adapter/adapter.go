@@ -24,6 +24,18 @@ import (
 	"my-geo/internal/models"
 )
 
+// sharedHTTPClient 适配器共享的 HTTP 客户端，统一连接池与超时配置。
+// 替代 http.DefaultClient，避免连接池参数不可控。
+var sharedHTTPClient = &http.Client{
+	Timeout: 60 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+		// TLS 验证保持默认开启（安全）
+	},
+}
+
 // Adapter 生成式引擎适配器接口。
 //
 // 各引擎适配器实现该接口，封装对应 AI 引擎的 API 调用，上层面向接口编程。
@@ -87,7 +99,7 @@ func (b *BaseAdapter) doRequest(ctx context.Context, method, requestURL string, 
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := sharedHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP 请求失败: %w", err)
 	}

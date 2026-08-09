@@ -188,15 +188,18 @@ func detectMention(text, name string, aliases []string) (bool, int) {
 	if name == "" {
 		return false, 0
 	}
-	names := append([]string{name}, aliases...)
+	// 预计算所有名称的小写形式，避免在循环内重复 ToLower
+	names := make([]string, 0, 1+len(aliases))
+	for _, n := range append([]string{name}, aliases...) {
+		if n != "" {
+			names = append(names, strings.ToLower(n))
+		}
+	}
 	paragraphs := strings.Split(text, "\n\n")
 	for i, para := range paragraphs {
 		lower := strings.ToLower(para)
 		for _, n := range names {
-			if n == "" {
-				continue
-			}
-			if containsWord(lower, strings.ToLower(n)) {
+			if containsWord(lower, n) {
 				return true, i + 1
 			}
 		}
@@ -204,8 +207,7 @@ func detectMention(text, name string, aliases []string) (bool, int) {
 	// 段落未命中时做全文检测（可能无空行分段）
 	lower := strings.ToLower(text)
 	for _, n := range names {
-		if n != "" && containsWord(lower, strings.ToLower(n)) {
-			// 估算段落位置：按换行计数
+		if containsWord(lower, n) {
 			return true, 1
 		}
 	}
