@@ -1,21 +1,46 @@
-# GEO 入门指南
+# 📘 GEO 入门指南
 
 > 从零开始了解 GEO（生成式引擎优化），并学会使用本项目提升内容在 AI 搜索引擎中的可见度。
 
 ---
 
-## 目录
+## 🗺 文档导览
 
-- [什么是 GEO？](#什么是-geo)
-- [为什么需要 GEO？](#为什么需要-geo)
-- [GEO vs SEO：有什么不同？](#geo-vs-seo有什么不同)
-- [本项目能做什么？](#本项目能做什么)
-- [5 分钟快速开始](#5-分钟快速开始)
-- [内容优化实战指南](#内容优化实战指南)
-- [品牌可见度审计指南](#品牌可见度审计指南)
-- [离线工商库使用指南](#离线工商库使用指南)
-- [AI 就绪度检查指南](#ai-就绪度检查指南)
-- [常见问题](#常见问题)
+```mermaid
+mindmap
+  root((入门指南))
+    概念篇
+      什么是GEO
+      AI引用机制
+      为什么需要GEO
+      GEO vs SEO对比
+    快速上手
+      3种安装方式
+      LLM Key 配置
+      5分钟走通
+    实战篇
+      内容优化6维9法
+      品牌审计BVS评分
+      关键词发现→报告
+      离线工商库管理
+    进阶篇
+      AI就绪度CI闸门
+      定时审计+告警
+      MCP Server接入
+    常见问题
+      功能需Key对比
+      13引擎选型
+      数据库切换
+      效果时间线
+```
+
+| 章节 | 你会学到 | Mermaid 图表 |
+|---|---|---|
+| 🎓 概念篇 | GEO 是什么？为什么现在必须做？ | 5 张 |
+| ⚡ 快速上手 | 安装→配置→跑通全流程 | 4 张 |
+| 🛠 实战篇 | 内容优化+品牌审计+工商库 | 8 张 |
+| 🚀 进阶篇 | CI 闸门+定时审计+MCP | 4 张 |
+| ❓ FAQ | 常见问题+引擎选型决策 | 3 张 |
 
 ---
 
@@ -107,40 +132,72 @@ xychart-beta
 
 ## GEO vs SEO：有什么不同？
 
+### 关注点对比图
+
 ```mermaid
 graph TB
-    subgraph SEO["传统 SEO"]
+    subgraph SEO["🔵 传统 SEO — 让搜索引擎喜欢"]
         S1["关键词密度"]
-        S2["外链数量"]
-        S3["页面排名"]
+        S2["外链数量 & 权重"]
+        S3["页面排名 Top10"]
         S4["点击率 CTR"]
-        S5["Meta 标签"]
+        S5["Meta 标签 / ALT"]
     end
 
-    subgraph GEO["生成式引擎优化 GEO"]
-        G1["可引用性<br/>内容是否容易被引用"]
-        G2["权威性<br/>是否有来源/数据/引用"]
-        G3["结构化<br/>标题/列表/表格/FAQ"]
-        G4["事实密度<br/>统计数据/具体数值"]
-        G5["流畅度<br/>内容是否通顺易读"]
+    subgraph GEO["🟢 GEO — 让 AI 愿意引用"]
+        G1["可引用性<br/>内容是否易被摘录"]
+        G2["权威性<br/>来源/数据/引用语"]
+        G3["结构化<br/>标题/列表/FAQ/表格"]
+        G4["事实密度<br/>统计数据+具体数值"]
+        G5["流畅度<br/>通顺易读+低歧义"]
     end
 
-    SEO -.->|"不是替代<br/>而是补充"| GEO
+    SEO -.->|"不是替代<br/>而是互补 1+1>2"| GEO
 
     style SEO fill:#e3f2fd,stroke:#1565c0
     style GEO fill:#e8f5e9,stroke:#2e7d32
 ```
 
-| 对比项 | SEO | GEO |
-|---|---|---|
-| 优化目标 | 搜索引擎排名 | AI 回答中的引用 |
-| 核心指标 | 排名位置 / 点击率 | 引用率 / 品牌提及率 |
-| 内容策略 | 关键词 + 外链 | 引用来源 + 统计数据 + 结构化 |
-| 技术要求 | Meta 标签 / Sitemap | llms.txt / Schema.org / robots.txt |
-| 衡量方式 | Google Search Console | 多引擎审计 + BVS 评分 |
-| 适用场景 | 传统搜索流量 | AI 助手品牌曝光 |
+### SEO vs GEO 六维雷达对比
 
-> **建议**：SEO 和 GEO 同时做。SEO 保证传统搜索流量，GEO 抢占 AI 搜索新流量。
+```mermaid
+graph LR
+    subgraph 维度["📐 对比维度"]
+        direction TB
+        D1["🎯 优化目标"]
+        D2["📊 核心指标"]
+        D3["✍️ 内容策略"]
+        D4["⚙️ 技术要求"]
+        D5["📏 衡量方式"]
+        D6["🌐 适用场景"]
+    end
+
+    subgraph SEOBox["🔵 SEO"]
+        direction TB
+        SEO1["排名前 10 蓝色链接"]
+        SEO2["排名位置 / CTR"]
+        SEO3["关键词密度 + 外链"]
+        SEO4["Meta / Sitemap / H1"]
+        SEO5["Search Console"]
+        SEO6["传统搜索流量"]
+    end
+
+    subgraph GEOBox["🟢 GEO"]
+        direction TB
+        GEO1["AI 回答中的引用率"]
+        GEO2["引用率 / 品牌提及率"]
+        GEO3["引用来源 + 统计 + 结构化"]
+        GEO4["llms.txt / Schema / robots"]
+        GEO5["多引擎审计 + BVS"]
+        GEO6["AI 助手品牌曝光"]
+    end
+
+    style 维度 fill:#fef9c3,stroke:#a16207
+    style SEOBox fill:#e3f2fd,stroke:#1565c0
+    style GEOBox fill:#e8f5e9,stroke:#2e7d32
+```
+
+> **核心建议**：SEO 和 GEO **同时做**。SEO 守住传统搜索流量基本盘，GEO 抢占 AI 搜索新流量红利。
 
 ---
 
@@ -148,52 +205,103 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph 内容优化["内容优化引擎"]
+    subgraph 内容优化["📝 内容优化引擎"]
         A1["GEO 评分 0-100"]
         A2["9 法策略优化"]
-        A3["信号分析"]
+        A3["6 维信号分析"]
+        A4["3 领域自适应"]
     end
 
-    subgraph 品牌审计["品牌可见度审计"]
-        B1["多引擎对比"]
-        B2["BVS 健康评分"]
-        B3["竞品差距分析"]
-        B4["模型分歧告警"]
+    subgraph 品牌审计["🏢 品牌可见度审计"]
+        B1["13 引擎对比审计"]
+        B2["BVS 7 维 0-100 评分"]
+        B3["竞品引用差距矩阵"]
+        B4["5 类模型异常告警"]
     end
 
-    subgraph 工商数据["离线工商数据库"]
-        C1["1000万+ 企业注册数据"]
-        C2["FTS5 全文检索"]
+    subgraph 关键词发现["🔍 关键词发现"]
+        K1["关键词 → 公司推断"]
+        K2["多候选交互式选择"]
+        K3["自动品牌画像生成"]
+        K4["一键 GEO 完整报告"]
+    end
+
+    subgraph 工商数据["📦 离线工商数据库"]
+        C1["1000万+ 注册数据"]
+        C2["FTS5 模糊全文检索"]
         C3["China-Check 实时核验"]
+        C4["按功能模块化存储"]
     end
 
-    subgraph 高级功能["P0/P1 扩展"]
+    subgraph 高级功能["🔥 P0/P1 扩展"]
         D1["AI 就绪度 CI 闸门"]
-        D2["Top Source 归因"]
-        D3["AutoGEO 规则重写"]
-        D4["Local SEO 审计"]
-        D5["行业类型识别"]
+        D2["Top Source 归因分析"]
+        D3["AutoGEO 规则+GEU双评分"]
+        D4["Local SEO / GMB 审计"]
+        D5["5 类行业自动识别"]
     end
 
-    subgraph 使用方式["三种使用方式"]
-        E1["CLI 命令行"]
-        E2["Web UI + REST API"]
-        E3["MCP Server"]
+    subgraph 使用方式["🎛 三种使用方式"]
+        E1["💻 CLI 命令行<br/>geo [cmd] [flags]"]
+        E2["🌐 Web UI + REST API<br/>25+ 端点"]
+        E3["🤖 MCP Server<br/>Claude/Cursor/TraeCode"]
     end
 
-    内容优化 & 品牌审计 & 工商数据 & 高级功能 --> 使用方式
+    内容优化 & 品牌审计 & 关键词发现 & 工商数据 & 高级功能 --> 使用方式
 
     style 内容优化 fill:#e3f2fd,stroke:#1565c0
     style 品牌审计 fill:#e8f5e9,stroke:#2e7d32
+    style 关键词发现 fill:#fce7f3,stroke:#be185d
     style 工商数据 fill:#f3e5f5,stroke:#7b1fa2
     style 高级功能 fill:#fff3e0,stroke:#ef6c00
 ```
 
 ---
 
-## 5 分钟快速开始
+## ⚡ 5 分钟快速开始
 
-### 第一步：安装
+### 总览流程图
+
+```mermaid
+flowchart LR
+    S1["📦 安装<br/>3 种方式任选"] --> S2["🔑 配置<br/>填 .env LLM Key<br/>(可跳过)"]
+    S2 --> S3["🔬 评分<br/>geo score<br/>零依赖体验"]
+    S3 --> S4["✍️ 优化<br/>geo optimize<br/>有 Key 可改写"]
+    S4 --> S5["🌐 Web UI<br/>geo serve<br/>浏览器可视化"]
+
+    style S1 fill:#dcfce7,stroke:#16a34a
+    style S2 fill:#e0f2fe,stroke:#0369a1
+    style S3 fill:#f3e8ff,stroke:#7c3aed
+    style S4 fill:#fef3c7,stroke:#d97706
+    style S5 fill:#fce7f3,stroke:#db2777
+```
+
+### 第一步：安装（3 种方式对比）
+
+```mermaid
+graph TB
+    subgraph A["🟢 方式一：源码编译<br/>推荐开发者"]
+        A1["git clone 仓库"]
+        A2["go build / make build"]
+        A3["产物: bin/geo"]
+    end
+
+    subgraph B["🔵 方式二：go install<br/>最快体验"]
+        B1["go install ./cmd/geo"]
+        B2["产物: $GOPATH/bin/geo"]
+        B3["一行命令完成"]
+    end
+
+    subgraph C["🟠 方式三：Docker<br/>推荐运维"]
+        C1["docker compose up -d"]
+        C2["内置 Web + API"]
+        C3["无需安装 Go 环境"]
+    end
+
+    style A fill:#dcfce7,stroke:#16a34a
+    style B fill:#e0f2fe,stroke:#0369a1
+    style C fill:#fed7aa,stroke:#ea580c
+```
 
 ```bash
 # 方式一：从源码编译（需要 Go 1.21+）
@@ -210,101 +318,153 @@ docker compose up -d    # 访问 http://localhost:8080
 
 ### 第二步：配置 LLM（可选但推荐）
 
+#### 🔑 引擎选型决策树
+
+```mermaid
+flowchart TD
+    START(["🧭 选哪个大模型？"]) --> Q1{"🌍 首选海外?"}
+
+    Q1 -->|"✅ 是"| Q2{"💰 预算充足?"}
+    Q2 -->|"✅ 是"| GPT["🔵 ChatGPT GPT-4o-mini<br/>综合能力强 / 引用规范"]
+    Q2 -->|"❌ 省成本"| PPX["🟡 Perplexity Sonar<br/>搜索增强 / 数据源全"]
+
+    Q1 -->|"❌ 国内优先"| Q3{"🎁 想薅免费额度?"}
+    Q3 -->|"✅ 是"| GLM["🟣 智谱 GLM-4-Flash<br/>每天免费额度 / 中文稳"]
+    Q3 -->|"❌ 花钱买便宜"| Q4{"🀄 中文能力要求最高?"}
+    Q4 -->|"✅ 是"| DSC["🔴 DeepSeek V3<br/>¥1/M 超便宜 / 中文好"]
+    Q4 -->|"❌ 长文本"| KIMI["🌙 Kimi Moonshot<br/>长上下文 200K+"]
+
+    style GPT fill:#bfdbfe,stroke:#2563eb
+    style PPX fill:#fef08a,stroke:#ca8a04
+    style GLM fill:#e9d5ff,stroke:#7c3aed
+    style DSC fill:#fecaca,stroke:#dc2626
+    style KIMI fill:#bbf7d0,stroke:#16a34a
+```
+
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
+编辑 `.env` 填入对应 Key（对应上面决策树的选择）：
 
 ```bash
-# 使用 OpenAI
+# ── 🔵 ChatGPT ──
 GEO_LLM_KEY=sk-xxx
 GEO_LLM_MODEL=gpt-4o-mini
 
-# 或使用国内大模型（以 DeepSeek 为例，便宜好用）
+# ── 🔴 DeepSeek（便宜好用推荐）──
 GEO_LLM_KEY=sk-xxx
 GEO_LLM_BASE=https://api.deepseek.com
 GEO_LLM_MODEL=deepseek-chat
 
-# 或智谱 GLM（有免费额度）
+# ── 🟣 智谱 GLM（有免费额度）──
 GEO_LLM_KEY=xxx
 GEO_LLM_BASE=https://open.bigmodel.cn/api/paas/v4
 GEO_LLM_MODEL=glm-4-flash
 ```
 
-> **不配置 LLM 也能用**：评分、分析、规则化预处理不需要 LLM。只有"调用大模型改写内容"才需要。
+> 💡 **不配置 LLM 也能用**：`score` / `analyze` / `brand-db` / `readiness` / `serve`（部分功能）等不需要 Key。
 
-### 第三步：给内容打分
+### 第三步：给内容打分（零依赖体验）
 
 ```bash
-# 直接评分（无需 LLM Key）
 echo "Python 是一种广泛使用的编程语言。" | geo score
 ```
 
-输出示例：
 ```
 GEO 评分: 42.3/100  等级: F
 
 评分明细：
-  CitabilitySignals   12.0 / 30  (40%)
-  Structure            8.0 / 20  (40%)
-  Fluency             13.0 / 15  (87%)
+  CitabilitySignals   12.0 / 30  (40%)  ⚠️ 缺引用来源
+  Structure            8.0 / 20  (40%)  ⚠️ 缺结构
+  Fluency             13.0 / 15  (87%)  ✅ 流畅
   Keyword              3.0 / 15  (20%)
   UniqueWords          3.0 / 10  (30%)
   Technicality         3.0 / 10  (30%)
 ```
 
-### 第四步：优化内容
+### 第四步：优化内容（有 LLM Key 时）
 
 ```bash
-# 优化为更适合 AI 引用的格式
 geo optimize -f my-article.md --engine chatgpt --engine perplexity -o optimized.md
 ```
 
 ### 第五步：启动 Web 界面
 
 ```bash
-# 启动服务
-geo serve -p 8080
-# 或用脚本（自动编译 + 杀旧进程 + 后台启动）
-bash scripts/run.sh
-
-# 打开浏览器
-open http://localhost:8080
+geo serve -p 8080          # 直接启动
+bash scripts/run.sh         # 脚本启动（杀旧进程+编译+后台）
+open http://localhost:8080  # 浏览器打开
 ```
 
 ---
 
-## 内容优化实战指南
+## 🛠 内容优化实战指南
 
-### 评分等级说明
+### 🎯 评分等级条（一眼看懂）
 
-| 等级 | 分数 | 含义 | 建议 |
-|---|---|---|---|
-| A | 90-100 | 优秀，极易被引用 | 保持，定期复查 |
-| B | 80-89 | 良好 | 补强薄弱维度 |
-| C | 70-79 | 及格 | 重点优化结构化 |
-| D | 60-69 | 较弱 | 全面优化 |
-| F | <60 | 差 | 需要重写 |
+```mermaid
+graph LR
+    subgraph 评分条["GEO 0-100 评分等级带"]
+        direction LR
+        F["🔴 F<br/>0-59<br/>差→重写"]:::fred --> D["🟠 D<br/>60-69<br/>弱→全面改"]:::forange
+        D --> C["🟡 C<br/>70-79<br/>及格→优化结构化"]:::fyellow
+        C --> B["🔵 B<br/>80-89<br/>良→补薄弱"]:::fblue
+        B --> A["🟢 A<br/>90-100<br/>优→保持"]:::fgreen
+    end
 
-### 6 维评分详解
+    classDef fgreen fill:#bbf7d0,stroke:#16a34a
+    classDef fblue fill:#bfdbfe,stroke:#2563eb
+    classDef fyellow fill:#fef08a,stroke:#ca8a04
+    classDef forange fill:#fed7aa,stroke:#ea580c
+    classDef fred fill:#fecaca,stroke:#dc2626
+```
+
+### 🧮 6 维评分详解
+
+```mermaid
+pie title GEO 6 维评分权重
+    "可引用性 (30%) — 来源/数据/引用语" : 30
+    "结构 (20%) — 标题/列表/FAQ/表格" : 20
+    "流畅度 (15%) — 通顺可读性" : 15
+    "关键词 (15%) — 自然融入" : 15
+    "独特性 (10%) — 词汇多样性" : 10
+    "技术性 (10%) — 专业术语" : 10
+```
+
+### ⚡ 9 法优化策略
+
+#### 效果 × 实施成本 四象限矩阵
 
 ```mermaid
 graph TB
-    subgraph 评分["GEO 6 维评分 (0-100)"]
-        D1["可引用性 (30分)<br/>是否有来源、数据、引用语"]
-        D2["结构 (20分)<br/>标题/列表/表格/FAQ"]
-        D3["流畅度 (15分)<br/>通顺度、可读性"]
-        D4["关键词 (15分)<br/>自然融入度"]
-        D5["独特性 (10分)<br/>词汇多样性"]
-        D6["技术性 (10分)<br/>专业术语密度"]
+    subgraph 低成本["💸 低成本（加几行文字）"]
+        direction TB
+        LC1["🟩 引用语 +41% ⭐TOP1<br/>加权威人物/机构的直接引语"]
+        LC2["🟩 统计数据 +33%<br/>用具体数字替代模糊描述"]
+        LC3["🟩 流畅度 +29%<br/>确保句子通顺连贯"]
+        LC4["🟩 引用来源 +27%<br/>补充论断的可信来源"]
+        LC5["🟩 结论前置 +24%<br/>核心答案放首段"]
     end
 
-    style D1 fill:#e8f5e9,stroke:#2e7d32
-    style D2 fill:#e3f2fd,stroke:#1565c0
+    subgraph 中成本["⚙️ 中成本（调整结构）"]
+        direction TB
+        MC1["🟨 权威语气 +25%<br/>'可能'→'研究表明'"]
+        MC2["🟨 结构化 +22%<br/>加小标题/H2/表格/FAQ"]
+    end
+
+    subgraph 高成本["🧠 高成本（深度改写）"]
+        direction TB
+        HC1["🟧 技术术语 +20%<br/>补充专业术语密度"]
+        HC2["🟧 独特词汇 +18%<br/>丰富多样性，避免重复"]
+    end
+
+    style 低成本 fill:#dcfce7,stroke:#16a34a
+    style 中成本 fill:#fef08a,stroke:#ca8a04
+    style 高成本 fill:#fed7aa,stroke:#ea580c
 ```
 
-### 9 法优化策略
+> **💡 新手建议**：从「低成本 + 高效果」的前 4 项入手（引用语 → 统计 → 流畅 → 来源），半天内就能把 F 级内容拉到 C 级。
 
 以下是 Princeton 论文验证有效的 9 种策略，按效果从高到低排列：
 
@@ -417,7 +577,7 @@ flowchart TB
 
 ---
 
-## 品牌可见度审计指南
+## 🏢 品牌可见度审计指南
 
 ### 什么是品牌可见度？
 
@@ -425,35 +585,60 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    Q["用户搜索<br/>'最好的 CRM 工具'"] --> AI["AI 引擎"]
-    AI --> R["回答中提到"]
-    R --> Y["✅ 你的品牌"]
+    Q["用户搜索<br/>'最好的 CRM 工具'"] --> AI["AI 引擎 × N 个"]
+    AI --> R["生成回答并引用来源"]
+    R --> Y["✅ 你的品牌被引用<br/>→ 品牌曝光"]
     R --> N1["❌ 竞品 A"]
     R --> N2["❌ 竞品 B"]
     R --> N3["❌ 竞品 C"]
 
-    style Y fill:#c8e6c9,stroke:#2e7d32
-    style N1 fill:#ffebee,stroke:#c62828
-    style N2 fill:#ffebee,stroke:#c62828
-    style N3 fill:#ffebee,stroke:#c62828
+    style Y fill:#bbf7d0,stroke:#16a34a
+    style N1 fill:#fecaca,stroke:#dc2626
+    style N2 fill:#fecaca,stroke:#dc2626
+    style N3 fill:#fecaca,stroke:#dc2626
 ```
 
-### 快速开始品牌审计
+### 🚀 3 步快速审计流程图
 
-#### 1. 配置引擎 API Key
+```mermaid
+flowchart TD
+    STEP1("① 配置引擎 Key"):::s1 --> STEP2("② 准备品牌画像 JSON"):::s2
+    STEP2 --> STEP3("③ 执行审计 → 查看报告"):::s3
+
+    classDef s1 fill:#e0f2fe,stroke:#0369a1
+    classDef s2 fill:#f3e8ff,stroke:#7c3aed
+    classDef s3 fill:#dcfce7,stroke:#16a34a
+```
+
+#### ① 配置引擎 API Key
 
 ```bash
-# .env 中配置你想审计的引擎
-GEO_GLM_KEY=xxx          # 智谱 GLM（有免费额度，推荐）
-GEO_DEEPSEEK_KEY=xxx     # DeepSeek（便宜）
-GEO_KIMI_KEY=xxx         # Kimi
-GEO_OPENAI_KEY=xxx       # ChatGPT
-GEO_PERPLEXITY_KEY=xxx   # Perplexity
+# .env 中配置（配置几个就审计几个）
+GEO_GLM_KEY=xxx          # 🟣 智谱 GLM（有免费额度，推荐首选）
+GEO_DEEPSEEK_KEY=xxx     # 🔴 DeepSeek（便宜好用）
+GEO_KIMI_KEY=xxx         # 🌙 Kimi（长文本）
+GEO_OPENAI_KEY=xxx       # 🔵 ChatGPT（效果稳定）
+GEO_PERPLEXITY_KEY=xxx   # 🟡 Perplexity（搜索增强）
 ```
 
-#### 2. 准备品牌画像
+#### ② 准备品牌画像（BrandProfile 结构）
 
-创建 `brand-profile.json`：
+```mermaid
+graph TB
+    subgraph BP["🧱 BrandProfile 品牌画像结构"]
+        direction TB
+        CORE["🔖 核心标识<br/>name / aliases / domain"]
+        PROD["🛒 产品线<br/>products[]"]
+        CAT["🏷 分类<br/>category / industry"]
+        QS["💬 查询词 prompts[]<br/>'最好的XX'/'XX推荐'/'XX对比'"]
+        COMP["⚔️ 竞品 competitors[]<br/>{name, domain} × 2-3个"]
+        ENG["🧠 目标引擎 target_engines[]<br/>glm/deepseek/chatgpt..."]
+    end
+
+    style BP fill:#fef3c7,stroke:#d97706
+```
+
+创建 `brand-profile.json`（对应上面结构）：
 
 ```json
 {
@@ -462,11 +647,7 @@ GEO_PERPLEXITY_KEY=xxx   # Perplexity
   "domain": "acme.com",
   "products": ["Acme CRM", "Acme Analytics"],
   "category": "SaaS",
-  "prompts": [
-    "最好的CRM工具",
-    "推荐客户管理软件",
-    "CRM系统对比"
-  ],
+  "prompts": ["最好的CRM工具", "推荐客户管理软件", "CRM系统对比"],
   "competitors": [
     {"name": "HubSpot", "domain": "hubspot.com"},
     {"name": "Salesforce", "domain": "salesforce.com"}
@@ -475,18 +656,18 @@ GEO_PERPLEXITY_KEY=xxx   # Perplexity
 }
 ```
 
-#### 3. 执行审计
+#### ③ 执行审计
 
 ```bash
-# CLI 方式
+# CLI 方式（最常用）
 geo brand-audit -f brand-profile.json
 
-# 输出报告到文件
+# 输出 JSON 报告到文件
 geo brand-audit -f brand-profile.json -o report.json
 
-# Web 界面方式
+# Web 界面方式（可视化热力矩阵+趋势图）
 geo serve
-# 浏览器打开 http://localhost:8080 → 品牌审计面板
+# 打开 http://localhost:8080 → 「品牌审计」面板
 ```
 
 ### BVS 评分解读
@@ -541,132 +722,177 @@ GEO_SCHEDULER_WEBHOOK=https://hooks.slack.com/services/xxx  # 可选
 
 ---
 
-## 离线工商库使用指南
+## 📦 离线工商库使用指南
 
-### 什么是离线工商库？
-
-本项目内置了 1978-2019 年中国大陆 31 个省份的工商注册数据（1000 万+ 条），支持按企业名称、法人、地址等模糊搜索。
+### 数据从哪来，怎么用？
 
 ```mermaid
 flowchart LR
-    A["品牌名输入"] --> B["智能补全 Autocomplete"]
-    B --> C{"数据来源优先级"}
-    C -->|"① 实时"| D["China-Check MCP<br/>国家企业信用信息公示系统"]
-    C -->|"② 离线"| E["离线工商库<br/>1000万历史数据"]
-    C -->|"③ 知识库"| F["SinoFacts<br/>品牌知识"]
-    C -->|"④ 搜索"| G["联网搜索"]
-    C -->|"⑤ AI"| H["LLM 自身知识"]
-    D & E & F & G & H --> I["品牌画像合并"]
+    subgraph INGEST["📥 数据导入阶段（一次性）"]
+        direction TB
+        SRC["🌐 种子数据源<br/>guichong/-/tree/json<br/>31省×42年 JSON"]
+        SRC --> INIT["geo brand-db init<br/>建表+FTS5索引"]
+        INIT --> IMP["geo brand-db import-file<br/>3种格式自动识别<br/>2000条/批事务插入"]
+        IMP --> READY["✅ 1000万+数据就绪"]
+    end
 
-    style D fill:#ffebee,stroke:#c62828
-    style E fill:#e8f5e9,stroke:#2e7d32
+    subgraph USAGE["🔎 日常查询阶段"]
+        direction TB
+        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand-db search<br/>FTS5 MATCH 模糊"]
+        SEARCH --> AUTO["🌐 Web 下拉补全<br/>+来源Tag徽章"]
+        AUTO --> DISCOVER["✨ geo discover<br/>关键词→公司→GEO报告"]
+    end
+
+    INGEST --> USAGE
+
+    style INGEST fill:#e0f2fe,stroke:#0369a1
+    style USAGE fill:#dcfce7,stroke:#16a34a
 ```
 
-### 导入数据
+### Autocomplete 5 级数据来源优先级
+
+```mermaid
+graph TB
+    P1["① 🔴 实时核验<br/>China-Check MCP<br/>国家公示系统最新<br/>优先级最高"]
+    P1 --> P2["② 🟢 离线工商库<br/>1000万+ FTS5<br/>1978-2019 历史"]
+    P2 --> P3["③ 🔵 SinoFacts 知识库<br/>383家中国软件企业<br/>高置信度画像"]
+    P3 --> P4["④ 🟡 联网搜索<br/>（可选需代理）"]
+    P4 --> P5["⑤ 🟣 LLM 自身知识<br/>仅兜底用"]
+
+    style P1 fill:#fee2e2,stroke:#dc2626
+    style P2 fill:#dcfce7,stroke:#16a34a
+    style P3 fill:#dbeafe,stroke:#2563eb
+    style P4 fill:#fef08a,stroke:#ca8a04
+    style P5 fill:#e9d5ff,stroke:#7c3aed
+```
+
+### 操作命令速查
 
 ```bash
 # 1. 初始化空库
 geo brand-db init
 
-# 2. 方式 A：从本地文件导入（推荐）
+# 2A. 本地批量导入（推荐，全量）
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
 geo brand-db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/
 
-# 2. 方式 B：直接从 GitHub 下载导入（适合少量样本）
+# 2B. GitHub 直接下载（推荐，快速体验）
 geo brand-db import-github --years 2019 --provinces 广东,北京,上海
 
-# 3. 查看统计
+# 3. 统计信息
 geo brand-db stats
 
-# 4. 搜索
+# 4. 模糊搜索
 geo brand-db search "腾讯" -n 5
 ```
 
-### China-Check 实时核验
+### China-Check 实时核验缓存管理
 
 ```bash
-# 预热缓存（批量查询常见企业）
-geo brand-cache warm --queries "腾讯,阿里巴巴,字节跳动,华为"
+# 预热：批量查询高频企业
+geo brand-cache warm --queries "腾讯,阿里巴巴,字节跳动,华为,小米,百度"
 
-# 查看缓存状态
+# 查看缓存占用 + 命中率
 geo brand-cache stats
 
-# 清理过期缓存
+# 压缩清理过期项
 geo brand-cache compact
 ```
 
 ---
 
-## AI 就绪度检查指南
+## 🤖 AI 就绪度检查指南
 
-### 什么是 AI 就绪度？
-
-你的网站是否已经准备好被 AI 搜索引擎**发现和理解**？8 维检查：
+### 8 维检查 + 严重级分布
 
 ```mermaid
-flowchart TB
-    A["网站 AI 就绪度检查"] --> B["robots.txt<br/>是否屏蔽 AI 爬虫"]
-    A --> C["llms.txt<br/>是否有 LLM 摘要文件"]
-    A --> D["结构化数据<br/>JSON-LD/Microdata"]
-    A --> E["sitemap.xml<br/>站点地图"]
-    A --> F["页面性能<br/>TTFB 首字节时间"]
-    A --> G["标题清晰度<br/>H1 唯一性+层级"]
-    A --> H["FAQ 质量<br/>FAQPage Schema"]
-    A --> I["实体身份<br/>Organization Schema"]
-
-    B --> J{"通过?"}
-    C --> J
-    D --> J
-    E --> J
-    F --> J
-    G --> J
-    H --> J
-    I --> J
-
-    J -->|全部通过| K["✅ AI 就绪"]
-    J -->|有关键项失败| L["❌ 需要修复"]
-
-    style K fill:#c8e6c9,stroke:#2e7d32
-    style L fill:#ffebee,stroke:#c62828
+pie title 8 维 AI 就绪度 — 严重级权重
+    "Critical 阻断级 40%<br/>robots.txt 爬虫屏蔽检查" : 40
+    "High 高优先级 30%<br/>llms.txt + 结构化 Schema" : 30
+    "Medium 中优先级 20%<br/>sitemap + TTFB性能 + H1层级" : 20
+    "Low 低优先级 10%<br/>FAQ + Organization Schema" : 10
 ```
 
-### 使用方式
+### CI 闸门工作流
+
+```mermaid
+flowchart LR
+    DEPLOY["🚀 部署流水线触发"] --> CHECK["geo readiness --url xxx<br/>8 维检查 + 加权重算分"]
+    CHECK --> SCORE["📊 0-100 评分 + A-F 等级"]
+    SCORE --> GATE{"🚧 --ci-gate 阈值?<br/>例：80 分"}
+    GATE -->|"✅ ≥ 阈值"| PASS["👍 exit 0<br/>流水线继续部署"]
+    GATE -->|"❌ < 阈值"| FAIL["⛔ exit 1<br/>阻断流水线 + 输出整改项"]
+
+    style PASS fill:#dcfce7,stroke:#16a34a
+    style FAIL fill:#fecaca,stroke:#dc2626
+```
+
+### 使用
 
 ```bash
-# 基本检查
+# 基本检查（输出 8 维明细 + 建议）
 geo readiness --url https://your-site.com
 
-# CI/CD 闸门模式（低于 80 分则退出码非 0，阻断流水线）
+# CI/CD 闸门模式（低于 80 分阻断）
 geo readiness --url https://your-site.com --ci-gate 80
-echo $?  # 0=通过，1=不通过
+echo $?  # 0=通过，1=阻断
 ```
 
-### 8 维检查详解
-
-| 检查项 | 严重级 | 说明 | 修复方法 |
-|---|---|---|---|
-| robots.txt AI 爬虫 | Critical | 检查是否屏蔽 GPTBot/ClaudeBot 等 | `User-agent: GPTBot\nAllow: /` |
-| llms.txt | High | 面向 LLM 的站点摘要文件 | 创建 `/llms.txt` 文件 |
-| 结构化数据 | High | JSON-LD / Microdata | 添加 Schema.org 标记 |
-| sitemap.xml | Medium | 站点地图 | 生成并提交 sitemap |
-| 页面性能 TTFB | Medium | 首字节时间 < 600ms | 优化服务器响应 |
-| 标题清晰度 | Medium | H1 唯一 + H2/H3 层级 | 检查标题层级 |
-| FAQ 质量 | Low | FAQPage Schema 或问答文本 | 添加 FAQ 结构化数据 |
-| 实体身份 | Low | Organization Schema + sameAs | 添加组织信息标记 |
-
-### CI/CD 集成示例
+集成到 GitHub Actions：
 
 ```yaml
 # .github/workflows/deploy.yml
-- name: AI Readiness Gate
+- name: 🚧 AI 就绪度闸门
   run: |
     geo readiness --url https://your-site.com --ci-gate 80
-    # 低于 80 分会返回非零退出码，阻断部署
 ```
+
+### 8 维修复速查表
+
+| 检查项 | 严重级 | 修复方法 |
+|---|---|---|
+| robots.txt | 🔴 Critical | `User-agent: GPTBot\nAllow: /` |
+| llms.txt | 🟠 High | 在 `/llms.txt` 写站点摘要+授权 |
+| 结构化数据 | 🟠 High | 加 Schema.org JSON-LD 标记 |
+| sitemap.xml | 🟡 Medium | 生成 sitemap 并 robots.txt 指向 |
+| TTFB 性能 | 🟡 Medium | 优化 CDN / 缓存 / 数据库索引 |
+| H1 标题 | 🟡 Medium | 每页唯一 H1 + 正确 H2/H3 层级 |
+| FAQ Schema | 🟢 Low | 加 FAQPage 问答结构化 |
+| Organization | 🟢 Low | 加 Organization + sameAs 社交链接 |
 
 ---
 
-## 常见问题
+## ❓ 常见问题
+
+### 功能 × 是否需要 LLM Key — 分类矩阵
+
+```mermaid
+graph TB
+    subgraph FREE["🟢 ❌ 无需 LLM Key — 开箱即用"]
+        direction TB
+        F1["geo score — 内容 GEO 评分"]
+        F2["geo analyze — 信号分析"]
+        F3["geo strategies — 策略列表"]
+        F4["geo brand-db — 工商库管理"]
+        F5["geo readiness — AI 就绪度检查"]
+        F6["geo vertical — 行业类型识别"]
+        F7["geo localseo — Local SEO 审计"]
+        F8["geo serve — Web UI（评分/分析等）"]
+    end
+
+    subgraph PAID["🔴 ✅ 需要 LLM Key — 调用大模型"]
+        direction TB
+        P1["geo optimize — 内容改写优化"]
+        P2["geo brand-audit — 多引擎品牌审计"]
+        P3["geo topsource — Top Source 归因分析"]
+        P4["geo autorewrite — AutoGEO 规则重写"]
+        P5["geo externalsignals — 社媒+KOL情报"]
+        P6["geo discover（生成报告阶段）— 完整审计"]
+    end
+
+    style FREE fill:#dcfce7,stroke:#16a34a
+    style PAID fill:#fecaca,stroke:#dc2626
+```
 
 ### Q: 不配置 LLM Key 能用吗？
 
@@ -684,21 +910,102 @@ echo $?  # 0=通过，1=不通过
 
 ### Q: 支持哪些 AI 引擎？
 
-| 引擎 | 环境变量 | 备注 |
+#### 🧠 13 引擎能力矩阵（按地域×定位）
+
+```mermaid
+graph TB
+    subgraph OVERSEAS["🌍 海外引擎（5 个）"]
+        direction LR
+        O1["🔵 ChatGPT<br/>综合能力标杆"]
+        O2["🟡 Perplexity<br/>搜索增强专精"]
+        O3["🟢 Gemini<br/>Google 生态"]
+        O4["🟠 Claude<br/>长文+安全"]
+        O5["⚪ DuckDuckGo 等<br/>隐私优先"]
+    end
+
+    subgraph DOMESTIC["🇨🇳 国产引擎（8 个）"]
+        direction LR
+        D1["🔴 通义千问<br/>阿里云"]
+        D2["🟣 智谱GLM<br/>❗免费额度"]
+        D3["🔴 DeepSeek<br/>❗性价比王"]
+        D4["🌙 Kimi<br/>长文本 200K"]
+        D5["🔵 文心<br/>百度"]
+        D6["🟠 豆包<br/>字节"]
+        D7["🟤 星火<br/>讯飞"]
+        D8["⚪ 元宝/小米<br/>腾讯+MiLM"]
+    end
+
+    subgraph BASE["🔧 共用技术底座"]
+        B["OpenAI 兼容协议基类<br/>统一发送/解析/Token计算"]
+    end
+
+    OVERSEAS --> BASE
+    DOMESTIC --> BASE
+
+    style OVERSEAS fill:#dbeafe,stroke:#2563eb
+    style DOMESTIC fill:#fee2e2,stroke:#dc2626
+    style BASE fill:#dcfce7,stroke:#16a34a
+```
+
+| 引擎 | 环境变量 | 一句话推荐 |
 |---|---|---|
-| ChatGPT | `GEO_OPENAI_KEY` | OpenAI 原生 |
-| Perplexity | `GEO_PERPLEXITY_KEY` | 搜索增强 |
-| Gemini | `GEO_GEMINI_KEY` | Google |
-| Claude | `GEO_CLAUDE_KEY` | Anthropic |
-| 通义千问 | `GEO_QWEN_KEY` | 阿里云 |
-| 智谱 GLM | `GEO_GLM_KEY` | 有免费额度 |
-| DeepSeek | `GEO_DEEPSEEK_KEY` | 便宜 |
-| Kimi | `GEO_KIMI_KEY` | 月之暗面 |
-| 文心一言 | `GEO_WENXIN_KEY` | 百度 |
-| 豆包 | `GEO_DOUBAO_KEY` | 字节跳动 |
-| 讯飞星火 | `GEO_XUNFEI_KEY` | 科大讯飞 |
-| 元宝/混元 | `GEO_YUANBAO_KEY` | 腾讯 |
-| 小米 | `GEO_XIAOMI_KEY` | MiLM |
+| 🔵 ChatGPT | `GEO_OPENAI_KEY` | 效果稳定，海外首选 |
+| 🟡 Perplexity | `GEO_PERPLEXITY_KEY` | 搜索增强，数据源全 |
+| 🟢 Gemini | `GEO_GEMINI_KEY` | Google 生态用户 |
+| 🟠 Claude | `GEO_CLAUDE_KEY` | 长文+安全合规 |
+| 🔴 通义千问 | `GEO_QWEN_KEY` | 阿里云生态 |
+| 🟣 智谱 GLM | `GEO_GLM_KEY` | **每天免费额度，新手首选** |
+| 🔴 DeepSeek | `GEO_DEEPSEEK_KEY` | **¥1/M tokens，最便宜** |
+| 🌙 Kimi | `GEO_KIMI_KEY` | 长上下文 200K+ |
+| 🔵 文心一言 | `GEO_WENXIN_KEY` | 百度 |
+| 🟠 豆包 | `GEO_DOUBAO_KEY` | 字节 |
+| 🟤 讯飞星火 | `GEO_XUNFEI_KEY` | 科大讯飞 |
+| ⚪ 元宝/混元 | `GEO_YUANBAO_KEY` | 腾讯 |
+| ⚪ 小米 | `GEO_XIAOMI_KEY` | MiLM |
+
+### Q: 如何作为 MCP Server 被 AI 编程助手调用？
+
+#### 🤖 MCP 接入拓扑图
+
+```mermaid
+graph LR
+    subgraph CLIENT["🖥️ AI 编程客户端"]
+        C1["💬 Claude Code"]
+        C2["⌨️ Cursor IDE"]
+        C3["🧠 TraeCode IDE"]
+    end
+
+    subgraph MCP["🧩 geo mcp-server<br/>JSON-RPC 2.0 over stdio"]
+        T1["🧰 brand_audit<br/>品牌可见度审计"]
+        T2["✍️ optimize<br/>内容优化"]
+        T3["🏢 search_companies<br/>离线工商库搜索"]
+        T4["✅ chinacheck<br/>实时工商核验"]
+        T5["🤖 readiness<br/>AI 就绪度检查"]
+    end
+
+    CLIENT -->|"mcpServers 配置"| MCP
+
+    style CLIENT fill:#e0f2fe,stroke:#0369a1
+    style MCP fill:#fef3c7,stroke:#d97706
+```
+
+配置方式（只需一次）：
+
+```json
+{
+  "mcpServers": {
+    "geo": {
+      "command": "geo",
+      "args": ["mcp-server"]
+    }
+  }
+}
+```
+
+启动：
+```bash
+geo mcp-server
+```
 
 ### Q: 数据库需要额外安装吗？
 
@@ -745,3 +1052,39 @@ timeline
 ```
 
 > GEO 是一个持续过程，建议每周审计一次品牌可见度，根据结果调整内容策略。
+
+---
+
+## 📊 本文档图表清单（共计 26 张）
+
+| # | 类型 | 章节 | 说明 |
+|---|---|---|---|
+| 1 | mindmap | 🗺 文档导览 | 入门指南 5 大模块导航 |
+| 2 | flowchart LR | 什么是 GEO | AI 引用与否对比图 |
+| 3 | flowchart TB | 什么是 GEO | AI 三阶段引用机制（检索→生成→引用） |
+| 4 | timeline | 为什么需要 GEO | 搜索方式 4 阶段演进时间线 |
+| 5 | xychart-beta | 为什么需要 GEO | 9 种 GEO 策略引用率提升柱状图 |
+| 6 | graph TB | GEO vs SEO | 关注点对比（SEO vs GEO） |
+| 7 | graph LR | GEO vs SEO | 6 维雷达对比表 |
+| 8 | graph TB | 本项目能做什么 | 5 大引擎 × 3 种使用方式全景 |
+| 9 | flowchart LR | 5 分钟快速开始 | 安装→配置→评分→优化→Web 5 步流 |
+| 10 | graph TB | 第一步安装 | 源码 / go install / Docker 3 种方式对比 |
+| 11 | flowchart TD | 第二步配置 | **LLM 引擎选型决策树**（新） |
+| 12 | graph LR | 内容优化 | **GEO 0-100 评分等级带**（新） |
+| 13 | pie | 内容优化 | 6 维评分权重饼图 |
+| 14 | graph TB | 内容优化 | **9 法效果×实施成本四象限矩阵**（新） |
+| 15 | graph LR | 内容优化 | 严肃/软性/知识三大领域策略 |
+| 16 | flowchart TB | 内容优化 | 评分→分析→优化 闭环流程 |
+| 17 | flowchart LR | 品牌审计 | 品牌被引用 vs 竞品对比 |
+| 18 | flowchart TD | 品牌审计 | **3 步快速审计流程**（新） |
+| 19 | graph TB | 品牌审计 | **BrandProfile 画像结构图**（新） |
+| 20 | pie | 品牌审计 | BVS 7 维加权健康评分饼图 |
+| 21 | flowchart TD | 品牌审计 | 5 类告警信号 → Webhook 决策流 |
+| 22 | flowchart LR | 离线工商库 | **导入→查询两阶段流水线**（新） |
+| 23 | graph TB | 离线工商库 | **5 级数据来源优先级链**（新） |
+| 24 | pie | AI 就绪度 | **8 维严重级分布饼图**（新） |
+| 25 | flowchart LR | AI 就绪度 | **CI 闸门工作流（通过/阻断）**（新） |
+| 26 | graph TB | FAQ | **功能×LLM Key 分类矩阵**（新） |
+| 27 | graph TB | FAQ | **13 引擎能力矩阵（海外×国产×基类）**（新） |
+| 28 | graph LR | FAQ | **MCP Server 接入拓扑图**（新） |
+| 29 | timeline | FAQ | GEO 优化效果时间线 |

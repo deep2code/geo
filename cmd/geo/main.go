@@ -57,6 +57,7 @@ func newRootCmd() *cobra.Command {
 		newLocalSEOCmd(),
 		newExternalSignalsCmd(),
 		newAutoRewriteCmd(),
+		newDiscoverCmd(),
 	)
 	return root
 }

@@ -1,180 +1,341 @@
-# GEO — 生成式引擎优化系统
+# 🚀 GEO — 生成式引擎优化系统
 
-> 让你的内容更容易被 AI 搜索引擎（ChatGPT、Perplexity、Gemini、Claude、通义千问、智谱 GLM 等）引用。
+> 让你的内容和品牌更容易被 **ChatGPT / Perplexity / Gemini / Claude / 通义千问 / 智谱 GLM / DeepSeek / Kimi** 等 13+ AI 搜索引擎引用。
 
-基于 Princeton GEO 论文 (KDD 2024) 的 9 种优化策略，融合 AutoGEO (ICLR 2026) 的 GEO/GEU 双评分体系，面向中文市场深度本地化。
+基于 **Princeton GEO** (KDD 2024) 的 9 种优化策略，融合 **AutoGEO** (ICLR 2026) 的 GEO/GEU 双评分体系，面向中文市场深度本地化。
 
-## 📖 文档
+---
 
-| 文档 | 说明 |
-|---|---|
-| [入门指南](docs/getting-started.md) | GEO 是什么、为什么需要、5 分钟上手、内容优化实战、品牌审计指南 |
-| [架构文档](docs/architecture.md) | 系统全景、数据流、数据库选型、10+ Mermaid 图表 |
+## 📖 文档导航
 
-## 核心能力
+```mermaid
+graph LR
+    A[GEO 文档中心] --> B[📘 入门指南<br/>docs/getting-started.md]
+    A --> C[🏗 架构文档<br/>docs/architecture.md]
+    B --> B1[什么是 GEO]
+    B --> B2[5 分钟上手]
+    B --> B3[内容优化实战]
+    B --> B4[品牌审计指南]
+    B --> B5[FAQ]
+    C --> C1[系统全景]
+    C --> C2[数据流图]
+    C --> C3[数据库选型]
+    C --> C4[MCP 时序]
+    C --> C5[部署架构]
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        GEO 系统                                 │
-│                                                                 │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
-│  │  内容优化    │  │  品牌可见度   │  │  离线工商数据库         │ │
-│  │  Optimize    │  │  Brand Audit │  │  1000 万+ 注册企业      │ │
-│  │  Score       │  │  Scheduler   │  │  FTS5 全文检索          │ │
-│  │  Analyze     │  │  Monitor     │  │  China-Check MCP       │ │
-│  └─────────────┘  └──────────────┘  └────────────────────────┘ │
-│         │                │                    │                 │
-│         └────────────────┼────────────────────┘                 │
-│                          ▼                                      │
-│              ┌──────────────────────┐                           │
-│              │   REST API + Web UI  │                           │
-│              │   MCP Server         │                           │
-│              │   CLI 工具链          │                           │
-│              └──────────────────────┘                           │
-└─────────────────────────────────────────────────────────────────┘
+    style A fill:#7c3aed,color:#fff
+    style B fill:#e9d5ff,stroke:#7c3aed
+    style C fill:#e9d5ff,stroke:#7c3aed
 ```
 
-### 内容优化（pkg/geo）
-
-- **9 法 GEO 策略**：引用来源 (+27%)、统计数据 (+33%)、权威语气、引用语 (+41%)、流畅度 (+29%)、独特词汇、技术术语、结构化、结论前置
-- **0-100 GEO 评分**：6 维度评分（可引用性、结构、流畅度、关键词、独特性、技术性）
-- **领域自适应**：严肃话题靠引用、软性话题靠语气、知识话题靠数据
-- **引擎偏好**：13 个引擎预设权重（ChatGPT / Perplexity / Gemini / Claude / 通义千问 / 智谱 GLM / DeepSeek / Kimi / 文心 / 豆包 / 小米 / 讯飞 / 元宝）
-
-### 品牌可见度审计（internal/brand）
-
-- **BVS 0-100 加权健康评分**：内容质量 23% + 技术 SEO 22% + 站内 SEO 20% + Schema 10% + 性能 10% + AI 就绪 10% + 图像 5%
-- **多引擎对比**：同时查询多个 AI 搜索引擎，对比品牌引用情况
-- **5 类模型分歧告警**：竞品涌现、品牌消失、声量下降、位置下滑、模型分歧
-- **定时扫描**：cron 表达式定时审计 + webhook 告警
-- **时间序列追踪**：审计历史趋势图，BVS 评分变化分析
-- **竞品引用差距热力图**：引擎 × 查询词矩阵
-- **PDF 报告导出**：自包含 HTML 报告
-
-### 离线工商数据库
-
-- **1000 万+ 条**中国大陆工商注册数据（1978-2019，来源：guichong/-/tree/json）
-- **FTS5 全文索引**：按品牌/公司/法人/地址模糊搜索 Top 20 < 50ms
-- **China-Check MCP 集成**：免鉴权免费查询国家企业信用信息公示系统实时数据
-- **数据优先级**：工商实时 > 离线历史 > SinoFacts 知识库 > 联网搜索 > LLM 自身知识
-
-### 按功能选型数据库
-
-| 模块 | 数据特征 | 零依赖（默认） | 高性能（可选） | 环境变量 |
-|---|---|---|---|---|
-| 离线工商库 | 千万级行 + 全文检索 + 只读 | SQLite (FTS5) | DuckDB | `GEO_OFFLINE_DB_TYPE` |
-| 审计历史库 | 时序写入 + JSON 列 | SQLite | MySQL | `GEO_HISTORY_DB_TYPE` |
-| China-Check 缓存 | K/V + TTL + 高频读 | JSONL 文件 | Redis | `GEO_CHINACHECK_CACHE_TYPE` |
-
-所有模块默认使用零依赖后端（纯 Go / 本地文件），**开箱即用无需安装任何外部数据库**。
-
-### P0/P1 扩展功能
-
-| 功能 | 说明 | CLI 命令 |
+| 文档 | 说明 | Mermaid 图表数 |
 |---|---|---|
-| Top Source 归因 | 识别 LLM 引用的权威域名 | `geo topsource` |
-| 行业类型识别 | SaaS/本地服务/电商/媒体/代理五类 | `geo vertical detect` |
-| Local SEO/GMB | NAP 一致性、商家资料审计 | `geo localseo` |
-| AutoGEO 规则重写 | 自动发现引擎偏好 + GEU 检查 | `geo autorewrite` |
-| 8 维 AI 就绪度 CI 闸门 | robots.txt/llms.txt/Schema/sitemap 等 | `geo readiness` |
-| 外部信号分析 | 社媒情感、KOL 情报 | `geo externalsignals` |
+| 📘 [入门指南](docs/getting-started.md) | GEO 概念、5 分钟上手、优化实战、审计指南、FAQ | 12+ |
+| 🏗 [架构文档](docs/architecture.md) | 系统全景、数据流、数据库选型、MCP 协议、部署 | 15+ |
 
-## 快速开始
+---
 
-### 安装
+## 🎯 系统全景
+
+```mermaid
+graph TB
+    subgraph 用户层["👤 使用方式"]
+        CLI["💻 CLI 命令行<br/>geo optimize / audit / discover"]
+        Web["🌐 Web UI + REST API<br/>localhost:8080"]
+        MCP["🤖 MCP Server<br/>Claude / Cursor / TraeCode"]
+    end
+
+    subgraph 引擎层["⚙️ 核心引擎"]
+        CO["📝 内容优化引擎<br/>Optimize / Score / Analyze"]
+        BA["🏢 品牌可见度引擎<br/>Brand Audit / Scheduler"]
+        DIS["🔍 关键词发现引擎<br/>Discover → Report"]
+    end
+
+    subgraph 数据层["💾 多后端数据层"]
+        DB1["离线工商库<br/>SQLite/DuckDB<br/>1000万+企业 FTS5"]
+        DB2["审计历史库<br/>SQLite/MySQL<br/>时序 + JSON快照"]
+        DB3["China-Check缓存<br/>JSONL/Redis<br/>K/V + TTL"]
+        KB["📚 SinoFacts 知识库<br/>383家中国软件企业"]
+    end
+
+    subgraph AI层["🧠 13 AI 引擎适配器"]
+        E1["🔵 ChatGPT"]
+        E2["🟡 Perplexity"]
+        E3["🟢 Gemini"]
+        E4["🟠 Claude"]
+        E5["🔴 通义千问"]
+        E6["🟣 智谱GLM"]
+        E7["⚪ DeepSeek 等"]
+    end
+
+    用户层 --> 引擎层
+    引擎层 --> 数据层
+    引擎层 --> AI层
+
+    style 用户层 fill:#e0f2fe,stroke:#0284c7
+    style 引擎层 fill:#fef3c7,stroke:#d97706
+    style 数据层 fill:#dcfce7,stroke:#16a34a
+    style AI层 fill:#f3e8ff,stroke:#7c3aed
+```
+
+---
+
+## 💎 核心能力矩阵
+
+```mermaid
+xychart-beta
+    title "9 法 GEO 策略 — 引用率提升实测 (%)"
+    x-axis ["引用语", "统计数据", "流畅度", "引用来源", "权威语气", "结论前置", "结构化", "技术术语", "独特词汇"]
+    y-axis "提升 %" 0 --> 50
+    bar [41, 33, 29, 27, 25, 24, 22, 20, 18]
+```
+
+> **Princeton GEO (KDD 2024)** 论文实测数据
+
+### 三大核心能力
+
+```mermaid
+graph TB
+    subgraph A["📝 内容优化"]
+        A1["9 法策略优化"]
+        A2["6 维 0-100 评分"]
+        A3["3 领域自适应"]
+        A4["13 引擎偏好"]
+    end
+
+    subgraph B["🏢 品牌可见度"]
+        B1["BVS 7 维加权评分"]
+        B2["多引擎对比审计"]
+        B3["5 类模型告警"]
+        B4["定时扫描 + Webhook"]
+    end
+
+    subgraph C["🔍 关键词发现"]
+        C1["离线工商库搜索"]
+        C2["多结果选择"]
+        C3["自动生成画像"]
+        C4["一键 GEO 报告"]
+    end
+
+    style A fill:#dbeafe,stroke:#2563eb
+    style B fill:#fce7f3,stroke:#db2777
+    style C fill:#dcfce7,stroke:#16a34a
+```
+
+---
+
+## 🗄 数据库选型（按功能模块化）
+
+```mermaid
+mindmap
+  root((数据层选型))
+    离线工商库
+      数据特征
+        千万级行
+        FTS5全文检索
+        只读+批量导入
+      默认后端
+        SQLite FTS5
+        纯Go零依赖
+      可选后端
+        DuckDB列式
+        千万级更快
+    审计历史库
+      数据特征
+        时序追加写入
+        JSON快照列
+        品牌时间范围查询
+      默认后端
+        SQLite
+        零依赖
+      可选后端
+        MySQL
+        生产高并发
+    China-Check缓存
+      数据特征
+        K/V结构
+        TTL过期
+        高频读低频写
+      默认后端
+        JSONL文件
+        本地零依赖
+      可选后端
+        Redis
+        分布式缓存
+```
+
+| 模块 | 数据特征 | 🟢 零依赖（默认） | 🚀 高性能（可选） | 环境变量 |
+|---|---|---|---|---|
+| 离线工商库 | 千万级行 + FTS5 全文 | SQLite (FTS5) | DuckDB | `GEO_OFFLINE_DB_TYPE` |
+| 审计历史库 | 时序写入 + JSON 快照 | SQLite | MySQL | `GEO_HISTORY_DB_TYPE` |
+| CC 查询缓存 | K/V + TTL + 高频读 | JSONL 文件 | Redis | `GEO_CHINACHECK_CACHE_TYPE` |
+
+> **承诺**：所有模块默认开箱即用，**安装任何外部数据库**。
+
+---
+
+## 🚀 5 分钟快速开始
+
+```mermaid
+flowchart LR
+    A["1. 安装<br/>go install ./cmd/geo<br/>或 make build"] --> B["2. (可选) 配置<br/>cp .env.example .env<br/>填入 GEO_LLM_KEY"]
+    B --> C["3. 评分<br/>echo '内容' \| geo score"]
+    C --> D["4. 优化<br/>geo optimize -f content.md"]
+    D --> E["5. Web界面<br/>geo serve -p 8080"]
+
+    style A fill:#dbeafe,stroke:#2563eb
+    style B fill:#e0e7ff,stroke:#4f46e5
+    style C fill:#dcfce7,stroke:#16a34a
+    style D fill:#fef3c7,stroke:#d97706
+    style E fill:#fce7f3,stroke:#db2777
+```
+
+### 安装方式
 
 ```bash
 # 方式一：Go install
 go install ./cmd/geo
 
-# 方式二：Makefile 编译
-make build    # 产物在 bin/geo
+# 方式二：Makefile
+make build    # 产物 bin/geo
 
 # 方式三：Docker
-make docker-up    # http://localhost:8080
+docker compose up -d    # 访问 http://localhost:8080
 ```
 
-### 基本用法
+### 最小可用示例
 
 ```bash
-# 优化内容（需配置 LLM Key）
-geo optimize -f content.md --engine chatgpt --engine perplexity
+# ✅ 无需任何 Key 也能用：评分
+echo "Python 是最流行的编程语言之一。" | geo score
 
-# 评分（无需 LLM Key）
-echo "你的内容" | geo score
+# ✅ 无需任何 Key：关键词发现
+geo discover "短视频"
 
-# 分析 GEO 信号
-geo analyze -f content.md
-
-# 列出所有策略
-geo strategies
-
-# 启动 Web 服务
-geo serve -p 8080
-# 或使用脚本（自动编译 + 杀旧进程 + 后台启动）
-bash scripts/run.sh
+# ✅ 无需任何 Key：AI 就绪度检查
+geo readiness --url https://example.com
 ```
 
-### 品牌审计
+---
 
-```bash
-# 初始化离线工商库
-geo brand-db init
+## ⚡ CLI 命令全景
 
-# 导入工商数据（支持 JSON 数组 / JSONL / 对象包裹数组）
-geo brand-db import -d ./Enterprise-Registration-Data
+```mermaid
+graph LR
+    subgraph 内容["📝 内容优化"]
+        O["optimize"]
+        S["score"]
+        A["analyze"]
+        ST["strategies"]
+    end
 
-# 搜索企业
-geo brand-db search "腾讯"
+    subgraph 品牌["🏢 品牌审计"]
+        BA["brand-audit"]
+        BDB["brand-db"]
+        BCA["brand-cache"]
+    end
 
-# 品牌审计
-geo brand-audit --brand "腾讯" --domain tencent.com \
-  --prompts "最好的互联网公司" --engines chatgpt,perplexity
+    subgraph P0P1["🔥 P0/P1 扩展"]
+        D["discover"]
+        RD["readiness"]
+        VS["vertical"]
+        LS["localseo"]
+        TS["topsource"]
+        ES["externalsignals"]
+        AR["autorewrite"]
+    end
 
-# 预热 China-Check 缓存
-geo brand-cache warm --queries "腾讯,阿里巴巴,字节跳动"
+    subgraph 服务["🌐 服务模式"]
+        SE["serve"]
+        MCP["mcp-server"]
+    end
+
+    style 内容 fill:#dbeafe,stroke:#2563eb
+    style 品牌 fill:#dcfce7,stroke:#16a34a
+    style P0P1 fill:#fef3c7,stroke:#d97706
+    style 服务 fill:#f3e8ff,stroke:#7c3aed
 ```
 
-### 环境变量配置
+| 命令 | 说明 | 需 LLM Key |
+|---|---|---|
+| `geo optimize` | 内容优化（9 法策略） | ✅ |
+| `geo score` | GEO 评分（0-100） | ❌ |
+| `geo analyze` | GEO 信号分析 | ❌ |
+| `geo strategies` | 列出全部优化策略 | ❌ |
+| `geo brand-audit` | 品牌可见度审计 | ✅ |
+| `geo brand-db` | 离线工商库管理 | ❌ |
+| `geo brand-cache` | China-Check 缓存管理 | ❌ |
+| `geo discover` | 关键词→公司→GEO 报告 | ✅/❌ |
+| `geo readiness` | 8 维 AI 就绪度 CI 闸门 | ❌ |
+| `geo vertical` | 行业类型识别 | ❌ |
+| `geo localseo` | Local SEO / GMB 审计 | ❌ |
+| `geo topsource` | Top Source 归因分析 | ✅ |
+| `geo externalsignals` | 社媒情感 + KOL 情报 | ✅ |
+| `geo autorewrite` | AutoGEO 规则重写 | ✅ |
+| `geo serve` | 启动 Web UI + API | 视功能 |
+| `geo mcp-server` | MCP Server 模式 | 视功能 |
 
-```bash
-cp .env.example .env
+---
 
-# 核心 LLM 配置
-GEO_LLM_KEY=sk-xxx
-GEO_LLM_BASE=https://api.openai.com
-GEO_LLM_MODEL=gpt-4o-mini
+## 🌐 关键词发现工作流（discover）
 
-# 国内大模型（任选其一）
-# 通义千问: GEO_LLM_BASE=https://dashscope.aliyuncs.com/compatible-mode  GEO_LLM_MODEL=qwen-plus
-# 智谱GLM:  GEO_LLM_BASE=https://open.bigmodel.cn/api/paas/v4           GEO_LLM_MODEL=glm-4-flash
-# DeepSeek: GEO_LLM_BASE=https://api.deepseek.com                        GEO_LLM_MODEL=deepseek-chat
+```mermaid
+flowchart TD
+    START([用户输入关键词<br/>如「短视频」]) --> 1["🔎 双重搜索<br/>离线工商库 FTS5 + SinoFacts 知识库"]
+    1 --> 2{"找到多少匹配？"}
+    2 -->|"1 个"| 3["✅ 直接选中"]
+    2 -->|"多个"| 4["📋 展示候选列表<br/>用户点击选择"]
+    3 --> 5
+    4 --> 5["🎨 自动生成品牌画像<br/>名称/域名/行业/查询词"]
+    5 --> 6["🧠 行业类型识别<br/>vertical.Detect()"]
+    6 --> 7["🏢 品牌可见度审计<br/>多引擎 BVS 评分"]
+    5 --> 8["🤖 AI 就绪度检查<br/>8 维 + CI 闸门"]
+    7 --> 9["📊 综合建议生成"]
+    8 --> 9
+    9 --> END([📄 GEO 完整报告<br/>评分 + 画像 + 建议])
+
+    style START fill:#7c3aed,color:#fff
+    style END fill:#16a34a,color:#fff
 ```
 
-各引擎独立 API Key 环境变量：`GEO_OPENAI_KEY` / `GEO_PERPLEXITY_KEY` / `GEO_GEMINI_KEY` / `GEO_CLAUDE_KEY` / `GEO_QWEN_KEY` / `GEO_GLM_KEY` / `GEO_DEEPSEEK_KEY` / `GEO_KIMI_KEY` / `GEO_WENXIN_KEY` / `GEO_DOUBAO_KEY` / `GEO_XIAOMI_KEY` / `GEO_XUNFEI_KEY` / `GEO_YUANBAO_KEY`
+---
 
-## CLI 命令一览
+## 🔌 API 接口地图
 
+```mermaid
+graph TB
+    subgraph 内容优化["内容优化 /api/v1/"]
+        H1["GET /health"]
+        S1["POST /analyze"]
+        S2["POST /score"]
+        S3["POST /optimize"]
+        S4["GET /strategies"]
+    end
+
+    subgraph 品牌审计["品牌审计 /api/v1/brand/"]
+        B1["POST /audit"]
+        B2["GET /autocomplete"]
+        B3["POST /discover"]
+        B4["POST /discover/report"]
+        B5["GET + /history/*"]
+        B6["GET + /offlinedb/*"]
+    end
+
+    subgraph P0P1["扩展模块"]
+        P1["POST /topsource/analyze"]
+        P2["POST /vertical/detect"]
+        P3["POST /localseo/audit"]
+        P4["POST /externalsignals/report"]
+        P5["POST /autorewriter/rewrite"]
+        P6["GET /readiness/ci-gate"]
+    end
+
+    style 内容优化 fill:#dbeafe,stroke:#2563eb
+    style 品牌审计 fill:#dcfce7,stroke:#16a34a
+    style P0P1 fill:#fef3c7,stroke:#d97706
 ```
-geo optimize        优化内容，提升 AI 搜索引擎可见度
-geo score           评估内容的 GEO 评分（0-100）
-geo analyze         分析内容的 GEO 信号
-geo strategies      列出全部可用 GEO 优化策略
-geo serve           启动 REST API 服务
-geo brand-audit     品牌可见度审计
-geo brand-db        离线工商数据库管理（init/import/search/stats/clear）
-geo brand-cache     China-Check 缓存管理（stats/clear/compact/warm）
-geo mcp-server      启动 MCP Server 模式
-geo readiness       8 维 AI 就绪度 CI 闸门
-geo topsource       Top Source 归因分析
-geo vertical        行业类型自动识别
-geo localseo        Local SEO / GMB 审计
-geo externalsignals 外部信号分析（社媒情感 + KOL）
-geo autorewrite     AutoGEO 规则提取与重写
-geo discover        关键词→公司推断→自动 GEO 报告
-```
 
-## API 接口
+<details><summary>📋 完整 API 列表（点击展开）</summary>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -183,99 +344,110 @@ geo discover        关键词→公司推断→自动 GEO 报告
 | POST | `/api/v1/analyze` | 分析内容信号 |
 | POST | `/api/v1/score` | GEO 评分 |
 | POST | `/api/v1/optimize` | 优化内容 |
+| POST | `/api/v1/brand/discover` | 关键词搜索匹配公司 |
+| POST | `/api/v1/brand/discover/report` | 生成完整 GEO 报告 |
 | GET | `/api/v1/brand/autocomplete` | 品牌智能补全 |
 | POST | `/api/v1/brand/audit` | 品牌可见度审计 |
-| GET | `/api/v1/brand/history` | 审计历史趋势 |
-| POST | `/api/v1/brand/scheduler/trigger` | 手动触发定时审计 |
+| GET | `/api/v1/brand/history/list` | 审计历史列表 |
+| GET | `/api/v1/brand/history/stats` | 历史库统计 |
 | GET | `/api/v1/brand/offlinedb/search` | 离线工商库搜索 |
-| GET | `/api/v1/brand/offlinedb/stats` | 离线工商库统计 |
+| GET | `/api/v1/brand/offlinedb/stats` | 工商库统计 |
 | POST | `/api/v1/brand/topsource/analyze` | Top Source 归因 |
 | POST | `/api/v1/brand/vertical/detect` | 行业类型识别 |
 | POST | `/api/v1/brand/localseo/audit` | Local SEO 审计 |
 | POST | `/api/v1/autorewriter/rewrite` | AutoGEO 规则重写 |
 | GET | `/api/v1/brand/readiness/ci-gate` | AI 就绪度 CI 闸门 |
-| POST | `/api/v1/brand/discover` | 关键词搜索匹配公司 |
-| POST | `/api/v1/brand/discover/report` | 选中公司后生成完整 GEO 报告 |
 
-## MCP Server
+</details>
 
-系统可作为 MCP Server 被 Claude / Cursor / TraeCode 等 MCP 客户端调用：
+---
 
-```bash
-geo mcp-server
+## 📁 项目结构
+
+```mermaid
+tree
+    root[my-geo/]
+    ├── 📂 cmd/geo/ ["CLI 入口 + 子命令"]
+    ├── 📂 pkg/geo/ ["公开 API 层"]
+    ├── 📂 internal/
+    │   ├── 📂 adapter/ ["13 AI 引擎适配器"]
+    │   ├── 📂 brand/ ["品牌可见度"]
+    │   │   ├── 📂 chinacheck/ ["CC MCP + 缓存"]
+    │   │   ├── 📂 discover/ ["关键词发现"]
+    │   │   ├── 📂 history/ ["审计历史存储"]
+    │   │   ├── 📂 knowledge/ ["知识库"]
+    │   │   ├── 📂 offlinedb/ ["工商库"]
+    │   │   ├── 📂 readiness/ ["就绪度"]
+    │   │   ├── 📂 scheduler/ ["调度器"]
+    │   │   ├── 📂 topsource/ ["TopSource"]
+    │   │   ├── 📂 vertical/ ["行业识别"]
+    │   │   └── 📂 report/ ["HTML 报告"]
+    │   ├── 📂 config/ ["环境变量 + 预设"]
+    │   ├── 📂 dbprovider/ ["数据库工厂层"]
+    │   ├── 📂 llm/ ["LLM 管理器"]
+    │   ├── 📂 optimizer/ ["9法策略 + AutoGEO"]
+    │   ├── 📂 scorer/ ["评分器"]
+    │   └── 📂 server/ ["REST API + go:embed 前端"]
+    ├── 📂 scripts/ ["运行部署脚本"]
+    ├── 📂 .github/workflows/ ["CI + Release"]
+    ├── 📂 docs/ ["架构 + 入门文档"]
+    ├── Dockerfile
+    ├── Makefile
+    └── .env.example
 ```
 
-暴露的核心工具：`brand_audit` / `optimize` / `search_companies` / `chinacheck` / `readiness`
+---
 
-## 技术架构
+## 🔧 设计决策
 
-详细架构图和数据流请见 [docs/architecture.md](docs/architecture.md)。
+```mermaid
+flowchart TD
+    A["零依赖部署原则"] --> A1["go:embed 单文件前端"]
+    A --> A2["纯 Go SQLite 驱动<br/>modernc.org/sqlite"]
+    A --> A3["编译后单二进制"]
 
-### 项目结构
+    B["按功能选型数据库"] --> B1["三层抽象接口<br/>Store/OfflineStore/CacheStore"]
+    B --> B2["环境变量切换后端"]
+    B --> B3["默认全部零依赖"]
 
-```
-my-geo/
-├── cmd/geo/                 # CLI 入口 + 子命令
-├── pkg/geo/                 # 公开 API（Optimize/Score/Analyze）
-├── internal/
-│   ├── adapter/             # 13 个 AI 引擎适配器
-│   ├── analyzer/            # GEO 信号分析器
-│   ├── brand/               # 品牌可见度审计
-│   │   ├── chinacheck/      # China-Check MCP 客户端 + 缓存
-│   │   ├── history/         # 审计历史时序存储（SQLite/MySQL）
-│   │   ├── knowledge/       # SinoFacts 知识库
-│   │   ├── offlinedb/       # 离线工商库（SQLite/DuckDB）
-│   │   ├── scheduler/       # 定时审计调度器
-│   │   ├── readiness/       # 8 维 AI 就绪度
-│   │   ├── topsource/       # Top Source 归因
-│   │   ├── vertical/        # 行业类型识别
-│   │   ├── localseo/        # Local SEO
-│   │   ├── externalsignals/  # 外部信号
-│   │   ├── social/          # 社媒情感
-│   │   ├── kol/             # KOL 情报
-│   │   ├── report/          # PDF 报告导出
-│   │   └── mcpserver/       # MCP Server
-│   ├── config/              # 引擎预设 + 环境变量
-│   ├── dbprovider/          # 数据库后端工厂
-│   ├── llm/                 # LLM 管理器
-│   ├── models/              # 核心数据模型
-│   ├── optimizer/           # 优化器 + 9 法策略 + AutoGEO
-│   ├── scorer/              # GEO 评分器
-│   └── server/              # REST API + Web UI（go:embed）
-├── scripts/                 # 运行/部署脚本
-├── Dockerfile               # 多阶段构建
-├── Makefile                 # 构建/测试/部署
-└── .env.example             # 环境变量模板
+    C["数据优先级策略"] --> C1["① 工商实时"]
+    C --> C2["② 离线历史"]
+    C --> C3["③ 知识库"]
+    C --> C4["④ 联网搜索"]
+    C --> C5["⑤ LLM 自身"]
 ```
 
-### 关键设计决策
+---
 
-- **零依赖部署**：Web 前端通过 `go:embed` 内嵌为单文件，SQLite 使用纯 Go 驱动（`modernc.org/sqlite`），编译后单个二进制即可运行
-- **按功能选型数据库**：不同模块按数据特征选择最合适的后端，通过环境变量切换，默认全部零依赖
-- **数据优先级策略**：工商实时 > 离线历史 > 知识库 > 联网搜索 > LLM 自身知识
-- **接口抽象**：所有数据库模块通过 `Store` / `OfflineStore` / `CacheStore` 接口解耦，上游零改动切换后端
+## 🚦 CI/CD
 
-## CI/CD
+```mermaid
+flowchart LR
+    subgraph CI["CI 工作流"]
+        PUSH["Push / PR"] --> VET["go vet"]
+        VET --> BUILD["go build"]
+        BUILD --> TEST["go test -race -cover"]
+        TEST --> CROSS["6 平台交叉编译<br/>linux/darwin/windows"]
+    end
 
-项目内置两个 GitHub Actions 工作流：
+    subgraph RELEASE["Release 工作流"]
+        TAG["推送 v* tag<br/>或手动触发"] --> T2["测试通过 ✓"]
+        T2 --> T3["交叉编译 6 平台"]
+        T3 --> T4["打包 tar.gz/zip"]
+        T4 --> T5["生成 SHA256 校验"]
+        T5 --> T6["auto-generate release notes"]
+        T6 --> T7["创建 GitHub Release 🚀"]
+    end
 
-### CI（自动检查）
-- **触发**：每次 push 到 main / 每次 PR
-- **内容**：`go vet` + `go build` + `go test -race -cover` + 6 平台交叉编译验证
-
-### Release（打包发布）
-- **触发**：推送 `v*` 标签，或手动在 Actions 页面触发
-- **内容**：测试通过后，交叉编译 6 平台二进制，打包 tar.gz/zip + SHA256 校验，自动创建 GitHub Release
+    style CI fill:#dbeafe,stroke:#2563eb
+    style RELEASE fill:#dcfce7,stroke:#16a34a
+```
 
 ```bash
 # 发布新版本
 git tag v0.1.0
 git push origin v0.1.0
-
-# 或手动触发（GitHub Actions 页面 → Release → Run workflow）
 ```
-
-支持的平台：
 
 | OS | amd64 | arm64 |
 |---|---|---|
@@ -283,12 +455,29 @@ git push origin v0.1.0
 | macOS | tar.gz | tar.gz (Apple Silicon) |
 | Windows | zip | zip |
 
-## 学术参考
+---
 
-- **Princeton GEO** (KDD 2024) — 9 种 GEO 优化策略与效果系数
-- **AutoGEO** (CMU/ICLR 2026) — GEO/GEU 双评分体系与规则提取
-- **Claude SEO** — BVS 0-100 加权健康评分维度参考
+## 📚 学术参考
 
-## 许可证
+```mermaid
+graph LR
+    subgraph KDD2024["Princeton GEO (KDD 2024)"]
+        S1["9 种优化策略效果系数<br/>Cite Sources +42.6% 等"]
+    end
+    subgraph ICLR2026["AutoGEO (CMU/ICLR 2026)"]
+        S2["GEO/GEU 双评分体系<br/>Precision/Recall/Clarity/Insight"]
+    end
+    subgraph ClaudeSEO["Claude SEO"]
+        S3["BVS 0-100 加权维度<br/>内容质量 23%/技术 SEO 22% 等"]
+    end
 
-MIT License
+    style KDD2024 fill:#fee2e2,stroke:#dc2626
+    style ICLR2026 fill:#e0e7ff,stroke:#4f46e5
+    style ClaudeSEO fill:#dcfce7,stroke:#16a34a
+```
+
+---
+
+## 📜 许可证
+
+**MIT License** — 自由使用、修改、分发。
