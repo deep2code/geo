@@ -4,6 +4,13 @@
 
 基于 Princeton GEO 论文 (KDD 2024) 的 9 种优化策略，融合 AutoGEO (ICLR 2026) 的 GEO/GEU 双评分体系，面向中文市场深度本地化。
 
+## 📖 文档
+
+| 文档 | 说明 |
+|---|---|
+| [入门指南](docs/getting-started.md) | GEO 是什么、为什么需要、5 分钟上手、内容优化实战、品牌审计指南 |
+| [架构文档](docs/architecture.md) | 系统全景、数据流、数据库选型、10+ Mermaid 图表 |
+
 ## 核心能力
 
 ```
