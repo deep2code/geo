@@ -245,6 +245,34 @@ my-geo/
 - **数据优先级策略**：工商实时 > 离线历史 > 知识库 > 联网搜索 > LLM 自身知识
 - **接口抽象**：所有数据库模块通过 `Store` / `OfflineStore` / `CacheStore` 接口解耦，上游零改动切换后端
 
+## CI/CD
+
+项目内置两个 GitHub Actions 工作流：
+
+### CI（自动检查）
+- **触发**：每次 push 到 main / 每次 PR
+- **内容**：`go vet` + `go build` + `go test -race -cover` + 6 平台交叉编译验证
+
+### Release（打包发布）
+- **触发**：推送 `v*` 标签，或手动在 Actions 页面触发
+- **内容**：测试通过后，交叉编译 6 平台二进制，打包 tar.gz/zip + SHA256 校验，自动创建 GitHub Release
+
+```bash
+# 发布新版本
+git tag v0.1.0
+git push origin v0.1.0
+
+# 或手动触发（GitHub Actions 页面 → Release → Run workflow）
+```
+
+支持的平台：
+
+| OS | amd64 | arm64 |
+|---|---|---|
+| Linux | tar.gz | tar.gz |
+| macOS | tar.gz | tar.gz (Apple Silicon) |
+| Windows | zip | zip |
+
 ## 学术参考
 
 - **Princeton GEO** (KDD 2024) — 9 种 GEO 优化策略与效果系数

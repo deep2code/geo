@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ─── 测试 ───
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test -race -cover ./...
+
+  # ─── 多平台交叉编译 + Release ───
+  release:
+    name: Release
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build all platforms
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          BUILD_AT: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+        run: |
+          mkdir -p dist
+          LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}"
+
+          # 定义目标平台
+          PLATFORMS=(
+            "linux/amd64"
+            "linux/arm64"
+            "darwin/amd64"
+            "darwin/arm64"
+            "windows/amd64"
+            "windows/arm64"
+          )
+
+          for platform in "${PLATFORMS[@]}"; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            OUTPUT="dist/geo-${GOOS}-${GOARCH}"
+
+            # Windows 需要加 .exe 后缀
+            if [ "$GOOS" = "windows" ]; then
+              OUTPUT="${OUTPUT}.exe"
+            fi
+
+            echo "📦 构建 ${GOOS}/${GOARCH} ..."
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+              go build -trimpath -ldflags "${LDFLAGS}" \
+              -o "${OUTPUT}" ./cmd/geo
+
+            # 打包 tar.gz（Windows 用 zip）
+            ARCHIVE="dist/geo-${GOOS}-${GOARCH}-${VERSION}"
+            if [ "$GOOS" = "windows" ]; then
+              cd dist && zip -q "$(basename ${ARCHIVE}).zip" "$(basename ${OUTPUT})" && cd ..
+            else
+              tar -czf "${ARCHIVE}.tar.gz" -C dist "$(basename ${OUTPUT})"
+            fi
+
+            echo "✓ ${ARCHIVE} 完成"
+          done
+
+          # 生成 checksums
+          cd dist
+          sha256sum geo-*-${VERSION}.tar.gz geo-*-${VERSION}.zip > checksums-${VERSION}.txt
+          cd ..
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # 获取上一个 tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            NOTES=$(git log --pretty=format:"- %s (%h)" --no-merges -20)
+          fi
+
+          # 写入文件，避免多行变量问题
+          {
+            echo "## GEO ${{ steps.tag.outputs.version }}"
+            echo ""
+            echo "### Changes"
+            echo ""
+            echo "$NOTES"
+            echo ""
+            echo "### Download"
+            echo ""
+            echo "| Platform | File |"
+            echo "|---|---|"
+            echo "| Linux amd64 | geo-linux-amd64-${{ steps.tag.outputs.version }}.tar.gz |"
+            echo "| Linux arm64 | geo-linux-arm64-${{ steps.tag.outputs.version }}.tar.gz |"
+            echo "| macOS amd64 | geo-darwin-amd64-${{ steps.tag.outputs.version }}.tar.gz |"
+            echo "| macOS arm64 (Apple Silicon) | geo-darwin-arm64-${{ steps.tag.outputs.version }}.tar.gz |"
+            echo "| Windows amd64 | geo-windows-amd64-${{ steps.tag.outputs.version }}.zip |"
+            echo "| Windows arm64 | geo-windows-arm64-${{ steps.tag.outputs.version }}.zip |"
+            echo ""
+            echo "### Verify"
+            echo ""
+            echo '```bash'
+            echo "sha256sum -c checksums-${{ steps.tag.outputs.version }}.txt"
+            echo '```'
+          } > release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.version }}
+          name: GEO ${{ steps.tag.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.version, '-') }}
+          files: |
+            dist/geo-*-${{ steps.tag.outputs.version }}.tar.gz
+            dist/geo-*-${{ steps.tag.outputs.version }}.zip
+            dist/checksums-${{ steps.tag.outputs.version }}.txt
