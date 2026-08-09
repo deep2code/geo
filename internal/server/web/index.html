@@ -452,6 +452,7 @@
 <div class="tabs">
   <div class="tab active" data-tab="content" onclick="switchTab('content')">内容优化</div>
   <div class="tab" data-tab="brand" onclick="switchTab('brand')">品牌审计</div>
+  <div class="tab" data-tab="discover" onclick="switchTab('discover')">关键词发现</div>
 </div>
 
 <!-- ===== 内容优化 Tab ===== -->
@@ -911,6 +912,28 @@
     </div>
   </div>
 
+</div>
+
+<!-- ===== 关键词发现 Tab ===== -->
+<div class="container" id="tab-discover" style="display:none">
+  <h2>关键词发现 → 自动 GEO 报告</h2>
+  <p style="color:var(--text-muted);margin-bottom:16px">输入一个关键词（行业/产品/公司名），系统自动搜索匹配公司、生成品牌画像并输出 GEO 报告。</p>
+
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <input id="discoverKeyword" class="input" placeholder="输入关键词，如：短视频、在线教育、云计算..." style="flex:1" onkeydown="if(event.key==='Enter')doDiscover()">
+    <button class="btn btn-primary" onclick="doDiscover()">搜索公司</button>
+  </div>
+
+  <!-- 候选列表 -->
+  <div id="discoverCandidates" style="display:none">
+    <h3 style="margin-bottom:8px">匹配到的公司（点击选择）</h3>
+    <div id="discoverCandList"></div>
+  </div>
+
+  <!-- 报告结果 -->
+  <div id="discoverReport" style="display:none;margin-top:20px">
+    <div id="discoverReportContent"></div>
+  </div>
 </div>
 
 <div class="loading-overlay" id="loading"><div class="spinner"></div></div>
@@ -2872,6 +2895,159 @@ function renderKOLSOVBarChart(top) {
     <div style="font-size:10px;color:var(--text-dim);margin-top:4px;line-height:1.5">
       <span style="color:var(--success)">■</span> 多引擎覆盖　<span style="color:var(--primary)">■</span> 单引擎覆盖
     </div>`;
+}
+
+// ===== 关键词发现 =====
+let discoverKeywordCache = '';
+async function doDiscover() {
+  const kw = document.getElementById('discoverKeyword').value.trim();
+  if (!kw) { alert('请输入关键词'); return; }
+  discoverKeywordCache = kw;
+  showLoading(true);
+  document.getElementById('discoverCandidates').style.display = 'none';
+  document.getElementById('discoverReport').style.display = 'none';
+  try {
+    const resp = await fetch(API + '/brand/discover', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({keyword: kw})
+    });
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    if (!data.candidates || data.candidates.length === 0) {
+      document.getElementById('discoverCandList').innerHTML = '<div style="color:var(--text-muted)">未找到匹配公司。请尝试导入工商数据或使用更具体的关键词。</div>';
+      document.getElementById('discoverCandidates').style.display = 'block';
+      return;
+    }
+    renderDiscoverCandidates(data.candidates);
+  } catch(e) { alert('请求失败: ' + e.message); }
+  finally { showLoading(false); }
+}
+
+function renderDiscoverCandidates(candidates) {
+  const html = candidates.map((c, i) => {
+    const tag = c.source === 'sinofacts' ? '知识库' : '工商库';
+    let info = `<span class="tag" style="background:var(--tag-bg);color:var(--tag-text)">${tag}</span>`;
+    if (c.province) info += ` <span style="color:var(--text-dim)">${c.province}</span>`;
+    if (c.industry) info += ` <span style="color:var(--text-dim)">${c.industry}</span>`;
+    info += ` <span style="color:var(--primary)">匹配${Math.round(c.score||0)}%</span>`;
+    let detail = '';
+    if (c.business_scope) detail += `<div style="font-size:11px;color:var(--text-dim);margin-top:4px">经营范围: ${c.business_scope.substring(0,100)}${c.business_scope.length>100?'...':''}</div>`;
+    if (c.summary) detail += `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${c.summary}</div>`;
+    return `<div class="card" style="cursor:pointer;margin-bottom:8px;padding:12px" onclick="selectDiscoverCandidate(${i})">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600">${c.name}</span>
+        ${info}
+      </div>
+      ${detail}
+    </div>`;
+  }).join('');
+  document.getElementById('discoverCandList').innerHTML = html;
+  document.getElementById('discoverCandidates').style.display = 'block';
+  window._discoverCands = candidates;
+}
+
+async function selectDiscoverCandidate(idx) {
+  const cand = window._discoverCands[idx];
+  if (!cand) return;
+  showLoading(true);
+  document.getElementById('discoverCandidates').style.display = 'none';
+  try {
+    const resp = await fetch(API + '/brand/discover/report', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({candidate: cand, keyword: discoverKeywordCache})
+    });
+    const report = await resp.json();
+    if (report.error) { alert(report.error); return; }
+    renderDiscoverReport(report);
+  } catch(e) { alert('请求失败: ' + e.message); }
+  finally { showLoading(false); }
+}
+
+function renderDiscoverReport(r) {
+  let html = `<h3 style="margin-bottom:12px">GEO 报告 — ${r.company_name}</h3>`;
+
+  // 品牌画像
+  html += `<div class="card" style="margin-bottom:12px;padding:14px">
+    <div style="font-weight:600;color:var(--primary);margin-bottom:8px">品牌画像</div>
+    <div style="font-size:13px;line-height:1.8">
+      <div>品牌名: <b>${r.profile.name}</b></div>
+      ${r.profile.aliases&&r.profile.aliases.length?`<div>别名: ${r.profile.aliases.join(', ')}</div>`:''}
+      ${r.profile.domain?`<div>官网: ${r.profile.domain}</div>`:''}
+      ${r.profile.industry?`<div>行业: ${r.profile.industry}</div>`:''}
+      ${r.profile.category?`<div>品类: ${r.profile.category}</div>`:''}
+      ${r.profile.products&&r.profile.products.length?`<div>产品: ${r.profile.products.join(', ')}</div>`:''}
+      <div>行业类型: ${r.vertical}</div>
+      <div style="margin-top:6px">查询词 (${r.profile.prompts.length}):</div>
+      <ul style="margin:4px 0 0 20px;font-size:12px">${r.profile.prompts.map(p=>`<li>${p}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+
+  // 品牌审计
+  if (r.brand_report) {
+    const br = r.brand_report;
+    const scoreColor = br.score >= 80 ? 'var(--success)' : br.score >= 60 ? 'var(--warning)' : 'var(--danger)';
+    html += `<div class="card" style="margin-bottom:12px;padding:14px">
+      <div style="font-weight:600;color:var(--primary);margin-bottom:8px">品牌可见度审计</div>
+      <div style="display:flex;gap:24px;align-items:center;margin-bottom:12px">
+        <div style="text-align:center">
+          <div style="font-size:36px;font-weight:700;color:${scoreColor}">${br.score.toFixed(1)}</div>
+          <div style="font-size:12px;color:var(--text-dim)">BVS 评分 / 等级 ${br.grade}</div>
+        </div>
+        ${br.tier?`<div><span class="tag" style="background:var(--tag-bg)">${br.tier}</span></div>`:''}
+      </div>`;
+    if (br.engine_stats && br.engine_stats.length) {
+      html += `<table style="width:100%;font-size:12px;border-collapse:collapse">
+        <tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px">引擎</th><th>提及率</th><th>引用率</th><th>声量份额</th></tr>`;
+      br.engine_stats.forEach(es => {
+        html += `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:4px">${es.engine}</td>
+          <td style="text-align:center">${es.mention_rate.toFixed(0)}%</td>
+          <td style="text-align:center">${es.citation_rate.toFixed(0)}%</td>
+          <td style="text-align:center">${es.share_of_voice.toFixed(0)}%</td>
+        </tr>`;
+      });
+      html += `</table>`;
+    }
+    if (br.content_gaps && br.content_gaps.length) {
+      html += `<div style="margin-top:10px;font-size:12px;color:var(--warning)">内容缺口:</div>`;
+      br.content_gaps.forEach(g => { html += `<div style="font-size:12px;color:var(--text-dim)">⚠ ${g.suggested_topic}</div>`; });
+    }
+    html += `</div>`;
+  } else {
+    html += `<div class="card" style="margin-bottom:12px;padding:14px;color:var(--text-muted)">品牌可见度审计未执行（未配置 AI 引擎 Key）</div>`;
+  }
+
+  // AI 就绪度
+  if (r.readiness_result) {
+    const rd = r.readiness_result;
+    const rdColor = rd.total_score >= 80 ? 'var(--success)' : rd.total_score >= 60 ? 'var(--warning)' : 'var(--danger)';
+    html += `<div class="card" style="margin-bottom:12px;padding:14px">
+      <div style="font-weight:600;color:var(--primary);margin-bottom:8px">AI 就绪度</div>
+      <div style="display:flex;gap:24px;align-items:center;margin-bottom:10px">
+        <div style="text-align:center">
+          <div style="font-size:36px;font-weight:700;color:${rdColor}">${rd.total_score.toFixed(1)}</div>
+          <div style="font-size:12px;color:var(--text-dim)">就绪度 / 等级 ${rd.grade}</div>
+        </div>
+      </div>`;
+    rd.checks.forEach(c => {
+      const icon = c.status==='pass'?'✓':c.status==='warn'?'⚠':'✗';
+      const color = c.status==='pass'?'var(--success)':c.status==='warn'?'var(--warning)':'var(--danger)';
+      html += `<div style="font-size:12px;margin-bottom:4px"><span style="color:${color}">${icon}</span> ${c.name} — <span style="color:var(--text-dim)">${c.detail}</span></div>`;
+    });
+    html += `</div>`;
+  }
+
+  // 优化建议
+  if (r.suggestions && r.suggestions.length) {
+    html += `<div class="card" style="padding:14px">
+      <div style="font-weight:600;color:var(--primary);margin-bottom:8px">优化建议</div>
+      <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">`;
+    r.suggestions.forEach(s => { html += `<li>${s}</li>`; });
+    html += `</ol></div>`;
+  }
+
+  document.getElementById('discoverReportContent').innerHTML = html;
+  document.getElementById('discoverReport').style.display = 'block';
 }
 </script>
 </body>

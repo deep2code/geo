@@ -171,6 +171,7 @@ geo vertical        行业类型自动识别
 geo localseo        Local SEO / GMB 审计
 geo externalsignals 外部信号分析（社媒情感 + KOL）
 geo autorewrite     AutoGEO 规则提取与重写
+geo discover        关键词→公司推断→自动 GEO 报告
 ```
 
 ## API 接口
@@ -193,6 +194,8 @@ geo autorewrite     AutoGEO 规则提取与重写
 | POST | `/api/v1/brand/localseo/audit` | Local SEO 审计 |
 | POST | `/api/v1/autorewriter/rewrite` | AutoGEO 规则重写 |
 | GET | `/api/v1/brand/readiness/ci-gate` | AI 就绪度 CI 闸门 |
+| POST | `/api/v1/brand/discover` | 关键词搜索匹配公司 |
+| POST | `/api/v1/brand/discover/report` | 选中公司后生成完整 GEO 报告 |
 
 ## MCP Server
 

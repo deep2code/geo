@@ -23,8 +23,10 @@ import (
 
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/chinacheck"
+	"my-geo/internal/brand/discover"
 	"my-geo/internal/brand/externalsignals"
 	"my-geo/internal/brand/history"
+	"my-geo/internal/brand/knowledge"
 	"my-geo/internal/brand/kol"
 	"my-geo/internal/brand/localseo"
 	"my-geo/internal/brand/market"
@@ -363,6 +365,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/autorewriter/geu", s.handleAutoRewriteGEU)
 	// AI 就绪度 CI 闸门接口（扩展 8 维 + 阈值判定）
 	s.mux.HandleFunc("/api/v1/brand/readiness/ci-gate", s.handleReadinessCIGate)
+	// 关键词发现与自动 GEO 报告
+	s.mux.HandleFunc("/api/v1/brand/discover", s.handleBrandDiscover)
+	s.mux.HandleFunc("/api/v1/brand/discover/report", s.handleBrandDiscoverReport)
 }
 
 // handleWeb 返回内嵌的 Web 前端页面。
@@ -1899,4 +1904,72 @@ func (s *Server) handleReadinessCIGate(w http.ResponseWriter, r *http.Request) {
 	}
 	gate := readiness.CIGateReportWithThreshold(result, threshold)
 	writeJSON(w, http.StatusOK, gate)
+}
+
+// handleBrandDiscover 关键词→公司推断搜索。
+// POST /api/v1/brand/discover
+// 请求体: {"keyword":"短视频"}
+// 响应: {"keyword":"短视频","candidates":[...]}
+func (s *Server) handleBrandDiscover(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		Keyword string `json:"keyword"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.Keyword) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "keyword 不能为空"})
+		return
+	}
+
+	var offlineDB offlinedb.DB
+	if s.brandEngine != nil {
+		offlineDB = s.brandEngine.OfflineDB()
+	}
+	var kb *knowledge.Knowledge
+	if s.brandEngine != nil {
+		kb = s.brandEngine.Knowledge()
+	}
+
+	result, err := discover.Discover(r.Context(), body.Keyword, offlineDB, kb)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleBrandDiscoverReport 基于选中的公司候选生成完整 GEO 报告。
+// POST /api/v1/brand/discover/report
+// 请求体: {"candidate":{...},"keyword":"短视频"}
+// 响应: 完整 GEOReport（品牌画像 + 审计 + 就绪度 + 建议）
+func (s *Server) handleBrandDiscoverReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		Candidate discover.Candidate `json:"candidate"`
+		Keyword   string             `json:"keyword"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.Candidate.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "candidate.name 不能为空"})
+		return
+	}
+
+	report, err := discover.GenerateReport(r.Context(), &body.Candidate, body.Keyword, s.brandEngine)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
 }
