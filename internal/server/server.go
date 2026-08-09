@@ -1,0 +1,1901 @@
+// Package server 提供 GEO 系统的 REST API 服务与 Web 前端界面。
+//
+// 基于 net/http 标准库，路由设计参考 GEORank 的 REST API：
+//   GET  /                     Web 前端工作台界面
+//   GET  /api/v1/health        健康检查
+//   GET  /api/v1/strategies    列出可用策略
+//   POST /api/v1/analyze       分析内容信号
+//   POST /api/v1/score         评分
+//   POST /api/v1/optimize      优化内容
+package server
+
+import (
+	"context"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"my-geo/internal/brand"
+	"my-geo/internal/brand/chinacheck"
+	"my-geo/internal/brand/externalsignals"
+	"my-geo/internal/brand/history"
+	"my-geo/internal/brand/kol"
+	"my-geo/internal/brand/localseo"
+	"my-geo/internal/brand/market"
+	"my-geo/internal/brand/offlinedb"
+	"my-geo/internal/brand/readiness"
+	"my-geo/internal/brand/report"
+	"my-geo/internal/brand/scheduler"
+	"my-geo/internal/brand/social"
+	"my-geo/internal/brand/topsource"
+	"my-geo/internal/brand/vertical"
+	"my-geo/internal/config"
+	"my-geo/internal/llm"
+	"my-geo/internal/models"
+	"my-geo/internal/optimizer/autorewriter"
+	"my-geo/pkg/geo"
+)
+
+//go:embed web/index.html
+var webFS embed.FS
+
+// Server GEO REST API 服务。
+type Server struct {
+	engine      *geo.Engine
+	brandEngine *brand.Engine
+	scheduler   *scheduler.Scheduler
+	addr        string
+	mux         *http.ServeMux
+}
+
+// New 创建 API 服务。
+//
+// brandEngine 为 nil 时仍可正常启动（内容优化功能不受影响），仅品牌审计接口
+// 返回 503。此处打印启动警告以便运维快速发现。
+func New(engine *geo.Engine, addr string) *Server {
+	be := newBrandEngineFromEnv()
+	if be == nil {
+		fmt.Fprintln(os.Stderr, "[geo server 警告] 品牌审计引擎未初始化（无可用适配器）。"+
+			"POST /api/v1/brand/audit 将返回 503。请配置各引擎 API Key 环境变量。")
+	} else if os.Getenv("GEO_LLM_KEY") == "" {
+		fmt.Fprintln(os.Stderr, "[geo server 警告] 未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
+	}
+	s := &Server{
+		engine:      engine,
+		brandEngine: be,
+		addr:        addr,
+		mux:         http.NewServeMux(),
+	}
+	// 初始化定时审计调度器（默认不启动，需通过 API 或配置文件启用）
+	if be != nil {
+		s.scheduler = newSchedulerFromEnv(be)
+		if s.scheduler != nil {
+			s.scheduler.Start()
+		}
+	}
+	s.registerRoutes()
+	return s
+}
+
+// newBrandEngineFromEnv 从环境变量构建品牌可见度引擎。
+//
+// 各引擎 API Key 通过独立环境变量配置（GEO_GLM_KEY 等），
+// 未配置的引擎返回模拟响应，不影响流程运行。
+// 若适配器创建全部失败或为 0 个，返回 nil 并打印启动警告。
+// China-Check MCP（工商核验）默认启用（免鉴权、免费），可通过
+// GEO_CHINACHECK_ENABLED=false 显式关闭，或 GEO_CHINACHECK_URL 指定自定义端点。
+// 离线工商 SQLite 库默认启用（~/.local/share/geo/geo_offline_companies.db），即便空库也会打开以便后续写入。
+func newBrandEngineFromEnv() *brand.Engine {
+	adapters, errs := config.BrandAdaptersFromEnv()
+	for eng, e := range errs {
+		fmt.Fprintf(os.Stderr, "[geo server 警告] %s 适配器创建失败: %v\n", eng, e)
+	}
+	if len(adapters) == 0 {
+		return nil
+	}
+	llmMgr := newLLMManagerFromEnv()
+	opts := []brand.Option{
+		brand.WithAdapters(adapters),
+		brand.WithLLM(llmMgr),
+	}
+	// 注入 China-Check 工商核验客户端（默认启用，可通过环境变量关闭）
+	if cc := newChinaCheckFromEnv(); cc != nil {
+		opts = append(opts, brand.WithChinaCheck(cc))
+		fmt.Fprintln(os.Stderr, "[geo server] China-Check MCP 工商核验已启用（GSXT/SAMR 官方数据，免鉴权免费）。")
+	}
+	// 注入离线工商 SQLite 库（默认启用，空库也打开）
+	if odb := newOfflineDBFromEnv(); odb != nil {
+		opts = append(opts, brand.WithOfflineDB(odb))
+		st, err := odb.Stats(context.Background())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[geo server 警告] 离线工商库打开成功但统计失败: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "[geo server] 离线工商 SQLite 库已启用：%s（共 %d 条，%d 字节） — 种子数据来源: guichong/- 仓库 json 分支。\n",
+				st.Path, st.Count, st.FileSize)
+		}
+	}
+	// 注入审计历史 SQLite 库（默认启用）
+	if hdb := newHistoryDBFromEnv(); hdb != nil {
+		opts = append(opts, brand.WithHistoryDB(hdb))
+		fmt.Fprintf(os.Stderr, "[geo server] 审计历史 SQLite 库已启用：%s\n", hdb.Path())
+	}
+	return brand.New(opts...)
+}
+
+// BuildBrandEngineFromEnv 从环境变量构建品牌可见度引擎（导出版本，供 MCP Server 等复用）。
+//
+// 内部逻辑与 newBrandEngineFromEnv 完全一致，仅做导出封装，避免在 MCP Server
+// 命令中重复实现 ChinaCheck / OfflineDB / LLM / HistoryDB 的环境变量解析逻辑。
+func BuildBrandEngineFromEnv() *brand.Engine {
+	return newBrandEngineFromEnv()
+}
+
+// newHistoryDBFromEnv 打开/创建审计历史 SQLite 库。
+//
+// 环境变量：
+//   GEO_HISTORY_DB_ENABLED=true/false   总开关（默认 true）
+//   GEO_HISTORY_DB_PATH=/path/to.db     自定义库文件路径
+func newHistoryDBFromEnv() *history.DB {
+	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
+	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
+		fmt.Fprintln(os.Stderr, "[geo server] 审计历史 SQLite 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
+		return nil
+	}
+	path := config.Env("GEO_HISTORY_DB_PATH", "")
+	db, err := history.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[geo server 警告] 审计历史库打开失败（将无历史记录）: %v\n", err)
+		return nil
+	}
+	return db
+}
+
+// newSchedulerFromEnv 从环境变量构建定时审计调度器。
+//
+// 环境变量：
+//   GEO_SCHEDULER_ENABLED=true/false     总开关（默认 false，需显式开启）
+//   GEO_SCHEDULER_WEBHOOK=https://...    全局告警 webhook
+//   GEO_SCHEDULER_CONFIG=/path/to.json   定时审计配置文件（JSON 数组）
+func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
+	enabled := config.Env("GEO_SCHEDULER_ENABLED", "false")
+	if !(strings.EqualFold(enabled, "true") || strings.EqualFold(enabled, "1") || strings.EqualFold(enabled, "on")) {
+		return nil
+	}
+	webhook := config.Env("GEO_SCHEDULER_WEBHOOK", "")
+	configPath := config.Env("GEO_SCHEDULER_CONFIG", "")
+	if configPath == "" {
+		fmt.Fprintln(os.Stderr, "[geo server 警告] 定时审计已启用但未配置 GEO_SCHEDULER_CONFIG，调度器为空。")
+		return scheduler.New(be, be.HistoryDB(), nil, webhook)
+	}
+	// 读取配置文件
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[geo server 警告] 读取调度配置文件失败: %v\n", err)
+		return nil
+	}
+	var configs []scheduler.ScheduleConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		fmt.Fprintf(os.Stderr, "[geo server 警告] 解析调度配置文件失败: %v\n", err)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "[geo server] 定时审计调度器已加载 %d 个品牌配置\n", len(configs))
+	return scheduler.New(be, be.HistoryDB(), configs, webhook)
+}
+
+// newChinaCheckFromEnv 从环境变量构建 China-Check MCP 客户端（默认启用 + 默认启用本地持久化缓存）。
+// 未显式关闭时默认创建并连接官方公共端点，缓存文件位于 ~/.cache/geo/geo_chinacheck_cache.jsonl。
+//
+// 环境变量：
+//   GEO_CHINACHECK_ENABLED=true/false        总开关（默认 true）
+//   GEO_CHINACHECK_URL=https://...           自定义 MCP endpoint
+//   GEO_CHINACHECK_LANG=zh/en/ja/...         enum 字段翻译语言（默认 zh）
+//   GEO_CHINACHECK_CACHE_ENABLED=true/false  缓存开关（默认 true）
+//   GEO_CHINACHECK_CACHE_PATH=/var/xx.jsonl  自定义缓存文件路径
+//   GEO_CHINACHECK_CACHE_MAX_ITEMS=20000     最大缓存条目（默认 10000）
+//   GEO_CHINACHECK_CACHE_TTL_HOURS=720       单条目 TTL 小时（默认 720=30 天）
+func newChinaCheckFromEnv() *chinacheck.Client {
+	enabled := config.Env("GEO_CHINACHECK_ENABLED", "true")
+	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
+		fmt.Fprintln(os.Stderr, "[geo server] China-Check MCP 已通过 GEO_CHINACHECK_ENABLED=false 禁用。")
+		return nil
+	}
+	opts := []chinacheck.Option{}
+	if url := config.Env("GEO_CHINACHECK_URL", ""); url != "" {
+		opts = append(opts, chinacheck.WithURL(url))
+	}
+	if lang := config.Env("GEO_CHINACHECK_LANG", ""); lang != "" {
+		opts = append(opts, chinacheck.WithLanguage(lang))
+	}
+
+	// ---------- 缓存层（默认启用）----------
+	cacheEnabled := config.Env("GEO_CHINACHECK_CACHE_ENABLED", "true")
+	if !(strings.EqualFold(cacheEnabled, "false") || strings.EqualFold(cacheEnabled, "0") || strings.EqualFold(cacheEnabled, "off")) {
+		cacheOpts := []chinacheck.CacheOption{}
+		if maxStr := config.Env("GEO_CHINACHECK_CACHE_MAX_ITEMS", ""); maxStr != "" {
+			if n, err := strconv.Atoi(maxStr); err == nil && n > 0 {
+				cacheOpts = append(cacheOpts, chinacheck.WithMaxItems(n))
+			}
+		}
+		if ttlStr := config.Env("GEO_CHINACHECK_CACHE_TTL_HOURS", ""); ttlStr != "" {
+			if h, err := strconv.Atoi(ttlStr); err == nil && h > 0 {
+				cacheOpts = append(cacheOpts, chinacheck.WithTTL(time.Duration(h)*time.Hour))
+			}
+		}
+		cachePath := config.Env("GEO_CHINACHECK_CACHE_PATH", "")
+		ca, err := chinacheck.NewCache(cachePath, cacheOpts...)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[geo server 警告] China-Check 缓存初始化失败（将无缓存运行）: %v\n", err)
+		} else {
+			st := ca.Stats()
+			fmt.Fprintf(os.Stderr, "[geo server] China-Check MCP 本地缓存已启用：file=%s  count=%d  max=%d  ttl=%dh  size=%d bytes\n",
+				st.File, st.Count, st.MaxItems, st.TTLSeconds/3600, st.FileSizeByte)
+			opts = append(opts, chinacheck.WithCache(ca))
+		}
+	}
+
+	return chinacheck.New(opts...)
+}
+
+// newOfflineDBFromEnv 打开/创建离线工商 SQLite 库。
+//
+// 环境变量：
+//   GEO_OFFLINE_DB_ENABLED=true/false   总开关（默认 true）
+//   GEO_OFFLINE_DB_PATH=/path/to.db     自定义库文件路径
+func newOfflineDBFromEnv() *offlinedb.DB {
+	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
+	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
+		fmt.Fprintln(os.Stderr, "[geo server] 离线工商 SQLite 库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
+		return nil
+	}
+	path := config.Env("GEO_OFFLINE_DB_PATH", "")
+	db, err := offlinedb.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[geo server 警告] 离线工商库打开失败（将无离线库运行）: %v\n", err)
+		return nil
+	}
+	return db
+}
+
+// humanBytes 把字节数格式化成 2.3 MB 这种易读格式（server 内部小工具，与 CLI 独立）。
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for x := n / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
+}
+
+// newLLMManagerFromEnv 从环境变量构建 LLM 管理器（用于品牌智能补全）。
+//
+// 环境变量：GEO_LLM_KEY / GEO_LLM_BASE / GEO_LLM_MODEL
+// 未配置 key 时返回仅含 Stub 的管理器（Autocomplete 会返回错误提示）。
+func newLLMManagerFromEnv() *llm.Manager {
+	key := config.Env("GEO_LLM_KEY", "")
+	if key == "" {
+		return llm.NewManager(llm.NewStub())
+	}
+	opts := []llm.OpenAIOption{}
+	if base := config.Env("GEO_LLM_BASE", ""); base != "" {
+		opts = append(opts, llm.WithBaseURL(base))
+	}
+	if model := config.Env("GEO_LLM_MODEL", ""); model != "" {
+		opts = append(opts, llm.WithModel(model))
+	}
+	return llm.NewManager(llm.NewOpenAI(key, opts...))
+}
+
+// ListenAndServe 启动服务。
+func (s *Server) ListenAndServe() error {
+	return http.ListenAndServe(s.addr, s.withCORS(s.mux))
+}
+
+// Handler 返回 HTTP Handler（便于测试）。
+func (s *Server) Handler() http.Handler {
+	return s.withCORS(s.mux)
+}
+
+func (s *Server) registerRoutes() {
+	// Web 前端界面
+	s.mux.HandleFunc("/", s.handleWeb)
+	// REST API
+	s.mux.HandleFunc("/api/v1/health", s.handleHealth)
+	s.mux.HandleFunc("/api/v1/strategies", s.handleStrategies)
+	s.mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
+	s.mux.HandleFunc("/api/v1/score", s.handleScore)
+	s.mux.HandleFunc("/api/v1/optimize", s.handleOptimize)
+	s.mux.HandleFunc("/api/v1/brand/audit", s.handleBrandAudit)
+	s.mux.HandleFunc("/api/v1/brand/autocomplete", s.handleBrandAutocomplete)
+	s.mux.HandleFunc("/api/v1/brand/knowledge/search", s.handleBrandKnowledgeSearch)
+	// 多语言/多市场审计（#8）：返回支持的市场列表
+	s.mux.HandleFunc("/api/v1/brand/markets", s.handleBrandMarkets)
+	// 品牌可见度报告导出（HTML，可打印为 PDF）
+	s.mux.HandleFunc("/api/v1/brand/report/html", s.handleBrandReport)
+	s.mux.HandleFunc("/api/v1/brand/report/download", s.handleBrandReport)
+	// China-Check MCP 工商核验调试接口
+	s.mux.HandleFunc("/api/v1/brand/chinacheck/search", s.handleChinaCheckSearch)
+	s.mux.HandleFunc("/api/v1/brand/chinacheck/snapshot", s.handleChinaCheckSnapshot)
+	s.mux.HandleFunc("/api/v1/brand/chinacheck/cache", s.handleChinaCheckCache)
+	// 离线工商 SQLite 库调试接口
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/stats", s.handleOfflineDBStats)
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/search", s.handleOfflineDBSearch)
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/clear", s.handleOfflineDBClear)
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/provinces", s.handleOfflineDBProvinces)
+	// 审计历史时间序列接口
+	s.mux.HandleFunc("/api/v1/brand/history/list", s.handleHistoryList)
+	s.mux.HandleFunc("/api/v1/brand/history/get", s.handleHistoryGet)
+	s.mux.HandleFunc("/api/v1/brand/history/stats", s.handleHistoryStats)
+	s.mux.HandleFunc("/api/v1/brand/history/brands", s.handleHistoryBrands)
+	s.mux.HandleFunc("/api/v1/brand/history/clear", s.handleHistoryClear)
+	// 定时审计调度器接口
+	s.mux.HandleFunc("/api/v1/brand/scheduler/status", s.handleSchedulerStatus)
+	s.mux.HandleFunc("/api/v1/brand/scheduler/trigger", s.handleSchedulerTrigger)
+	// AI 可见度就绪审计接口
+	s.mux.HandleFunc("/api/v1/brand/readiness", s.handleReadinessAudit)
+	// 社媒情感监控接口（Reddit/微博/YouTube 免鉴权，Twitter/小红书 预留）
+	s.mux.HandleFunc("/api/v1/brand/social/monitor", s.handleSocialMonitor)
+	// KOL/创作者情报分析接口（从审计结果挖掘被引用最多的媒体/信息源）
+	s.mux.HandleFunc("/api/v1/brand/kol/analyze", s.handleKOLAnalyze)
+	// Top Source 归因分析接口（识别 LLM 引用的第三方权威域名）
+	s.mux.HandleFunc("/api/v1/brand/topsource/analyze", s.handleTopSourceAnalyze)
+	// 行业类型自动识别接口
+	s.mux.HandleFunc("/api/v1/brand/vertical/detect", s.handleVerticalDetect)
+	s.mux.HandleFunc("/api/v1/brand/vertical/list", s.handleVerticalList)
+	// Local SEO/GMB 审计接口
+	s.mux.HandleFunc("/api/v1/brand/localseo/audit", s.handleLocalSEOAudit)
+	// 按量付费第三方数据源接口（DataForSEO / Common Crawl）
+	s.mux.HandleFunc("/api/v1/brand/externalsignals/report", s.handleExternalSignals)
+	// AutoGEO 规则提取与改写接口
+	s.mux.HandleFunc("/api/v1/autorewriter/rules", s.handleAutoRewriteRules)
+	s.mux.HandleFunc("/api/v1/autorewriter/rewrite", s.handleAutoRewrite)
+	s.mux.HandleFunc("/api/v1/autorewriter/geu", s.handleAutoRewriteGEU)
+	// AI 就绪度 CI 闸门接口（扩展 8 维 + 阈值判定）
+	s.mux.HandleFunc("/api/v1/brand/readiness/ci-gate", s.handleReadinessCIGate)
+}
+
+// handleWeb 返回内嵌的 Web 前端页面。
+func (s *Server) handleWeb(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := webFS.ReadFile("web/index.html")
+	if err != nil {
+		http.Error(w, "页面加载失败", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"service": "geo",
+		"version": "1.0.0",
+	})
+}
+
+func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
+	infos := s.engine.StrategyInfos()
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"strategies": infos,
+		"count":      len(infos),
+	})
+}
+
+type analyzeRequest struct {
+	Content string `json:"content"`
+}
+
+func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var req analyzeRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		return
+	}
+	analysis := s.engine.Analyze(req.Content)
+	writeJSON(w, http.StatusOK, analysis)
+}
+
+func (s *Server) handleScore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var req analyzeRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		return
+	}
+	score, breakdowns := s.engine.Score(req.Content)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"score":      score,
+		"breakdowns": breakdowns,
+		"grade":      scoreToGrade(score),
+	})
+}
+
+func (s *Server) handleOptimize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var req models.OptimizationRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		return
+	}
+	resp, err := s.engine.Optimize(r.Context(), &req)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// withCORS 添加 CORS 头，便于前端调用。
+func (s *Server) withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func readJSON(r *http.Request, v interface{}) error {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 限制 10MB
+	if err != nil {
+		return fmt.Errorf("读取请求体失败: %w", err)
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("请求体为空")
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("JSON 解析失败: %w", err)
+	}
+	return nil
+}
+
+// scoreToGrade 将分数转为等级（参考 geo-optimizer-skill 的 A-F 等级）。
+func scoreToGrade(score float64) string {
+	switch {
+	case score >= 90:
+		return "A"
+	case score >= 80:
+		return "B"
+	case score >= 70:
+		return "C"
+	case score >= 60:
+		return "D"
+	default:
+		return "F"
+	}
+}
+
+// handleBrandAudit 处理品牌可见度审计请求。
+//
+// POST /api/v1/brand/audit
+// 请求体为品牌画像 JSON（brand.BrandProfile）。
+func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var profile brand.BrandProfile
+	if err := readJSON(r, &profile); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if profile.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name 不能为空"})
+		return
+	}
+	if len(profile.Prompts) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompts 不能为空"})
+		return
+	}
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		return
+	}
+	report, err := s.brandEngine.Audit(r.Context(), profile)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+// handleBrandMarkets 返回多语言/多市场审计支持的市场列表。
+//
+// GET /api/v1/brand/markets
+//
+// 返回 market.SupportedMarkets()，前端据此渲染"目标市场/查询语言"下拉框。
+// 该接口不依赖品牌引擎，即便未配置任何 AI 引擎也能正常返回。
+func (s *Server) handleBrandMarkets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"markets": market.SupportedMarkets(),
+		"count":   len(market.SupportedMarkets()),
+	})
+}
+
+// handleBrandReport 导出品牌可见度审计报告为自包含 HTML（可打印为 PDF）。
+//
+// GET /api/v1/brand/report/html?brand=xxx       在浏览器中打开 HTML 报告
+// GET /api/v1/brand/report/download?brand=xxx   以附件形式下载 HTML 文件
+//
+// 从审计历史 DB 取最新一条审计记录的 report_json，调用 report.GenerateHTML 生成。
+func (s *Server) handleBrandReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		return
+	}
+	brandName := strings.TrimSpace(r.URL.Query().Get("brand"))
+	if brandName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand 参数"})
+		return
+	}
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用（无法导出报告）"})
+		return
+	}
+	rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), brandName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if rec == nil || strings.TrimSpace(rec.ReportJSON) == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": "未找到该品牌的审计记录（请先执行一次品牌审计）",
+		})
+		return
+	}
+	var vr brand.VisibilityReport
+	if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "解析审计报告失败: " + err.Error()})
+		return
+	}
+	htmlOut, err := report.GenerateHTML(&vr)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "生成 HTML 报告失败: " + err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// download 端点设置附件头，触发浏览器下载
+	if strings.HasSuffix(r.URL.Path, "/download") {
+		filename := sanitizeFilename(brandName) + "_可见度报告.html"
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, htmlOut)
+}
+
+// sanitizeFilename 把品牌名转换为安全的文件名片段（去掉路径分隔符等危险字符）。
+func sanitizeFilename(s string) string {
+	s = strings.TrimSpace(s)
+	repl := strings.NewReplacer("/", "_", "\\", "_", ":", "_", "*", "_", "?", "_", "\"", "_", "<", "_", ">", "_", "|", "_")
+	out := repl.Replace(s)
+	if out == "" {
+		return "brand"
+	}
+	return out
+}
+
+// handleBrandAutocomplete 处理品牌智能补全请求。
+//
+// POST /api/v1/brand/autocomplete
+// 请求体: {"brand_name": "品牌名"}
+// 返回: 品牌候选画像（domain/aliases/category/products/competitors/prompts/summary）
+func (s *Server) handleBrandAutocomplete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var req brand.AutocompleteRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.BrandName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		return
+	}
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		return
+	}
+	candidate, err := s.brandEngine.Autocomplete(r.Context(), req.BrandName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, candidate)
+}
+
+// handleBrandKnowledgeSearch 搜索本地品牌知识库（SinoFacts CC BY 4.0）。
+//
+// GET  /api/v1/brand/knowledge/search?q=<query>&limit=5
+// POST /api/v1/brand/knowledge/search JSON { "q": "...", "limit": 5 }
+//
+// 返回来自 383 家中国出海软件公司的离线匹配结果，零延迟。
+func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error":  "品牌审计引擎未初始化",
+			"total":  0,
+			"result": []struct{}{},
+		})
+		return
+	}
+	kb := s.brandEngine.Knowledge()
+	if kb == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"error":  "知识库未加载",
+			"total":  0,
+			"result": []struct{}{},
+		})
+		return
+	}
+	var (
+		q     string
+		limit = 5
+	)
+	if r.Method == http.MethodGet {
+		q = r.URL.Query().Get("q")
+		if l := r.URL.Query().Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			Q     string `json:"q"`
+			Limit int    `json:"limit"`
+		}
+		if err := readJSON(r, &body); err == nil {
+			q = body.Q
+			if body.Limit > 0 {
+				limit = body.Limit
+			}
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	results := kb.Search(q, limit)
+	// 转为对前端友好的扁平对象（去掉 brand.AutocompleteCandidate 中 Prompts/Competitors 减少传输量）
+	type item struct {
+		BrandName     string   `json:"brand_name"`
+		BrandDomain   string   `json:"brand_domain,omitempty"`
+		BrandAliases  []string `json:"brand_aliases,omitempty"`
+		Industry      string   `json:"industry,omitempty"`
+		Category      string   `json:"category,omitempty"`
+		Products      []string `json:"products,omitempty"`
+		CompanyName   string   `json:"company_name,omitempty"`
+		CompanyDomain string   `json:"company_domain,omitempty"`
+		HQ            string   `json:"hq,omitempty"`
+		FoundedYear   int      `json:"founded_year,omitempty"`
+		Desc          string   `json:"description,omitempty"`
+		Source        string   `json:"source"`        // sinofacts | offlinedb
+		SourceLabel   string   `json:"source_label"`  // 前端显示的 badge 文案
+		Score         float64  `json:"score"`         // 0-100
+		// --- offlinedb 专属字段 ---
+		CreditCode      string `json:"credit_code,omitempty"`
+		LegalPerson     string `json:"legal_person,omitempty"`
+		RegisteredDate  string `json:"registered_date,omitempty"`
+		Capital         string `json:"capital,omitempty"`
+		Province        string `json:"province,omitempty"`
+		City            string `json:"city,omitempty"`
+		Address         string `json:"address,omitempty"`
+		CompanyType     string `json:"company_type,omitempty"`
+		BusinessScope   string `json:"business_scope,omitempty"`
+	}
+	out := make([]item, 0, limit*2)
+	for _, r := range results {
+		out = append(out, item{
+			BrandName:     r.Entry.BrandName,
+			BrandDomain:   r.Entry.BrandDomain,
+			BrandAliases:  r.Entry.BrandAliases,
+			Industry:      r.Entry.Industry,
+			Category:      r.Entry.Category,
+			Products:      r.Entry.Products,
+			CompanyName:   r.Entry.CompanyName,
+			CompanyDomain: r.Entry.CompanyDomain,
+			HQ:            r.Entry.Headquarters,
+			FoundedYear:   r.Entry.FoundedYear,
+			Desc:          r.Entry.DescriptionZh,
+			Source:        "sinofacts",
+			SourceLabel:   "📚 品牌知识库（SinoFacts CC BY 4.0）",
+			Score:         r.Score,
+		})
+	}
+	// 追加：离线工商 SQLite 库匹配（用剩余配额）
+	odbQuota := limit
+	if odb := s.brandEngine.OfflineDB(); odb != nil && odbQuota > 0 {
+		odbRes, err := odb.Search(r.Context(), offlinedb.SearchOptions{Query: q, TopN: odbQuota})
+		if err == nil {
+			for _, c := range odbRes {
+				desc := c.BusinessScope
+				if len(desc) > 120 {
+					desc = desc[:120] + "..."
+				}
+				out = append(out, item{
+					BrandName:      c.Name,
+					Industry:       c.Province,
+					CompanyName:    c.Name,
+					HQ:             c.City,
+					FoundedYear:    func() int { y := 0; if len(c.RegistrationDay) >= 4 { fmt.Sscanf(c.RegistrationDay[:4], "%d", &y) }; return y }(),
+					Desc:           desc,
+					Source:         "offlinedb",
+					SourceLabel:    "💾 离线工商库（1978-2019，guichong/- 种子数据）",
+					Score:          c.Score,
+					CreditCode:     c.Code,
+					LegalPerson:    c.LegalRepresentative,
+					RegisteredDate: c.RegistrationDay,
+					Capital:        c.Capital,
+					Province:       c.Province,
+					City:           c.City,
+					Address:        c.Address,
+					CompanyType:    c.Character,
+					BusinessScope:  c.BusinessScope,
+				})
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"total":            kb.N,
+		"query":            q,
+		"result":           out,
+		"sinofacts_count":  len(results),
+		"offlinedb_count":  maxInt(0, len(out)-len(results)),
+		"license":          "SinoFacts dataset under CC BY 4.0 (https://sinofacts.com); 离线工商数据源自 guichong/- 仓库（国家工商公示系统 1978-2019 公开历史数据）。",
+	})
+}
+
+// ---------- China-Check MCP 工商核验调试接口 ----------
+
+// handleChinaCheckSearch 搜索工商注册公司（China-Check MCP 调试接口）。
+//
+// GET  /api/v1/brand/chinacheck/search?q=<query>&limit=5
+// POST /api/v1/brand/chinacheck/search JSON { "q": "...", "limit": 5 }
+//
+// 返回来自国家企业信用信息公示系统（GSXT/SAMR）的公司匹配列表。
+func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "品牌审计引擎未初始化",
+			"total": 0,
+			"companies": []struct{}{},
+		})
+		return
+	}
+	cc := s.brandEngine.ChinaCheck()
+	if cc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "China-Check MCP 未启用（设 GEO_CHINACHECK_ENABLED=true 以启用）",
+			"total": 0,
+			"companies": []struct{}{},
+		})
+		return
+	}
+	var (
+		q     string
+		limit = 5
+	)
+	if r.Method == http.MethodGet {
+		q = r.URL.Query().Get("q")
+		if l := r.URL.Query().Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			Q     string `json:"q"`
+			Limit int    `json:"limit"`
+		}
+		if err := readJSON(r, &body); err == nil {
+			q = body.Q
+			if body.Limit > 0 {
+				limit = body.Limit
+			}
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if strings.TrimSpace(q) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q 不能为空"})
+		return
+	}
+	result, err := cc.Search(r.Context(), q, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": fmt.Sprintf("China-Check 搜索失败: %v", err),
+			"total": 0,
+			"companies": []struct{}{},
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"query":     q,
+		"total":     result.Total,
+		"companies": result.Companies,
+		"source":    "国家企业信用信息公示系统（GSXT / SAMR） via China-Check MCP",
+		"disclaimer": "本接口返回的数据来自国家企业信用信息公示系统公开信息，仅供参考，请以官方系统最新登记为准。",
+	})
+}
+
+// handleChinaCheckSnapshot 获取单家公司的工商注册快照（China-Check MCP 调试接口）。
+//
+// GET  /api/v1/brand/chinacheck/snapshot?company_id=<ID>&q=<名称>
+// POST /api/v1/brand/chinacheck/snapshot JSON { "company_id": "...", "q": "..." }
+//
+// company_id 和 q 至少传一个；同时传时优先 company_id（更精准）。
+func (s *Server) handleChinaCheckSnapshot(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "品牌审计引擎未初始化",
+		})
+		return
+	}
+	cc := s.brandEngine.ChinaCheck()
+	if cc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "China-Check MCP 未启用（设 GEO_CHINACHECK_ENABLED=true 以启用）",
+		})
+		return
+	}
+	var (
+		companyID string
+		query     string
+	)
+	if r.Method == http.MethodGet {
+		companyID = r.URL.Query().Get("company_id")
+		query = r.URL.Query().Get("q")
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			CompanyID string `json:"company_id"`
+			Q         string `json:"q"`
+		}
+		if err := readJSON(r, &body); err == nil {
+			companyID = body.CompanyID
+			query = body.Q
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if companyID == "" && strings.TrimSpace(query) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "company_id 和 q 至少提供一个"})
+		return
+	}
+	snap, err := cc.GetSnapshot(r.Context(), companyID, query)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"error": fmt.Sprintf("China-Check snapshot 失败: %v", err),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"company_id": snap.CompanyID,
+		"snapshot":   snap.Snapshot,
+		"disclaimer": firstNotEmpty(snap.Disclaimer, "本接口返回的数据来自国家企业信用信息公示系统公开信息，仅供参考，请以官方系统最新登记为准。"),
+		"source":     "国家企业信用信息公示系统（GSXT / SAMR） via China-Check MCP",
+	})
+}
+
+// firstNotEmpty 返回第一个非空字符串（server 内部用，与 brand 包同名函数独立）。
+func firstNotEmpty(strs ...string) string {
+	for _, s := range strs {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// maxInt server 内部辅助。
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// ---------- 离线工商 SQLite 库调试接口 ----------
+
+// handleOfflineDBStats  GET /api/v1/brand/offlinedb/stats
+func (s *Server) handleOfflineDBStats(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "品牌审计引擎未初始化"})
+		return
+	}
+	odb := s.brandEngine.OfflineDB()
+	if odb == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "离线工商库未启用（GEO_OFFLINE_DB_ENABLED=true）"})
+		return
+	}
+	st, err := odb.Stats(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleOfflineDBSearch GET ?q=腾讯&n=10&province=广东  POST JSON {q,n,province,city}
+func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "品牌审计引擎未初始化", "result": []struct{}{}})
+		return
+	}
+	odb := s.brandEngine.OfflineDB()
+	if odb == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "离线工商库未启用", "result": []struct{}{}})
+		return
+	}
+	opt := offlinedb.SearchOptions{TopN: 10}
+	if r.Method == http.MethodGet {
+		opt.Query = r.URL.Query().Get("q")
+		opt.Province = r.URL.Query().Get("province")
+		opt.City = r.URL.Query().Get("city")
+		if n := r.URL.Query().Get("n"); n != "" {
+			fmt.Sscanf(n, "%d", &opt.TopN)
+		}
+	} else if r.Method == http.MethodPost {
+		var in offlinedb.SearchOptions
+		if err := readJSON(r, &in); err == nil {
+			opt = in
+			if opt.TopN <= 0 {
+				opt.TopN = 10
+			}
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET/POST"})
+		return
+	}
+	start := time.Now()
+	res, err := odb.Search(r.Context(), opt)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error(), "result": []struct{}{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"query":     opt.Query,
+		"province":  opt.Province,
+		"city":      opt.City,
+		"count":     len(res),
+		"took_ms":   time.Since(start).Milliseconds(),
+		"result":    res,
+		"source":    "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ SQLite + FTS5",
+	})
+}
+
+// handleOfflineDBClear POST /api/v1/brand/offlinedb/clear 清空库（VACUUM 回收空间）
+func (s *Server) handleOfflineDBClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅 POST"})
+		return
+	}
+	if s.brandEngine == nil || s.brandEngine.OfflineDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "离线工商库未启用"})
+		return
+	}
+	before, _ := s.brandEngine.OfflineDB().Stats(r.Context())
+	if err := s.brandEngine.OfflineDB().Clear(r.Context()); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	after, _ := s.brandEngine.OfflineDB().Stats(r.Context())
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"ok":           true,
+		"before_count": before.Count,
+		"after_count":  after.Count,
+		"before_size":  before.FileSize,
+		"after_size":   after.FileSize,
+	})
+}
+
+// handleOfflineDBProvinces GET /api/v1/brand/offlinedb/provinces 返回数据库内所有省份（下拉框用）
+func (s *Server) handleOfflineDBProvinces(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.OfflineDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{"error": "离线工商库未启用"})
+		return
+	}
+	list, err := s.brandEngine.OfflineDB().Provinces(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"provinces": list})
+}
+
+// ---------- handleChinaCheckCache：缓存管理接口 ----------
+//
+// GET  /api/v1/brand/chinacheck/cache?action=stats               查看缓存统计
+// POST /api/v1/brand/chinacheck/cache  JSON { "action": "clear" } 清空缓存
+// POST /api/v1/brand/chinacheck/cache  JSON { "action": "compact" } 压缩/去重缓存文件
+// POST /api/v1/brand/chinacheck/cache  JSON { "action": "import", "queries": ["腾讯","阿里","字节跳动"] }
+//
+// import 动作：按列表依次执行 Search+Snapshot 预热缓存（可指定 limit/并发度）。
+func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "品牌审计引擎未初始化",
+		})
+		return
+	}
+	cc := s.brandEngine.ChinaCheck()
+	if cc == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "China-Check MCP 未启用（设 GEO_CHINACHECK_ENABLED=true 以启用）",
+		})
+		return
+	}
+	ca := cc.Cache()
+	if ca == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"error": "China-Check 缓存未启用（设 GEO_CHINACHECK_CACHE_ENABLED=true 以启用）",
+		})
+		return
+	}
+
+	// 解析 action
+	action := ""
+	if r.Method == http.MethodGet {
+		action = strings.ToLower(r.URL.Query().Get("action"))
+		if action == "" {
+			action = "stats"
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			Action  string   `json:"action"`
+			Queries []string `json:"queries,omitempty"`
+			Limit   int      `json:"limit,omitempty"`
+		}
+		if err := readJSON(r, &body); err == nil {
+			action = strings.ToLower(body.Action)
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+
+	switch action {
+	case "stats":
+		writeJSON(w, http.StatusOK, ca.Stats())
+	case "clear":
+		if err := ca.Clear(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":      true,
+			"message": "缓存已清空",
+			"stats":   ca.Stats(),
+		})
+	case "compact":
+		if err := ca.Compact(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":      true,
+			"message": "缓存已压缩/去重",
+			"stats":   ca.Stats(),
+		})
+	case "import":
+		// 预热：读取请求中的 queries 列表
+		var body struct {
+			Queries []string `json:"queries"`
+			Limit   int      `json:"limit"`
+		}
+		body.Limit = 3
+		if err := readJSON(r, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "解析失败: " + err.Error()})
+			return
+		}
+		if len(body.Queries) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "queries 不能为空"})
+			return
+		}
+		ctx := r.Context()
+		done := 0
+		errors := map[string]string{}
+		for _, q := range body.Queries {
+			q = strings.TrimSpace(q)
+			if q == "" {
+				continue
+			}
+			sr, err := cc.Search(ctx, q, body.Limit)
+			if err != nil {
+				errors[q] = err.Error()
+				continue
+			}
+			// 只对 Top1 拉 snapshot（最常用命中）
+			if len(sr.Companies) > 0 {
+				best := sr.Companies[0]
+				if _, err := cc.GetSnapshot(ctx, best.CompanyID, ""); err != nil {
+					errors[q+"/snapshot"] = err.Error()
+				}
+			}
+			done++
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"ok":           true,
+			"imported":     done,
+			"total":        len(body.Queries),
+			"errors":       errors,
+			"stats_after":  ca.Stats(),
+		})
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "未知 action，支持: stats / clear / compact / import",
+		})
+	}
+}
+
+// --- 审计历史时间序列接口 ---
+
+// handleHistoryList 查询指定品牌的审计历史（按时间降序）。
+// GET/POST /api/v1/brand/history/list?brand=腾讯&limit=50
+func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	brandName := r.URL.Query().Get("brand")
+	if brandName == "" {
+		var body struct{ Brand string `json:"brand"` }
+		if r.Method == http.MethodPost {
+			_ = readJSON(r, &body)
+			brandName = body.Brand
+		}
+	}
+	if brandName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand 参数"})
+		return
+	}
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	records, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"brand":   brandName,
+		"count":   len(records),
+		"records": records,
+	})
+}
+
+// handleHistoryGet 查询单条审计记录的完整信息（含 report_json）。
+// GET /api/v1/brand/history/get?id=123
+func (s *Server) handleHistoryGet(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 id 参数"})
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id 参数无效"})
+		return
+	}
+	rec, err := s.brandEngine.HistoryDB().GetByID(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if rec == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "记录不存在"})
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+// handleHistoryStats 返回历史库统计信息。
+// GET /api/v1/brand/history/stats
+func (s *Server) handleHistoryStats(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	st, err := s.brandEngine.HistoryDB().Stats(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleHistoryBrands 列出所有有审计记录的品牌。
+// GET /api/v1/brand/history/brands
+func (s *Server) handleHistoryBrands(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	names, err := s.brandEngine.HistoryDB().Brands(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"count":   len(names),
+		"brands":  names,
+	})
+}
+
+// handleHistoryClear 清空历史库。
+// POST /api/v1/brand/history/clear
+func (s *Server) handleHistoryClear(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	if err := s.brandEngine.HistoryDB().Clear(r.Context()); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "历史库已清空"})
+}
+
+// --- 定时审计调度器接口 ---
+
+// handleSchedulerStatus 返回调度器状态。
+// GET /api/v1/brand/scheduler/status
+func (s *Server) handleSchedulerStatus(w http.ResponseWriter, r *http.Request) {
+	if s.scheduler == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"enabled": false,
+			"message": "调度器未启用（设置 GEO_SCHEDULER_ENABLED=true + GEO_SCHEDULER_CONFIG=/path/to/config.json 启用）",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"enabled": true,
+	})
+}
+
+// handleSchedulerTrigger 手动触发一次指定品牌的定时审计。
+// POST /api/v1/brand/scheduler/trigger  body: {"brand_name": "...", "profile": {...}}
+func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌引擎未初始化"})
+		return
+	}
+	var body struct {
+		BrandName string                `json:"brand_name"`
+		Profile   brand.BrandProfile    `json:"profile"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败: " + err.Error()})
+		return
+	}
+	if body.BrandName == "" {
+		body.BrandName = body.Profile.Name
+	}
+	if body.BrandName == "" || len(body.Profile.Prompts) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand_name 或 profile.prompts"})
+		return
+	}
+	// 取上一次审计的引擎统计（用于模型分歧告警对比）
+	var prevStats []brand.EngineStats
+	if s.brandEngine.HistoryDB() != nil {
+		if rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.BrandName); err == nil && rec != nil && strings.TrimSpace(rec.ReportJSON) != "" {
+			var prev brand.VisibilityReport
+			if err := json.Unmarshal([]byte(rec.ReportJSON), &prev); err == nil {
+				prevStats = prev.EngineStats
+			}
+		}
+	}
+	// 直接执行审计
+	report, err := s.brandEngine.Audit(r.Context(), body.Profile)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	resp := map[string]interface{}{
+		"ok":      true,
+		"report":  report,
+	}
+	// 模型分歧告警：对比当前与上次审计，检测 5 类异常信号
+	if s.scheduler != nil && len(prevStats) > 0 {
+		if mr := s.scheduler.Monitor(report.EngineStats, prevStats); mr != nil {
+			resp["monitor_result"] = mr
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- AI 可见度就绪审计接口 ---
+
+// handleReadinessAudit 处理 AI 可见度就绪审计请求。
+//
+// GET  /api/v1/brand/readiness?url=example.com
+// POST /api/v1/brand/readiness  JSON {"url": "example.com"}
+//
+// 检查目标网站对 AI 搜索引擎的可见度就绪度（robots.txt / llms.txt /
+// 结构化数据 / sitemap.xml / TTFB），返回 readiness.AuditResult。
+func (s *Server) handleReadinessAudit(w http.ResponseWriter, r *http.Request) {
+	var rawURL string
+	if r.Method == http.MethodGet {
+		rawURL = r.URL.Query().Get("url")
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			URL string `json:"url"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		rawURL = body.URL
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if strings.TrimSpace(rawURL) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url 不能为空"})
+		return
+	}
+	result, err := readiness.Audit(r.Context(), rawURL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- 社媒情感监控接口 ---
+
+// handleSocialMonitor 处理社媒情感监控请求。
+//
+// GET  /api/v1/brand/social/monitor?brand_name=腾讯&platforms=reddit,weibo,youtube&limit=20
+// POST /api/v1/brand/social/monitor  JSON {"brand_name": "...", "platforms": ["reddit","weibo","youtube"], "limit": 20}
+//
+// 在 Reddit / 微博 / YouTube 等社媒平台并行搜索品牌提及，
+// 执行规则引擎情感分析，返回提及列表 + 情感评分 + 各平台统计。
+// Twitter / 小红书 适配器预留接口，未配置 API Key 时返回提示错误。
+func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
+	var (
+		brandName string
+		platforms []string
+		limit     = 20
+	)
+	if r.Method == http.MethodGet {
+		brandName = r.URL.Query().Get("brand_name")
+		if p := r.URL.Query().Get("platforms"); p != "" {
+			platforms = strings.Split(p, ",")
+		}
+		if l := r.URL.Query().Get("limit"); l != "" {
+			if n, err := strconv.Atoi(l); err == nil && n > 0 {
+				limit = n
+			}
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			BrandName string   `json:"brand_name"`
+			Platforms []string `json:"platforms"`
+			Limit     int      `json:"limit"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		brandName = body.BrandName
+		platforms = body.Platforms
+		if body.Limit > 0 {
+			limit = body.Limit
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if strings.TrimSpace(brandName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		return
+	}
+	if len(platforms) == 0 {
+		// 默认全平台
+		platforms = []string{"reddit", "weibo", "youtube", "twitter", "xiaohongshu"}
+	}
+	// 清理平台标识（去空白、转小写）
+	cleaned := make([]string, 0, len(platforms))
+	for _, p := range platforms {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p != "" {
+			cleaned = append(cleaned, p)
+		}
+	}
+	platforms = cleaned
+
+	result, err := social.Monitor(r.Context(), brandName, platforms, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// --- KOL/创作者情报分析接口 ---
+
+// handleKOLAnalyze 处理 KOL/创作者情报分析请求。
+//
+// POST /api/v1/brand/kol/analyze
+// 请求体: {"brand_name": "...", "results": [...], "competitors": [...]}
+//
+// results 可从请求体直接传入（前端审计完成后直接传审计结果）；
+// 若未传 results 但提供了 brand_name，则从 history DB 最新审计记录中取。
+// competitors 可选，用于识别竞品引用源（生成"竞品引用源，需关注"推荐）。
+func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		BrandName   string               `json:"brand_name"`
+		Results     []brand.PromptResult `json:"results"`
+		Competitors []brand.Competitor   `json:"competitors"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.BrandName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		return
+	}
+
+	results := body.Results
+	// results 为空时，从 history DB 最新审计记录中取
+	if len(results) == 0 && s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
+		rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.BrandName)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "读取审计历史失败: " + err.Error()})
+			return
+		}
+		if rec != nil && strings.TrimSpace(rec.ReportJSON) != "" {
+			var vr brand.VisibilityReport
+			if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err == nil {
+				results = vr.Results
+			}
+		}
+	}
+	if len(results) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "results 为空且无可用审计历史记录"})
+		return
+	}
+
+	report := kol.AnalyzeWithCompetitors(body.BrandName, results, body.Competitors)
+	writeJSON(w, http.StatusOK, report)
+}
+
+// --- Top Source 归因分析接口 ---
+
+// handleTopSourceAnalyze 处理 Top Source 归因分析请求。
+//
+// POST /api/v1/brand/topsource/analyze
+// 请求体: {"brand_name": "...", "results": [...], "brand_domain": "example.com"}
+//
+// results 可从请求体直接传入；若未传但提供了 brand_name，则从 history DB
+// 最新审计记录中取。brand_domain 可选，用于判定品牌是否已在该域名上曝光。
+func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		BrandName   string               `json:"brand_name"`
+		Results     []brand.PromptResult `json:"results"`
+		BrandDomain string               `json:"brand_domain"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.BrandName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		return
+	}
+
+	results := body.Results
+	// results 为空时，从 history DB 最新审计记录中取
+	if len(results) == 0 && s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
+		rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.BrandName)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "读取审计历史失败: " + err.Error()})
+			return
+		}
+		if rec != nil && strings.TrimSpace(rec.ReportJSON) != "" {
+			var vr brand.VisibilityReport
+			if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err == nil {
+				results = vr.Results
+			}
+		}
+	}
+	if len(results) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "results 为空且无可用审计历史记录"})
+		return
+	}
+
+	report := topsource.Analyze(body.BrandName, results, body.BrandDomain)
+	writeJSON(w, http.StatusOK, report)
+}
+
+// --- 行业类型自动识别接口 ---
+
+// handleVerticalDetect 处理行业类型自动识别请求。
+//
+// POST /api/v1/brand/vertical/detect
+// 请求体: 品牌画像字段（industry/category/domain/products/company 等任意组合）
+//
+// 返回检测到的行业类型、中文标签与差异化评分权重。
+func (s *Server) handleVerticalDetect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var profile map[string]interface{}
+	if err := readJSON(r, &profile); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	v := vertical.Detect(profile)
+	cfg := vertical.GetConfig(v)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"vertical":      v,
+		"label":         cfg.Label,
+		"description":   cfg.Description,
+		"score_weights": cfg.ScoreWeights,
+	})
+}
+
+// handleVerticalList 返回全部已知的业务垂直行业列表。
+//
+// GET /api/v1/brand/vertical/list
+func (s *Server) handleVerticalList(w http.ResponseWriter, r *http.Request) {
+	vs := vertical.AllVerticals()
+	out := make([]map[string]interface{}, 0, len(vs))
+	for _, v := range vs {
+		cfg := vertical.GetConfig(v)
+		out = append(out, map[string]interface{}{
+			"vertical":      v,
+			"label":         cfg.Label,
+			"description":   cfg.Description,
+			"score_weights": cfg.ScoreWeights,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"verticals": out,
+		"count":     len(out),
+	})
+}
+
+// --- Local SEO/GMB 审计接口 ---
+
+// handleLocalSEOAudit 处理本地 SEO / GMB 审计请求。
+//
+// POST /api/v1/brand/localseo/audit
+// 请求体: {"brand_name": "...", "nap": {"name": "...", "address": "...", "phone": "...", "website": "..."}}
+//
+// 检查 NAP 一致性、GMB 资料完整度、本地引用收录情况，返回综合评分与建议。
+func (s *Server) handleLocalSEOAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		BrandName string              `json:"brand_name"`
+		NAP       localseo.NAPInfo    `json:"nap"`
+		Profile   map[string]interface{} `json:"profile,omitempty"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.BrandName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		return
+	}
+	// nap.name 为空时用 brand_name 兜底
+	if strings.TrimSpace(body.NAP.Name) == "" {
+		body.NAP.Name = body.BrandName
+	}
+	report, err := localseo.Audit(r.Context(), body.BrandName, body.NAP)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+// --- 按量付费第三方数据源接口 ---
+
+// handleExternalSignals 处理外部信号采集请求。
+//
+// GET  /api/v1/brand/externalsignals/report?domain=example.com&keywords=kw1,kw2
+// POST /api/v1/brand/externalsignals/report  JSON {"domain": "...", "keywords": ["..."]}
+//
+// 调用 DataForSEO（付费，需 GEO_DFS_APIKEY/GEO_DFS_EMAIL）或 Common Crawl（免费）
+// 采集关键词搜索量/难度、反链与 SERP 特性。无 API Key 时返回模拟数据并标注。
+func (s *Server) handleExternalSignals(w http.ResponseWriter, r *http.Request) {
+	var (
+		domain   string
+		keywords []string
+	)
+	if r.Method == http.MethodGet {
+		domain = r.URL.Query().Get("domain")
+		if k := r.URL.Query().Get("keywords"); k != "" {
+			keywords = strings.Split(k, ",")
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			Domain   string   `json:"domain"`
+			Keywords []string `json:"keywords"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		domain = body.Domain
+		keywords = body.Keywords
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if strings.TrimSpace(domain) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "domain 不能为空"})
+		return
+	}
+	client := externalsignals.NewFromEnv()
+	report, err := client.FullReport(r.Context(), domain, keywords)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+// --- AutoGEO 规则提取与改写接口 ---
+
+// llmManagerAdapter 将 llm.Manager 适配为 autorewriter.LLMClient 接口。
+//
+// autorewriter 需要 Complete(ctx, prompt) 语义，而 llm.Manager 提供
+// Rewrite(ctx, prompt, content) 语义。这里以 prompt 作为改写指令、空内容
+// 调用 Rewrite，由首个可用 Provider 完成「补全」。
+type llmManagerAdapter struct {
+	mgr *llm.Manager
+}
+
+func (a *llmManagerAdapter) Available() bool {
+	return a.mgr != nil && a.mgr.HasAvailable()
+}
+
+func (a *llmManagerAdapter) Complete(ctx context.Context, prompt string) (string, error) {
+	if a.mgr == nil {
+		return "", fmt.Errorf("LLM 管理器未初始化")
+	}
+	return a.mgr.Rewrite(ctx, prompt, "")
+}
+
+// newAutoRewriter 惰性创建自动改写引擎，复用品牌引擎的 LLM 管理器。
+//
+// 未初始化品牌引擎时返回基于 StubLLMClient 的降级引擎（规则化改写）。
+func (s *Server) newAutoRewriter() *autorewriter.Rewriter {
+	if s.brandEngine == nil {
+		return autorewriter.New(nil)
+	}
+	// 复用 brandEngine 内部的 LLM 管理器（通过环境变量重新构建以保持一致）
+	mgr := newLLMManagerFromEnv()
+	return autorewriter.New(&llmManagerAdapter{mgr: mgr})
+}
+
+// handleAutoRewriteRules 返回 AutoGEO 默认规则集（含 Princeton PWC 提升值）。
+//
+// GET  /api/v1/autorewriter/rules
+// POST /api/v1/autorewriter/rules  JSON {"query": "...", "doc": "...", "citation_result": "..."}
+//
+// POST 时若 LLM 可用，则基于文档与引用结果动态提取规则；否则返回默认规则集。
+func (s *Server) handleAutoRewriteRules(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"rules": autorewriter.DefaultRules(),
+			"source": "princeton",
+		})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	var body struct {
+		Query          string `json:"query"`
+		Doc            string `json:"doc"`
+		CitationResult string `json:"citation_result"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	rw := s.newAutoRewriter()
+	rs, err := rw.ExtractRules(r.Context(), body.Query, body.Doc, body.CitationResult)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, rs)
+}
+
+// handleAutoRewrite 依据规则改写内容并执行 GEU 校验。
+//
+// POST /api/v1/autorewriter/rewrite
+// 请求体: {"content": "...", "query": "...", "engine": "...", "preserve_facts": true, "rules": [...]}
+//
+// rules 为空时使用默认规则。返回改写后内容、应用规则、预估 PWC 提升与 GEU 校验结果。
+func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		Content       string             `json:"content"`
+		Query         string             `json:"query"`
+		Engine        string             `json:"engine"`
+		PreserveFacts bool               `json:"preserve_facts"`
+		Rules         []autorewriter.Rule `json:"rules"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.Content) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		return
+	}
+	rw := s.newAutoRewriter()
+	req := &autorewriter.RewriteRequest{
+		Content:       body.Content,
+		Query:         body.Query,
+		Engine:        body.Engine,
+		PreserveFacts: body.PreserveFacts,
+		Rules:         body.Rules,
+	}
+	result, err := rw.Rewrite(r.Context(), req)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleAutoRewriteGEU 对原文与改写文执行 GEU 校验（标准阈值）。
+//
+// POST /api/v1/autorewriter/geu
+// 请求体: {"original": "...", "rewritten": "..."}
+func (s *Server) handleAutoRewriteGEU(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		return
+	}
+	var body struct {
+		Original  string `json:"original"`
+		Rewritten string `json:"rewritten"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(body.Original) == "" || strings.TrimSpace(body.Rewritten) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "original 与 rewritten 均不能为空"})
+		return
+	}
+	rw := s.newAutoRewriter()
+	geu, err := rw.CheckGEU(r.Context(), body.Original, body.Rewritten)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, geu)
+}
+
+// --- AI 就绪度 CI 闸门接口 ---
+
+// handleReadinessCIGate 处理 AI 就绪度 CI 门禁判定请求。
+//
+// GET  /api/v1/brand/readiness/ci-gate?url=example.com&threshold=80
+// POST /api/v1/brand/readiness/ci-gate  JSON {"url": "example.com", "threshold": 80}
+//
+// 先执行 8 维就绪审计，再按 threshold（默认 60）判定门禁是否通过。
+// 返回 readiness.CIGateResult，含 blocking_issues 与人类可读汇总。
+// CI/CD 集成时可直接根据 passed 字段决定流水线是否中断。
+func (s *Server) handleReadinessCIGate(w http.ResponseWriter, r *http.Request) {
+	var (
+		rawURL    string
+		threshold = readiness.DefaultCIThreshold()
+	)
+	if r.Method == http.MethodGet {
+		rawURL = r.URL.Query().Get("url")
+		if t := r.URL.Query().Get("threshold"); t != "" {
+			if n, err := strconv.ParseFloat(t, 64); err == nil {
+				threshold = n
+			}
+		}
+	} else if r.Method == http.MethodPost {
+		var body struct {
+			URL       string  `json:"url"`
+			Threshold float64 `json:"threshold"`
+		}
+		if err := readJSON(r, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		rawURL = body.URL
+		if body.Threshold > 0 {
+			threshold = body.Threshold
+		}
+	} else {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		return
+	}
+	if strings.TrimSpace(rawURL) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url 不能为空"})
+		return
+	}
+	result, err := readiness.Audit(r.Context(), rawURL)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	gate := readiness.CIGateReportWithThreshold(result, threshold)
+	writeJSON(w, http.StatusOK, gate)
+}

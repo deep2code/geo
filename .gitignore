@@ -1,0 +1,24 @@
+# 构建产物
+bin/
+dist/
+/geo
+
+# 环境变量
+.env
+.env.local
+
+# 日志
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Go
+*.test
+*.out
+vendor/

@@ -1,0 +1,22 @@
+# 构建产物
+bin/
+dist/
+
+# 本地环境与依赖
+.env
+.env.local
+*.log
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# 文档与示例（不影响运行）
+*.md
+examples/

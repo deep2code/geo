@@ -1,0 +1,109 @@
+package adapter
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"time"
+
+	"my-geo/internal/models"
+)
+
+// GeminiAdapter Google Gemini 引擎适配器。
+//
+// 调用 Google Gemini API：POST {BaseURL}/v1beta/models/{model}:generateContent?key={APIKey}
+// 请求体含 contents/parts/text，响应解析 candidates[0].content.parts[0].text 作为 answer。
+// 注意：Gemini 通过 URL 查询参数传递 API Key（非 Bearer 头），故此处直接调用底层 doRequest。
+type GeminiAdapter struct {
+	BaseAdapter
+}
+
+// NewGeminiAdapter 创建 Gemini 适配器，对未设置的配置项填充合理默认值。
+func NewGeminiAdapter(cfg Config) *GeminiAdapter {
+	if cfg.BaseURL == "" {
+		cfg.BaseURL = "https://generativelanguage.googleapis.com"
+	}
+	if cfg.Model == "" {
+		cfg.Model = "gemini-1.5-flash"
+	}
+	if cfg.Timeout == 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	return &GeminiAdapter{BaseAdapter: BaseAdapter{cfg: cfg}}
+}
+
+// Engine 返回引擎类型。
+func (a *GeminiAdapter) Engine() models.EngineType { return models.EngineGemini }
+
+// geminiPart Gemini 内容片段。
+type geminiPart struct {
+	Text string `json:"text"`
+}
+
+// geminiContent Gemini 内容结构。
+type geminiContent struct {
+	Parts []geminiPart `json:"parts"`
+}
+
+// geminiRequest Gemini generateContent 请求体。
+type geminiRequest struct {
+	Contents []geminiContent `json:"contents"`
+}
+
+// geminiResponse Gemini generateContent 响应体。
+type geminiResponse struct {
+	Candidates []struct {
+		Content geminiContent `json:"content"`
+	} `json:"candidates"`
+	Error *apiError `json:"error,omitempty"`
+}
+
+// Query 向 Gemini 发起查询。
+func (a *GeminiAdapter) Query(ctx context.Context, query string) (*models.EngineResponse, error) {
+	if !a.Configured() {
+		return a.mockResponse(a.Engine()), nil
+	}
+
+	reqBody := geminiRequest{
+		Contents: []geminiContent{
+			{Parts: []geminiPart{{Text: query}}},
+		},
+	}
+	raw, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	// API Key 通过 URL 查询参数传递，不使用 Authorization 头
+	requestURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s",
+		a.cfg.BaseURL, a.cfg.Model, url.QueryEscape(a.cfg.APIKey))
+	data, err := a.doRequest(ctx, "POST", requestURL, raw, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp geminiResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("解析 Gemini 响应失败: %w (响应: %s)", err, truncate(data, 512))
+	}
+	if resp.Error != nil && resp.Error.Message != "" {
+		return nil, fmt.Errorf("Gemini API 错误: %s", resp.Error.Message)
+	}
+
+	answer := ""
+	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+		answer = resp.Candidates[0].Content.Parts[0].Text
+	}
+
+	return &models.EngineResponse{
+		Engine:    a.Engine(),
+		Answer:    answer,
+		Citations: ExtractCitations(answer, ""),
+	}, nil
+}
+
+// CheckCitation 查询 Gemini 并返回引用了 targetURL 的引用列表。
+func (a *GeminiAdapter) CheckCitation(ctx context.Context, query, targetURL string) ([]models.Citation, error) {
+	return checkCitationDefault(a, ctx, query, targetURL)
+}
