@@ -1,0 +1,180 @@
+@use '@/styles/tokens' as *;
+
+.tickets-page {
+  .tickets-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    align-items: flex-end;
+    margin-bottom: var(--spacing-md);
+
+    .tickets-filter-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+      min-width: 160px;
+
+      label {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+      }
+
+      select {
+        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-primary);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--font-size-sm);
+        cursor: pointer;
+      }
+    }
+  }
+
+  // 提交工单表单
+  .tickets-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+
+    .tickets-form-full {
+      grid-column: span 2;
+    }
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+
+      .tickets-form-full {
+        grid-column: span 1;
+      }
+    }
+  }
+
+  // 状态徽章
+  .tickets-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+
+    &-open {
+      background: var(--status-info-bg);
+      color: var(--status-info);
+    }
+
+    &-pending {
+      background: var(--status-warning-bg);
+      color: var(--status-warning);
+    }
+
+    &-resolved {
+      background: var(--status-success-bg);
+      color: var(--status-success);
+    }
+
+    &-closed {
+      background: var(--bg-tertiary);
+      color: var(--text-tertiary);
+    }
+  }
+
+  // 优先级徽章
+  .tickets-priority-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+
+    &-high {
+      background: var(--status-error-bg);
+      color: var(--status-error);
+    }
+
+    &-medium {
+      background: var(--status-warning-bg);
+      color: var(--status-warning);
+    }
+
+    &-low {
+      background: var(--bg-tertiary);
+      color: var(--text-tertiary);
+    }
+  }
+
+  // 工单详情 Modal 内的回复列表
+  .tickets-replies {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    max-height: 320px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .tickets-reply-item {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+
+    &.is-staff {
+      background: color-mix(in srgb, var(--brand-primary) 6%, var(--surface-primary));
+      border-color: color-mix(in srgb, var(--brand-primary) 30%, var(--border-primary));
+    }
+
+    .tickets-reply-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+    }
+
+    .tickets-reply-author {
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-secondary);
+    }
+
+    .tickets-reply-content {
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
+      line-height: var(--line-height-normal);
+      white-space: pre-wrap;
+    }
+  }
+
+  // 工单详情头部信息
+  .tickets-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    background: var(--surface-secondary);
+    margin-bottom: var(--spacing-md);
+    font-size: var(--font-size-sm);
+
+    .tickets-detail-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+
+      .tickets-detail-meta-key {
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+      }
+
+      .tickets-detail-meta-val {
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+      }
+    }
+  }
+}

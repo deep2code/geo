@@ -17,7 +17,11 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   { key: 'keywords', to: '/keyword-discovery', icon: '🔑', labelKey: 'nav.keywordDiscovery' },
   { key: 'report', to: '/report-export', icon: '📄', labelKey: 'nav.reportExport' },
   { key: 'alerts', to: '/alert-email', icon: '📧', labelKey: 'nav.alertEmail' },
-  { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' }
+  { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
+  // 新增模块
+  { key: 'help', to: '/help', icon: '❓', labelKey: 'nav.help' },
+  { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
+  { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' }
 ]
 
 export const Layout: React.FC = () => {

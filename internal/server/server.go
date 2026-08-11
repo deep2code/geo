@@ -1,12 +1,13 @@
 // Package server 提供 GEO 系统的 REST API 服务与 Web 前端界面。
 //
 // 基于 net/http 标准库，路由设计参考 GEORank 的 REST API：
-//   GET  /                     Web 前端工作台界面
-//   GET  /api/v1/health        健康检查
-//   GET  /api/v1/strategies    列出可用策略
-//   POST /api/v1/analyze       分析内容信号
-//   POST /api/v1/score         评分
-//   POST /api/v1/optimize      优化内容
+//
+//	GET  /                     Web 前端工作台界面
+//	GET  /api/v1/health        健康检查
+//	GET  /api/v1/strategies    列出可用策略
+//	POST /api/v1/analyze       分析内容信号
+//	POST /api/v1/score         评分
+//	POST /api/v1/optimize      优化内容
 package server
 
 import (
@@ -14,8 +15,10 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -28,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"my-geo/internal/adapter"
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/chinacheck"
 	"my-geo/internal/brand/crawlability"
@@ -142,6 +146,9 @@ func newBrandEngineFromEnv() *brand.Engine {
 	if len(adapters) == 0 {
 		return nil
 	}
+	// 为每个适配器包装降级缓存（外部 LLM 不可用时返回缓存结果）
+	adapters = adapter.WrapWithFallback(adapters)
+	fmt.Fprintf(os.Stderr, "[geo server] LLM 适配器降级缓存已启用（TTL=1h，max=1000/引擎）。\n")
 	llmMgr := newLLMManagerFromEnv()
 	opts := []brand.Option{
 		brand.WithAdapters(adapters),
@@ -182,8 +189,9 @@ func BuildBrandEngineFromEnv() *brand.Engine {
 // newHistoryDBFromEnv 打开/创建审计历史 SQLite 库。
 //
 // 环境变量：
-//   GEO_HISTORY_DB_ENABLED=true/false   总开关（默认 true）
-//   GEO_HISTORY_DB_PATH=/path/to.db     自定义库文件路径
+//
+//	GEO_HISTORY_DB_ENABLED=true/false   总开关（默认 true）
+//	GEO_HISTORY_DB_PATH=/path/to.db     自定义库文件路径
 func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -202,9 +210,10 @@ func newHistoryDBFromEnv() history.DB {
 // newSchedulerFromEnv 从环境变量构建定时审计调度器。
 //
 // 环境变量：
-//   GEO_SCHEDULER_ENABLED=true/false     总开关（默认 false，需显式开启）
-//   GEO_SCHEDULER_WEBHOOK=https://...    全局告警 webhook
-//   GEO_SCHEDULER_CONFIG=/path/to.json   定时审计配置文件（JSON 数组）
+//
+//	GEO_SCHEDULER_ENABLED=true/false     总开关（默认 false，需显式开启）
+//	GEO_SCHEDULER_WEBHOOK=https://...    全局告警 webhook
+//	GEO_SCHEDULER_CONFIG=/path/to.json   定时审计配置文件（JSON 数组）
 func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 	enabled := config.Env("GEO_SCHEDULER_ENABLED", "false")
 	if !(strings.EqualFold(enabled, "true") || strings.EqualFold(enabled, "1") || strings.EqualFold(enabled, "on")) {
@@ -235,13 +244,14 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 // 未显式关闭时默认创建并连接官方公共端点，缓存文件位于 ~/.cache/geo/geo_chinacheck_cache.jsonl。
 //
 // 环境变量：
-//   GEO_CHINACHECK_ENABLED=true/false        总开关（默认 true）
-//   GEO_CHINACHECK_URL=https://...           自定义 MCP endpoint
-//   GEO_CHINACHECK_LANG=zh/en/ja/...         enum 字段翻译语言（默认 zh）
-//   GEO_CHINACHECK_CACHE_ENABLED=true/false  缓存开关（默认 true）
-//   GEO_CHINACHECK_CACHE_PATH=/var/xx.jsonl  自定义缓存文件路径
-//   GEO_CHINACHECK_CACHE_MAX_ITEMS=20000     最大缓存条目（默认 10000）
-//   GEO_CHINACHECK_CACHE_TTL_HOURS=720       单条目 TTL 小时（默认 720=30 天）
+//
+//	GEO_CHINACHECK_ENABLED=true/false        总开关（默认 true）
+//	GEO_CHINACHECK_URL=https://...           自定义 MCP endpoint
+//	GEO_CHINACHECK_LANG=zh/en/ja/...         enum 字段翻译语言（默认 zh）
+//	GEO_CHINACHECK_CACHE_ENABLED=true/false  缓存开关（默认 true）
+//	GEO_CHINACHECK_CACHE_PATH=/var/xx.jsonl  自定义缓存文件路径
+//	GEO_CHINACHECK_CACHE_MAX_ITEMS=20000     最大缓存条目（默认 10000）
+//	GEO_CHINACHECK_CACHE_TTL_HOURS=720       单条目 TTL 小时（默认 720=30 天）
 func newChinaCheckFromEnv() *chinacheck.Client {
 	enabled := config.Env("GEO_CHINACHECK_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -288,9 +298,10 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 // newOfflineDBFromEnv 打开/创建离线工商库（多后端，默认 SQLite）。
 //
 // 环境变量：
-//   GEO_OFFLINE_DB_ENABLED=true/false   总开关（默认 true）
-//   GEO_OFFLINE_DB_PATH=/path/to.db     自定义库文件路径
-//   GEO_OFFLINE_DB_TYPE=sqlite/duckdb   后端类型（默认 sqlite）
+//
+//	GEO_OFFLINE_DB_ENABLED=true/false   总开关（默认 true）
+//	GEO_OFFLINE_DB_PATH=/path/to.db     自定义库文件路径
+//	GEO_OFFLINE_DB_TYPE=sqlite/duckdb   后端类型（默认 sqlite）
 func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -409,6 +420,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/optimize", s.handleOptimize)
 	s.mux.HandleFunc("/api/v1/brand/audit", s.handleBrandAudit)
 	s.mux.HandleFunc("/api/v1/brand/autocomplete", s.handleBrandAutocomplete)
+	s.mux.HandleFunc("/api/v1/brand/profile/autocomplete", s.handleBrandProfileAutocomplete)
 	s.mux.HandleFunc("/api/v1/brand/knowledge/search", s.handleBrandKnowledgeSearch)
 	// 多语言/多市场审计（#8）：返回支持的市场列表
 	s.mux.HandleFunc("/api/v1/brand/markets", s.handleBrandMarkets)
@@ -472,9 +484,33 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/leaderboard", s.handleLeaderboard)
 	// 竞品对标矩阵接口
 	s.mux.HandleFunc("/api/v1/brand/compare", s.handleBrandCompare)
+	// 竞品对比报告导出（HTML/JSON）
+	s.mux.HandleFunc("/api/v1/brand/compare/export", s.handleBrandCompareExport)
 	// CMS 集成接口
 	s.mux.HandleFunc("/api/v1/cms/check", s.handleCMSCheck)
 	s.mux.HandleFunc("/api/v1/cms/info", s.handleCMSInfo)
+	// 安全审计接口
+	s.mux.HandleFunc("/api/v1/security/audit", s.handleSecurityAudit)
+	// 管理员后台接口（#100）
+	s.mux.HandleFunc("/api/v1/admin/tenants", s.handleAdminTenants)
+	s.mux.HandleFunc("/api/v1/admin/tenants/", s.handleAdminTenantDetail)
+	s.mux.HandleFunc("/api/v1/admin/usage", s.handleAdminUsage)
+	s.mux.HandleFunc("/api/v1/admin/announcements", s.handleAdminAnnouncements)
+	s.mux.HandleFunc("/api/v1/admin/announcements/", s.handleAdminAnnouncementDelete)
+	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
+	// 帮助中心与新手引导接口（#101）
+	s.mux.HandleFunc("/api/v1/help/articles", s.handleHelpArticles)
+	s.mux.HandleFunc("/api/v1/help/articles/", s.handleHelpArticleDetail)
+	s.mux.HandleFunc("/api/v1/help/onboarding", s.handleHelpOnboarding)
+	s.mux.HandleFunc("/api/v1/help/onboarding/complete", s.handleHelpOnboardingComplete)
+	// 工单系统接口（#102）
+	s.mux.HandleFunc("/api/v1/tickets", s.handleTickets)
+	s.mux.HandleFunc("/api/v1/tickets/", s.handleTicketDetail)
+	// 官网/定价接口（#103）
+	s.mux.HandleFunc("/api/v1/pricing/plans", s.handlePricingPlans)
+	s.mux.HandleFunc("/api/v1/pricing/plans/", s.handlePricingPlanDetail)
+	s.mux.HandleFunc("/api/v1/landing/features", s.handleLandingFeatures)
+	s.mux.HandleFunc("/api/v1/landing/stats", s.handleLandingStats)
 	// Web SPA 前端（必须放在最后，catch-all 非 API 路径）
 	s.mux.HandleFunc("/", s.handleWebSPA)
 }
@@ -907,6 +943,45 @@ func (s *Server) handleCMSInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSecurityAudit 安全审计接口，返回当前安全中间件的配置与状态。
+//
+// GET /api/v1/security/audit
+// 用于运维快速确认限流、WAF、CSRF、安全头等防护是否生效。
+func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"rate_limit": map[string]interface{}{
+			"global_per_sec":    rlConfig.globalPerSec,
+			"expensive_per_sec": rlConfig.expensivePerSec,
+			"expensive_paths":   expensivePathPatterns,
+		},
+		"waf": map[string]interface{}{
+			"max_body_bytes":     defaultMaxBodyBytes,
+			"max_body_expensive": 20 * 1024 * 1024,
+			"checks":             []string{"sqli", "xss", "path_traversal", "null_byte"},
+			"security_headers":   []string{"X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "X-XSS-Protection", "Permissions-Policy", "Content-Security-Policy"},
+		},
+		"csrf": map[string]interface{}{
+			"enabled":       corsOrigins != nil,
+			"write_methods": []string{"POST", "PUT", "PATCH", "DELETE"},
+		},
+		"auth": map[string]interface{}{
+			"api_key_enabled": apiKey != "",
+		},
+		"recovery": map[string]interface{}{
+			"panic_recovery": true,
+		},
+		"fallback_cache": map[string]interface{}{
+			"enabled":  s.brandEngine != nil,
+			"ttl":      "1h",
+			"max_size": 1000,
+		},
+	})
+}
+
 func (s *Server) handleOptimize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
@@ -1110,8 +1185,8 @@ func (s *Server) handleBrandReportPDF(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// 降级：返回错误 + HTML 报告备用链接
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error":  "PDF 渲染失败，建议使用 HTML 报告后在浏览器打印为 PDF：" + err.Error(),
-			"html":   "/api/v1/brand/report/download?brand=" + url.QueryEscape(brandName),
+			"error": "PDF 渲染失败，建议使用 HTML 报告后在浏览器打印为 PDF：" + err.Error(),
+			"html":  "/api/v1/brand/report/download?brand=" + url.QueryEscape(brandName),
 		})
 		return
 	}
@@ -1247,14 +1322,14 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		To           []string               `json:"to"`
-		Cc           []string               `json:"cc"`
-		Subject      string                 `json:"subject"`
-		Text         string                 `json:"text"`
-		HTML         string                 `json:"html"`
-		Template     string                 `json:"template"`      // alert / weekly
-		TemplateData map[string]any         `json:"template_data"`
-		Attachments  []mail.Attachment      `json:"attachments"`
+		To           []string          `json:"to"`
+		Cc           []string          `json:"cc"`
+		Subject      string            `json:"subject"`
+		Text         string            `json:"text"`
+		HTML         string            `json:"html"`
+		Template     string            `json:"template"` // alert / weekly
+		TemplateData map[string]any    `json:"template_data"`
+		Attachments  []mail.Attachment `json:"attachments"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -1370,6 +1445,59 @@ func (s *Server) handleBrandAutocomplete(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, candidate)
 }
 
+// handleBrandProfileAutocomplete 处理品牌画像自动补全请求（GET 版本，返回完整 BrandProfile）。
+//
+// GET /api/v1/brand/profile/autocomplete?name=品牌名
+//
+// 与 POST /api/v1/brand/autocomplete 不同的是：
+//   - 使用 GET 方法，便于浏览器直接调用与缓存
+//   - 返回的是完整 brand.BrandProfile（而非 AutocompleteCandidate），可直接用于后续审计接口
+//
+// 内部调用 brandEngine.Autocomplete，将 AutocompleteCandidate 转换为 BrandProfile 返回。
+func (s *Server) handleBrandProfileAutocomplete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		return
+	}
+	if s.brandEngine == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		return
+	}
+	brandName := strings.TrimSpace(r.URL.Query().Get("name"))
+	if brandName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name 不能为空"})
+		return
+	}
+	candidate, err := s.brandEngine.Autocomplete(r.Context(), brandName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	// 将 AutocompleteCandidate 转换为 BrandProfile
+	profile := brand.BrandProfile{
+		Name:        candidate.Name,
+		Aliases:     candidate.Aliases,
+		Domain:      candidate.Domain,
+		Products:    candidate.Products,
+		Company:     candidate.Company,
+		Competitors: candidate.Competitors,
+		Prompts:     candidate.Prompts,
+		Industry:    candidate.Industry,
+		Category:    candidate.Category,
+	}
+	if profile.Name == "" {
+		profile.Name = brandName
+	}
+	if len(profile.Prompts) == 0 {
+		// 兜底 prompts，避免返回的 BrandProfile 无法直接用于审计
+		profile.Prompts = []string{
+			fmt.Sprintf("最好的%s", firstNotEmpty(profile.Category, brandName)),
+			fmt.Sprintf("%s推荐", brandName),
+		}
+	}
+	writeJSON(w, http.StatusOK, profile)
+}
+
 // handleBrandKnowledgeSearch 搜索本地品牌知识库（SinoFacts CC BY 4.0）。
 //
 // GET  /api/v1/brand/knowledge/search?q=<query>&limit=5
@@ -1434,19 +1562,19 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 		HQ            string   `json:"hq,omitempty"`
 		FoundedYear   int      `json:"founded_year,omitempty"`
 		Desc          string   `json:"description,omitempty"`
-		Source        string   `json:"source"`        // sinofacts | offlinedb
-		SourceLabel   string   `json:"source_label"`  // 前端显示的 badge 文案
-		Score         float64  `json:"score"`         // 0-100
+		Source        string   `json:"source"`       // sinofacts | offlinedb
+		SourceLabel   string   `json:"source_label"` // 前端显示的 badge 文案
+		Score         float64  `json:"score"`        // 0-100
 		// --- offlinedb 专属字段 ---
-		CreditCode      string `json:"credit_code,omitempty"`
-		LegalPerson     string `json:"legal_person,omitempty"`
-		RegisteredDate  string `json:"registered_date,omitempty"`
-		Capital         string `json:"capital,omitempty"`
-		Province        string `json:"province,omitempty"`
-		City            string `json:"city,omitempty"`
-		Address         string `json:"address,omitempty"`
-		CompanyType     string `json:"company_type,omitempty"`
-		BusinessScope   string `json:"business_scope,omitempty"`
+		CreditCode     string `json:"credit_code,omitempty"`
+		LegalPerson    string `json:"legal_person,omitempty"`
+		RegisteredDate string `json:"registered_date,omitempty"`
+		Capital        string `json:"capital,omitempty"`
+		Province       string `json:"province,omitempty"`
+		City           string `json:"city,omitempty"`
+		Address        string `json:"address,omitempty"`
+		CompanyType    string `json:"company_type,omitempty"`
+		BusinessScope  string `json:"business_scope,omitempty"`
 	}
 	out := make([]item, 0, limit*2)
 	for _, r := range results {
@@ -1478,11 +1606,17 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 					desc = desc[:120] + "..."
 				}
 				out = append(out, item{
-					BrandName:      c.Name,
-					Industry:       c.Province,
-					CompanyName:    c.Name,
-					HQ:             c.City,
-					FoundedYear:    func() int { y := 0; if len(c.RegistrationDay) >= 4 { y, _ = strconv.Atoi(c.RegistrationDay[:4]) }; return y }(),
+					BrandName:   c.Name,
+					Industry:    c.Province,
+					CompanyName: c.Name,
+					HQ:          c.City,
+					FoundedYear: func() int {
+						y := 0
+						if len(c.RegistrationDay) >= 4 {
+							y, _ = strconv.Atoi(c.RegistrationDay[:4])
+						}
+						return y
+					}(),
 					Desc:           desc,
 					Source:         "offlinedb",
 					SourceLabel:    "💾 离线工商库（1978-2019，guichong/- 种子数据）",
@@ -1501,12 +1635,12 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"total":            kb.N,
-		"query":            q,
-		"result":           out,
-		"sinofacts_count":  len(results),
-		"offlinedb_count":  maxInt(0, len(out)-len(results)),
-		"license":          "SinoFacts dataset under CC BY 4.0 (https://sinofacts.com); 离线工商数据源自 guichong/- 仓库（国家工商公示系统 1978-2019 公开历史数据）。",
+		"total":           kb.N,
+		"query":           q,
+		"result":          out,
+		"sinofacts_count": len(results),
+		"offlinedb_count": maxInt(0, len(out)-len(results)),
+		"license":         "SinoFacts dataset under CC BY 4.0 (https://sinofacts.com); 离线工商数据源自 guichong/- 仓库（国家工商公示系统 1978-2019 公开历史数据）。",
 	})
 }
 
@@ -1521,8 +1655,8 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"error": "品牌审计引擎未初始化",
-			"total": 0,
+			"error":     "品牌审计引擎未初始化",
+			"total":     0,
 			"companies": []struct{}{},
 		})
 		return
@@ -1530,8 +1664,8 @@ func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) 
 	cc := s.brandEngine.ChinaCheck()
 	if cc == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"error": "China-Check MCP 未启用（设 GEO_CHINACHECK_ENABLED=true 以启用）",
-			"total": 0,
+			"error":     "China-Check MCP 未启用（设 GEO_CHINACHECK_ENABLED=true 以启用）",
+			"total":     0,
 			"companies": []struct{}{},
 		})
 		return
@@ -1569,17 +1703,17 @@ func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) 
 	result, err := cc.Search(r.Context(), q, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"error": fmt.Sprintf("China-Check 搜索失败: %v", err),
-			"total": 0,
+			"error":     fmt.Sprintf("China-Check 搜索失败: %v", err),
+			"total":     0,
 			"companies": []struct{}{},
 		})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"query":     q,
-		"total":     result.Total,
-		"companies": result.Companies,
-		"source":    "国家企业信用信息公示系统（GSXT / SAMR） via China-Check MCP",
+		"query":      q,
+		"total":      result.Total,
+		"companies":  result.Companies,
+		"source":     "国家企业信用信息公示系统（GSXT / SAMR） via China-Check MCP",
 		"disclaimer": "本接口返回的数据来自国家企业信用信息公示系统公开信息，仅供参考，请以官方系统最新登记为准。",
 	})
 }
@@ -1722,13 +1856,13 @@ func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"query":     opt.Query,
-		"province":  opt.Province,
-		"city":      opt.City,
-		"count":     len(res),
-		"took_ms":   time.Since(start).Milliseconds(),
-		"result":    res,
-		"source":    "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ SQLite + FTS5",
+		"query":    opt.Query,
+		"province": opt.Province,
+		"city":     opt.City,
+		"count":    len(res),
+		"took_ms":  time.Since(start).Milliseconds(),
+		"result":   res,
+		"source":   "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ SQLite + FTS5",
 	})
 }
 
@@ -1883,11 +2017,11 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 			done++
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"ok":           true,
-			"imported":     done,
-			"total":        len(body.Queries),
-			"errors":       errors,
-			"stats_after":  ca.Stats(),
+			"ok":          true,
+			"imported":    done,
+			"total":       len(body.Queries),
+			"errors":      errors,
+			"stats_after": ca.Stats(),
 		})
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{
@@ -1907,7 +2041,9 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 	}
 	brandName := r.URL.Query().Get("brand")
 	if brandName == "" {
-		var body struct{ Brand string `json:"brand"` }
+		var body struct {
+			Brand string `json:"brand"`
+		}
 		if r.Method == http.MethodPost {
 			_ = readJSON(r, &body)
 			brandName = body.Brand
@@ -2010,8 +2146,8 @@ func (s *Server) handleHistoryBrands(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"count":   len(names),
-		"brands":  names,
+		"count":  len(names),
+		"brands": names,
 	})
 }
 
@@ -2054,8 +2190,8 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		BrandName string                `json:"brand_name"`
-		Profile   brand.BrandProfile    `json:"profile"`
+		BrandName string             `json:"brand_name"`
+		Profile   brand.BrandProfile `json:"profile"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败: " + err.Error()})
@@ -2085,8 +2221,8 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	resp := map[string]interface{}{
-		"ok":      true,
-		"report":  report,
+		"ok":     true,
+		"report": report,
 	}
 	// 模型分歧告警：对比当前与上次审计，检测 5 类异常信号
 	if s.scheduler != nil && len(prevStats) > 0 {
@@ -2185,8 +2321,8 @@ func (s *Server) handleDriftAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var (
-		brandName       string
-		prevID, curID   int64
+		brandName     string
+		prevID, curID int64
 	)
 	if r.Method == http.MethodGet {
 		brandName = r.URL.Query().Get("brand_name")
@@ -2486,8 +2622,8 @@ func (s *Server) handleLocalSEOAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		BrandName string              `json:"brand_name"`
-		NAP       localseo.NAPInfo    `json:"nap"`
+		BrandName string                 `json:"brand_name"`
+		NAP       localseo.NAPInfo       `json:"nap"`
 		Profile   map[string]interface{} `json:"profile,omitempty"`
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -2600,7 +2736,7 @@ func (s *Server) newAutoRewriter() *autorewriter.Rewriter {
 func (s *Server) handleAutoRewriteRules(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"rules": autorewriter.DefaultRules(),
+			"rules":  autorewriter.DefaultRules(),
 			"source": "princeton",
 		})
 		return
@@ -2639,10 +2775,10 @@ func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Content       string             `json:"content"`
-		Query         string             `json:"query"`
-		Engine        string             `json:"engine"`
-		PreserveFacts bool               `json:"preserve_facts"`
+		Content       string              `json:"content"`
+		Query         string              `json:"query"`
+		Engine        string              `json:"engine"`
+		PreserveFacts bool                `json:"preserve_facts"`
 		Rules         []autorewriter.Rule `json:"rules"`
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -2822,15 +2958,54 @@ func (s *Server) handleBrandDiscoverReport(w http.ResponseWriter, r *http.Reques
 // defaultCompareDimensions 竞品对标默认的 5 个维度占位（当 VisibilityReport 无细分维度时使用）。
 var defaultCompareDimensions = []string{"Search", "Content", "Media", "Social", "LocalSEO"}
 
+// dimensionPriority 维度优先级顺序（用于竞品对标维度排序稳定化）。
+// 按此列表顺序排列维度；未在列表中的维度按字母序追加在末尾。
+var dimensionPriority = []string{
+	"ContentQuality", "TechnicalSEO", "OnPageSEO", "Schema",
+	"Performance", "AIReadiness", "ImageOptimization",
+	"MentionRate", "CitationRate", "ShareOfVoice",
+	"CitationPosition", "Sentiment", "EntityRecognition",
+	"Search", "Content", "Media", "Social", "LocalSEO",
+}
+
+// dimensionPriorityIndex 维度优先级索引（便于 O(1) 查询），未在列表中的维度返回 len(priority)。
+var dimensionPriorityIndex = func() map[string]int {
+	m := make(map[string]int, len(dimensionPriority))
+	for i, d := range dimensionPriority {
+		m[d] = i
+	}
+	return m
+}()
+
+// sortDimensionsByPriority 按优先级排序维度（稳定排序）。
+// 优先级列表内的维度按列表顺序排列，未在列表中的按字母序追加在末尾。
+func sortDimensionsByPriority(dims []string) {
+	sort.SliceStable(dims, func(i, j int) bool {
+		pi, oki := dimensionPriorityIndex[dims[i]]
+		pj, okj := dimensionPriorityIndex[dims[j]]
+		if !oki {
+			pi = len(dimensionPriority)
+		}
+		if !okj {
+			pj = len(dimensionPriority)
+		}
+		if pi != pj {
+			return pi < pj
+		}
+		// 同优先级（含均未在列表中）按字母序
+		return dims[i] < dims[j]
+	})
+}
+
 // extractDimensionScores 从 VisibilityReport 提取各维度分数。
 //
 // 策略：
-//   1. 优先使用 ScoreBreakdown 中的 BVS 加权健康 7 维（ContentQuality/TechnicalSEO/OnPageSEO/
-//      Schema/Performance/AIReadiness/ImageOptimization），如果这些字段不全为 0。
-//   2. 其次使用引擎可见度 6 维（MentionRate/CitationRate/ShareOfVoice/CitationPosition/
-//      Sentiment/EntityRecognition），如果这些字段不全为 0。
-//   3. 若上述维度字段均不存在/全为 0，使用默认 5 个维度占位（Search/Content/Media/Social/
-//      LocalSEO），按 Score 平均分拆，便于画图。
+//  1. 优先使用 ScoreBreakdown 中的 BVS 加权健康 7 维（ContentQuality/TechnicalSEO/OnPageSEO/
+//     Schema/Performance/AIReadiness/ImageOptimization），如果这些字段不全为 0。
+//  2. 其次使用引擎可见度 6 维（MentionRate/CitationRate/ShareOfVoice/CitationPosition/
+//     Sentiment/EntityRecognition），如果这些字段不全为 0。
+//  3. 若上述维度字段均不存在/全为 0，使用默认 5 个维度占位（Search/Content/Media/Social/
+//     LocalSEO），按 Score 平均分拆，便于画图。
 func extractDimensionScores(vr *brand.VisibilityReport) (dimensionNames []string, scores map[string]float64) {
 	scores = map[string]float64{}
 
@@ -2884,19 +3059,22 @@ func extractDimensionScores(vr *brand.VisibilityReport) (dimensionNames []string
 
 // compareBrandResult 单个品牌的对标结果。
 type compareBrandResult struct {
-	Name            string             `json:"name"`
-	Score           float64            `json:"score"`
-	Grade           string             `json:"grade"`
-	CreatedAt       *string            `json:"created_at"`
-	DimensionScores map[string]float64 `json:"dimension_scores,omitempty"`
+	Name               string              `json:"name"`
+	Score              float64             `json:"score"`
+	Grade              string              `json:"grade"`
+	Tier               string              `json:"tier,omitempty"`
+	EntityCompleteness float64             `json:"entity_completeness,omitempty"`
+	CreatedAt          *string             `json:"created_at,omitempty"`
+	DimensionScores    map[string]*float64 `json:"dimension_scores"` // nil = 无数据，非 nil = 实际分数
 }
 
 // compareDiffResult 两个品牌之间的差异。
+// ByDimension 的值类型为 float64（差值）或 string（"n/a" 表示某品牌该维度无数据）。
 type compareDiffResult struct {
-	BrandA     string             `json:"brand_a"`
-	BrandB     string             `json:"brand_b"`
-	DeltaScore float64            `json:"delta_score"`
-	ByDimension map[string]float64 `json:"by_dimension"`
+	BrandA      string                 `json:"brand_a"`
+	BrandB      string                 `json:"brand_b"`
+	DeltaScore  float64                `json:"delta_score"`
+	ByDimension map[string]interface{} `json:"by_dimension"`
 }
 
 // handleBrandCompare 竞品对标矩阵接口。
@@ -2906,12 +3084,14 @@ type compareDiffResult struct {
 // 从 HistoryDB 取各品牌最新审计，返回 JSON：
 //
 //	{
-//	  "brands":     [{name, score, grade, created_at, dimension_scores:{维度:分数}}],
-//	  "dimensions": [维度名数组],
-//	  "diffs":      [{brand_a, brand_b, delta_score, by_dimension:{维度:差值}}],
+//	  "brands":     [{name, score, grade, tier, entity_completeness, created_at, dimension_scores:{维度:分数|null}}],
+//	  "dimensions": [维度名数组（按优先级排序）],
+//	  "diffs":      [{brand_a, brand_b, delta_score, by_dimension:{维度:差值|"n/a"}}],
 //	  "errors":     {品牌名: 错误说明}   // 仅在有缺失/失败时存在
 //	}
 //
+// 维度缺失标注：某品牌缺少某维度时 dimension_scores 中对应值为 null（区别于 0 分）。
+// diffs 中当任一品牌某维度无数据时，该维度标注 "n/a" 而非计算差值。
 // 缺少审计记录的品牌在 brands 数组中对应位置为 null，并在 errors 中说明。
 func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -2954,39 +3134,71 @@ func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	type brandEntry struct {
-		Name     string
-		Record   *history.Record
-		Report   *brand.VisibilityReport
-		ErrMsg   string
+	data, errorsMap := s.buildBrandCompareData(ctx, brandList)
+	resp := map[string]interface{}{
+		"brands":     data.Brands,
+		"dimensions": data.Dimensions,
+		"diffs":      data.Diffs,
 	}
-	entries := make([]*brandEntry, len(brandList))
+	if len(errorsMap) > 0 {
+		resp["errors"] = errorsMap
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// brandCompareData 竞品对标数据（brands/dimensions/diffs）。
+// 供 handleBrandCompare 与 handleBrandCompareExport 共享。
+type brandCompareData struct {
+	Brands     []*compareBrandResult `json:"brands"`
+	Dimensions []string              `json:"dimensions"`
+	Diffs      []compareDiffResult   `json:"diffs"`
+}
+
+// brandCompareEntry 内部构建对标数据时使用的单品牌条目。
+type brandCompareEntry struct {
+	Name   string
+	Record *history.Record
+	Report *brand.VisibilityReport
+	ErrMsg string
+}
+
+// buildBrandCompareData 构建竞品对标数据。
+//
+// 逻辑要点：
+//   - 维度缺失标注：某品牌缺少某维度时 DimensionScores 中对应值为 nil（JSON null），
+//     前端可区分"0 分"与"无数据"。
+//   - 维度排序稳定化：按 dimensionPriority 优先级排序，未在列表中的按字母序追加。
+//   - diffs 中 null 维度跳过：当任一品牌的某维度为 nil 时，diff 中该维度标注 "n/a"。
+//   - 透传 tier / entity_completeness。
+func (s *Server) buildBrandCompareData(ctx context.Context, brandList []string) (brandCompareData, map[string]string) {
+	entries := make([]*brandCompareEntry, len(brandList))
 	errorsMap := map[string]string{}
 
 	for i, name := range brandList {
 		rec, err := s.brandEngine.HistoryDB().Latest(ctx, name)
 		if err != nil {
-			entries[i] = &brandEntry{Name: name, ErrMsg: "读取审计历史失败: " + err.Error()}
+			entries[i] = &brandCompareEntry{Name: name, ErrMsg: "读取审计历史失败: " + err.Error()}
 			errorsMap[name] = entries[i].ErrMsg
 			continue
 		}
 		if rec == nil || strings.TrimSpace(rec.ReportJSON) == "" {
-			entries[i] = &brandEntry{Name: name, ErrMsg: "未找到该品牌的审计记录（请先执行一次品牌审计）"}
+			entries[i] = &brandCompareEntry{Name: name, ErrMsg: "未找到该品牌的审计记录（请先执行一次品牌审计）"}
 			errorsMap[name] = entries[i].ErrMsg
 			continue
 		}
 		var vr brand.VisibilityReport
 		if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
-			entries[i] = &brandEntry{
+			entries[i] = &brandCompareEntry{
 				Name:   name,
 				ErrMsg: "解析审计报告失败: " + err.Error(),
 			}
 			errorsMap[name] = entries[i].ErrMsg
 			continue
 		}
-		entries[i] = &brandEntry{Name: name, Record: rec, Report: &vr}
+		entries[i] = &brandCompareEntry{Name: name, Record: rec, Report: &vr}
 	}
 
+	// 收集所有品牌出现过的维度（去重），并按优先级排序
 	unifiedDims := []string{}
 	dimSet := map[string]bool{}
 	for _, e := range entries {
@@ -3005,20 +3217,26 @@ func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 		unifiedDims = make([]string, len(defaultCompareDimensions))
 		copy(unifiedDims, defaultCompareDimensions)
 	}
+	// 维度排序稳定化：按优先级列表排序
+	sortDimensionsByPriority(unifiedDims)
 
+	// 构建每个品牌的对标结果（缺失维度填 nil，非缺失填实际分数指针）
 	brandsOut := make([]*compareBrandResult, len(entries))
 	for i, e := range entries {
 		if e == nil || e.Report == nil {
 			brandsOut[i] = nil
 			continue
 		}
-		dimNames, dimScores := extractDimensionScores(e.Report)
-		finalScores := map[string]float64{}
+		_, dimScores := extractDimensionScores(e.Report)
+		finalScores := make(map[string]*float64, len(unifiedDims))
 		for _, d := range unifiedDims {
 			if v, ok := dimScores[d]; ok {
-				finalScores[d] = v
+				// 品牌有该维度，使用实际分数（拷贝避免指针共享）
+				vv := v
+				finalScores[d] = &vv
 			} else {
-				finalScores[d] = 0
+				// 品牌缺少该维度，nil 表示无数据
+				finalScores[d] = nil
 			}
 		}
 		createdAtStr := ""
@@ -3031,16 +3249,18 @@ func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 		if createdAtStr != "" {
 			createdAtPtr = &createdAtStr
 		}
-		_ = dimNames
 		brandsOut[i] = &compareBrandResult{
-			Name:            e.Name,
-			Score:           e.Report.Score,
-			Grade:           e.Report.Grade,
-			CreatedAt:       createdAtPtr,
-			DimensionScores: finalScores,
+			Name:               e.Name,
+			Score:              e.Report.Score,
+			Grade:              e.Report.Grade,
+			Tier:               e.Report.Tier,
+			EntityCompleteness: e.Report.EntityCompletenessScore,
+			CreatedAt:          createdAtPtr,
+			DimensionScores:    finalScores,
 		}
 	}
 
+	// 构建两两品牌差异（任一品牌该维度为 nil 时标注 "n/a"）
 	diffs := []compareDiffResult{}
 	for i := 0; i < len(entries); i++ {
 		for j := i + 1; j < len(entries); j++ {
@@ -3050,28 +3270,455 @@ func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 			}
 			_, aScores := extractDimensionScores(a.Report)
 			_, bScores := extractDimensionScores(b.Report)
-			byDim := map[string]float64{}
+			byDim := map[string]interface{}{}
 			for _, d := range unifiedDims {
-				byDim[d] = aScores[d] - bScores[d]
+				aVal, aOk := aScores[d]
+				bVal, bOk := bScores[d]
+				if !aOk || !bOk {
+					// 任一品牌该维度无数据，标注 n/a
+					byDim[d] = "n/a"
+				} else {
+					byDim[d] = aVal - bVal
+				}
 			}
 			diffs = append(diffs, compareDiffResult{
-				BrandA:     a.Name,
-				BrandB:     b.Name,
-				DeltaScore: a.Report.Score - b.Report.Score,
+				BrandA:      a.Name,
+				BrandB:      b.Name,
+				DeltaScore:  a.Report.Score - b.Report.Score,
 				ByDimension: byDim,
 			})
 		}
 	}
 
-	resp := map[string]interface{}{
-		"brands":     brandsOut,
-		"dimensions": unifiedDims,
-		"diffs":      diffs,
+	return brandCompareData{
+		Brands:     brandsOut,
+		Dimensions: unifiedDims,
+		Diffs:      diffs,
+	}, errorsMap
+}
+
+// compareBrandColors 竞品对比雷达图/卡片用的品牌配色（最多 5 个品牌）。
+var compareBrandColors = []string{
+	"#4f8cff", // 蓝
+	"#16a34a", // 绿
+	"#f59e0b", // 橙
+	"#dc2626", // 红
+	"#8b5cf6", // 紫
+}
+
+// compareTierLabel 将 tier 标识转为中文标签（与 report.tierLabel 一致）。
+func compareTierLabel(tier string) string {
+	switch tier {
+	case "household":
+		return "头部"
+	case "midmarket":
+		return "中坚"
+	case "niche":
+		return "长尾"
+	default:
+		if tier == "" {
+			return "—"
+		}
+		return tier
 	}
+}
+
+// handleBrandCompareExport 竞品对比报告导出 API。
+//
+// GET /api/v1/brand/compare/export?brands=A,B,C&format=html|json
+//
+// format=html：生成自包含 HTML 报告（内联 CSS + SVG 雷达图 + 对比表格 + 差异分析）
+// format=json：直接返回 compare 数据（与 /api/v1/brand/compare 一致）
+func (s *Server) handleBrandCompareExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		return
+	}
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	brandsRaw := r.URL.Query().Get("brands")
+	if strings.TrimSpace(brandsRaw) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brands 参数"})
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
+	if format == "" {
+		format = "html"
+	}
+	if format != "html" && format != "json" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "format 仅支持 html 或 json"})
+		return
+	}
+	parts := strings.Split(brandsRaw, ",")
+	brandList := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		brandList = append(brandList, name)
+	}
+	if len(brandList) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brands 参数为空"})
+		return
+	}
+	if len(brandList) > 5 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("最多支持 5 个品牌同时对比，当前 %d 个", len(brandList)),
+		})
+		return
+	}
+
+	data, errorsMap := s.buildBrandCompareData(r.Context(), brandList)
+
+	if format == "json" {
+		resp := map[string]interface{}{
+			"brands":     data.Brands,
+			"dimensions": data.Dimensions,
+			"diffs":      data.Diffs,
+		}
+		if len(errorsMap) > 0 {
+			resp["errors"] = errorsMap
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	// format == html
+	htmlOut := generateCompareHTML(data, errorsMap)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, htmlOut)
+}
+
+// generateCompareHTML 生成自包含的竞品对比 HTML 报告。
+//
+// 报告结构：
+//  1. 标题 + 元信息（生成时间 / 品牌数）
+//  2. 总分对比卡片（每个品牌一张卡：名称/分数/等级/梯队）
+//  3. SVG 雷达图（多品牌叠加，分数归一化到 0-1 映射半径）
+//  4. 维度对比表格（行=维度，列=品牌，null 维度显示 n/a）
+//  5. 差异分析（两两品牌差值表，null 维度显示 n/a）
+//  6. 页脚
+func generateCompareHTML(data brandCompareData, errorsMap map[string]string) string {
+	var b strings.Builder
+	now := time.Now()
+	validBrands := make([]*compareBrandResult, 0, len(data.Brands))
+	for _, br := range data.Brands {
+		if br != nil {
+			validBrands = append(validBrands, br)
+		}
+	}
+
+	b.WriteString(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>竞品对标报告 - `)
+	b.WriteString(html.EscapeString(now.Format("2006-01-02")))
+	b.WriteString(`</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+    color: #e5e7eb;
+    background: #0f172a;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 32px 44px 48px;
+  }
+  h1 { font-size: 28px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+  .meta { font-size: 13px; color: #94a3b8; margin-bottom: 32px; }
+  .section-title {
+    font-size: 18px; font-weight: 600; color: #f1f5f9;
+    margin: 36px 0 16px; padding-bottom: 8px; border-bottom: 1px solid #1e293b;
+  }
+  /* 总分对比卡片 */
+  .score-cards { display: flex; flex-wrap: wrap; gap: 16px; }
+  .card {
+    flex: 1; min-width: 160px;
+    background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+    padding: 20px; text-align: center;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; color: #cbd5e1; margin-bottom: 12px; }
+  .card .score { font-size: 36px; font-weight: 700; margin-bottom: 4px; }
+  .card .grade { font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+  .card .tier { font-size: 12px; color: #64748b; }
+  /* SVG 雷达图 */
+  .radar-wrap { display: flex; justify-content: center; margin: 16px 0; }
+  svg.radar { max-width: 440px; width: 100%; height: auto; }
+  /* 对比表格 */
+  table.compare-table {
+    width: 100%; border-collapse: collapse;
+    background: #1e293b; border-radius: 8px; overflow: hidden;
+  }
+  table.compare-table th, table.compare-table td {
+    padding: 10px 12px; text-align: center; font-size: 13px;
+    border-bottom: 1px solid #334155;
+  }
+  table.compare-table th {
+    background: #334155; color: #e2e8f0; font-weight: 600;
+  }
+  table.compare-table td:first-child {
+    text-align: left; color: #cbd5e1; font-weight: 500;
+  }
+  table.compare-table td.na { color: #64748b; font-style: italic; }
+  table.compare-table tr:hover { background: #243044; }
+  /* 差异分析 */
+  .diffs { display: flex; flex-direction: column; gap: 20px; }
+  .diff-item {
+    background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 16px 20px;
+  }
+  .diff-item h3 { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; }
+  .diff-item table { width: 100%; border-collapse: collapse; }
+  .diff-item th, .diff-item td {
+    padding: 8px 10px; font-size: 12px; text-align: center;
+    border-bottom: 1px solid #334155;
+  }
+  .diff-item th { color: #94a3b8; font-weight: 500; }
+  .diff-item td:first-child { text-align: left; color: #cbd5e1; }
+  .diff-item td.pos { color: #16a34a; }
+  .diff-item td.neg { color: #dc2626; }
+  .diff-item td.na { color: #64748b; font-style: italic; }
+  /* 错误提示 */
+  .errors {
+    background: #4c1d24; border: 1px solid #7f1d1d; border-radius: 8px;
+    padding: 12px 16px; margin: 16px 0; font-size: 13px; color: #fca5a5;
+  }
+  .errors h3 { font-size: 14px; margin-bottom: 8px; }
+  .errors ul { margin-left: 18px; }
+  /* 图例 */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin: 8px 0; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #cbd5e1; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+  /* 页脚 */
+  footer {
+    margin-top: 48px; padding-top: 16px; border-top: 1px solid #1e293b;
+    font-size: 12px; color: #64748b; text-align: center;
+  }
+  @media print {
+    body { background: #fff; color: #000; }
+    .page { max-width: 100%; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>竞品对标报告</h1>
+  <div class="meta">生成时间：`)
+	b.WriteString(html.EscapeString(now.Format("2006-01-02 15:04:05")))
+	b.WriteString(` | 品牌数：`)
+	b.WriteString(strconv.Itoa(len(validBrands)))
+	b.WriteString(`</div>
+`)
+
+	// 错误提示
 	if len(errorsMap) > 0 {
-		resp["errors"] = errorsMap
+		b.WriteString(`<div class="errors"><h3>⚠ 部分品牌数据缺失</h3><ul>`)
+		for name, msg := range errorsMap {
+			b.WriteString(`<li><strong>` + html.EscapeString(name) + `</strong>：` + html.EscapeString(msg) + `</li>`)
+		}
+		b.WriteString(`</ul></div>`)
 	}
-	writeJSON(w, http.StatusOK, resp)
+
+	// 总分对比卡片
+	b.WriteString(`<div class="section-title">总分对比</div>`)
+	b.WriteString(`<div class="score-cards">`)
+	for i, br := range validBrands {
+		color := compareBrandColors[i%len(compareBrandColors)]
+		b.WriteString(`<div class="card">`)
+		b.WriteString(`<h2>` + html.EscapeString(br.Name) + `</h2>`)
+		b.WriteString(fmt.Sprintf(`<div class="score" style="color:%s">%.1f</div>`, color, br.Score))
+		b.WriteString(`<div class="grade">等级 ` + html.EscapeString(br.Grade) + `</div>`)
+		b.WriteString(`<div class="tier">梯队 ` + html.EscapeString(compareTierLabel(br.Tier)) + `</div>`)
+		b.WriteString(`</div>`)
+	}
+	b.WriteString(`</div>`)
+
+	// SVG 雷达图
+	if len(data.Dimensions) >= 3 && len(validBrands) > 0 {
+		b.WriteString(`<div class="section-title">维度雷达图</div>`)
+		b.WriteString(`<div class="radar-wrap">`)
+		b.WriteString(buildCompareRadarSVG(data.Dimensions, validBrands))
+		b.WriteString(`</div>`)
+		// 图例
+		b.WriteString(`<div class="legend">`)
+		for i, br := range validBrands {
+			color := compareBrandColors[i%len(compareBrandColors)]
+			b.WriteString(fmt.Sprintf(`<div class="legend-item"><span class="legend-dot" style="background:%s"></span>%s</div>`,
+				color, html.EscapeString(br.Name)))
+		}
+		b.WriteString(`</div>`)
+	}
+
+	// 维度对比表格
+	b.WriteString(`<div class="section-title">维度对比明细</div>`)
+	b.WriteString(`<table class="compare-table"><thead><tr><th>维度</th>`)
+	for _, br := range validBrands {
+		b.WriteString(`<th>` + html.EscapeString(br.Name) + `</th>`)
+	}
+	b.WriteString(`</tr></thead><tbody>`)
+	for _, dim := range data.Dimensions {
+		b.WriteString(`<tr><td>` + html.EscapeString(dim) + `</td>`)
+		for _, br := range validBrands {
+			p := br.DimensionScores[dim]
+			if p == nil {
+				b.WriteString(`<td class="na">n/a</td>`)
+			} else {
+				b.WriteString(fmt.Sprintf(`<td>%.1f</td>`, *p))
+			}
+		}
+		b.WriteString(`</tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+
+	// 差异分析
+	if len(data.Diffs) > 0 {
+		b.WriteString(`<div class="section-title">差异分析</div>`)
+		b.WriteString(`<div class="diffs">`)
+		for _, d := range data.Diffs {
+			b.WriteString(`<div class="diff-item">`)
+			b.WriteString(fmt.Sprintf(`<h3>%s vs %s (Δ %.1f)</h3>`,
+				html.EscapeString(d.BrandA), html.EscapeString(d.BrandB), d.DeltaScore))
+			b.WriteString(`<table><thead><tr><th>维度</th><th>差值</th></tr></thead><tbody>`)
+			for _, dim := range data.Dimensions {
+				val, ok := d.ByDimension[dim]
+				if !ok {
+					continue
+				}
+				b.WriteString(`<tr><td>` + html.EscapeString(dim) + `</td>`)
+				switch v := val.(type) {
+				case string:
+					b.WriteString(`<td class="na">` + html.EscapeString(v) + `</td>`)
+				case float64:
+					cls := ""
+					if v > 0 {
+						cls = "pos"
+					} else if v < 0 {
+						cls = "neg"
+					}
+					b.WriteString(fmt.Sprintf(`<td class="%s">%+.1f</td>`, cls, v))
+				default:
+					b.WriteString(`<td class="na">n/a</td>`)
+				}
+				b.WriteString(`</tr>`)
+			}
+			b.WriteString(`</tbody></table>`)
+			b.WriteString(`</div>`)
+		}
+		b.WriteString(`</div>`)
+	}
+
+	b.WriteString(`<footer>由 AI 生成，仅供参考 | GEO v` + geoVersion + `</footer>`)
+	b.WriteString(`
+</div>
+</body>
+</html>`)
+	return b.String()
+}
+
+// buildCompareRadarSVG 构建多品牌叠加的 SVG 雷达图。
+//
+// 画布 400x400，中心 (200,200)，最大半径 140。
+// 维度数 N ≥ 3 时绘制 N 边形，每个品牌一条折线，分数归一化到 0-1 映射半径。
+// nil 分数（无数据）按半径 0 处理（折线收到中心）。
+func buildCompareRadarSVG(dims []string, brands []*compareBrandResult) string {
+	const (
+		cx, cy     = 200.0, 200.0
+		maxRadius  = 140.0
+		canvasSize = 400
+	)
+	n := len(dims)
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`<svg class="radar" viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">`, canvasSize, canvasSize))
+
+	// 计算各维度顶点角度（从顶部开始，顺时针）
+	angles := make([]float64, n)
+	for k := 0; k < n; k++ {
+		angles[k] = -math.Pi/2 + 2*math.Pi*float64(k)/float64(n)
+	}
+	// 顶点坐标辅助函数
+	vertex := func(k int, r float64) (float64, float64) {
+		return cx + r*math.Cos(angles[k]), cy + r*math.Sin(angles[k])
+	}
+
+	// 绘制网格（4 层同心 N 边形：25%/50%/75%/100%）
+	for _, ratio := range []float64{0.25, 0.5, 0.75, 1.0} {
+		r := maxRadius * ratio
+		b.WriteString(`<polygon points="`)
+		for k := 0; k < n; k++ {
+			x, y := vertex(k, r)
+			if k > 0 {
+				b.WriteString(" ")
+			}
+			b.WriteString(fmt.Sprintf("%.1f,%.1f", x, y))
+		}
+		b.WriteString(`" fill="none" stroke="#334155" stroke-width="1"/>`)
+	}
+
+	// 绘制轴线（从中心到各顶点）
+	for k := 0; k < n; k++ {
+		x, y := vertex(k, maxRadius)
+		b.WriteString(fmt.Sprintf(`<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#334155" stroke-width="1"/>`, cx, cy, x, y))
+	}
+
+	// 绘制维度标签
+	labelR := maxRadius + 22
+	for k, dim := range dims {
+		x, y := vertex(k, labelR)
+		anchor := "middle"
+		if x < cx-10 {
+			anchor = "end"
+		} else if x > cx+10 {
+			anchor = "start"
+		}
+		b.WriteString(fmt.Sprintf(`<text x="%.1f" y="%.1f" text-anchor="%s" font-size="11" fill="#94a3b8">%s</text>`,
+			x, y+4, anchor, html.EscapeString(dim)))
+	}
+
+	// 绘制每个品牌的折线
+	for i, br := range brands {
+		color := compareBrandColors[i%len(compareBrandColors)]
+		points := make([]string, 0, n)
+		for k := 0; k < n; k++ {
+			p := br.DimensionScores[dims[k]]
+			var r float64
+			if p != nil {
+				r = (*p / 100.0) * maxRadius
+				if r < 0 {
+					r = 0
+				}
+				if r > maxRadius {
+					r = maxRadius
+				}
+			}
+			x, y := vertex(k, r)
+			points = append(points, fmt.Sprintf("%.1f,%.1f", x, y))
+		}
+		b.WriteString(`<polygon points="` + strings.Join(points, " ") + `"`)
+		b.WriteString(fmt.Sprintf(` fill="%s" fill-opacity="0.12" stroke="%s" stroke-width="2"/>`, color, color))
+		// 顶点圆点
+		for k := 0; k < n; k++ {
+			p := br.DimensionScores[dims[k]]
+			if p == nil {
+				continue
+			}
+			x, y := vertex(k, (*p/100.0)*maxRadius)
+			b.WriteString(fmt.Sprintf(`<circle cx="%.1f" cy="%.1f" r="3" fill="%s"/>`, x, y, color))
+		}
+	}
+
+	b.WriteString(`</svg>`)
+	return b.String()
 }
 
 // ---------- 排行榜接口 ----------
@@ -3090,18 +3737,18 @@ type leaderboardItem struct {
 
 // leaderboardBrandHistory 单品牌历史走势与排名。
 type leaderboardBrandHistory struct {
-	BrandName   string            `json:"brand_name"`
-	Category    string            `json:"category"`
-	Industry    string            `json:"industry,omitempty"`
-	CurrentRank int               `json:"current_rank"`
-	History     []history.Record  `json:"history"`
-	RankHistory []rankPoint       `json:"rank_history,omitempty"`
+	BrandName   string           `json:"brand_name"`
+	Category    string           `json:"category"`
+	Industry    string           `json:"industry,omitempty"`
+	CurrentRank int              `json:"current_rank"`
+	History     []history.Record `json:"history"`
+	RankHistory []rankPoint      `json:"rank_history,omitempty"`
 }
 
 // rankPoint 某个时间点的排名（用于趋势图）。
 type rankPoint struct {
-	Generated int64 `json:"generated_at"`
-	Rank      int   `json:"rank"`
+	Generated int64   `json:"generated_at"`
+	Rank      int     `json:"rank"`
 	Score     float64 `json:"score"`
 }
 
@@ -3252,10 +3899,10 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 		filtered = filtered[:limit]
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"category":  ternary(category == "", "全部", category),
-		"limit":     limit,
-		"count":     len(filtered),
-		"total":     len(items),
+		"category":    ternary(category == "", "全部", category),
+		"limit":       limit,
+		"count":       len(filtered),
+		"total":       len(items),
 		"leaderboard": filtered,
 	})
 }

@@ -1,0 +1,187 @@
+@use '@/styles/tokens' as *;
+
+// 页面头部复用 Dashboard 的 page-header 样式
+.admin-page {
+  .admin-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    align-items: flex-end;
+    margin-bottom: var(--spacing-md);
+
+    .admin-filter-item {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+      min-width: 160px;
+
+      label {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+      }
+
+      select {
+        padding: 8px 12px;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-primary);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--font-size-sm);
+        cursor: pointer;
+      }
+    }
+  }
+
+  // 用量统计卡片网格
+  .admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+  }
+
+  // 单个统计卡片
+  .admin-stat-card {
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: linear-gradient(135deg, var(--surface-primary), var(--surface-secondary));
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+
+    .admin-stat-icon {
+      font-size: 28px;
+    }
+
+    .admin-stat-label {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+    }
+
+    .admin-stat-value {
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--text-primary);
+    }
+
+    .admin-stat-suffix {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      margin-left: 4px;
+    }
+  }
+
+  // 系统信息列表
+  .admin-sysinfo-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+
+    .admin-sysinfo-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      background: var(--surface-secondary);
+      border: 1px solid var(--border-primary);
+      font-size: var(--font-size-sm);
+
+      .admin-sysinfo-key {
+        font-weight: var(--font-weight-medium);
+        color: var(--text-secondary);
+      }
+
+      .admin-sysinfo-val {
+        font-family: var(--font-family-mono);
+        color: var(--text-primary);
+        font-weight: var(--font-weight-semibold);
+      }
+    }
+  }
+
+  // 公告创建表单
+  .admin-announce-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+
+    .admin-announce-form-full {
+      grid-column: span 2;
+    }
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+
+      .admin-announce-form-full {
+        grid-column: span 1;
+      }
+    }
+  }
+
+  // 状态徽章
+  .admin-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+
+    &-active {
+      background: var(--status-success-bg);
+      color: var(--status-success);
+    }
+
+    &-suspended {
+      background: var(--status-error-bg);
+      color: var(--status-error);
+    }
+
+    &-pending {
+      background: var(--status-warning-bg);
+      color: var(--status-warning);
+    }
+  }
+
+  // 双栏布局（系统信息 + 资源监控）
+  .admin-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+
+    @media (max-width: 1024px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  // 资源进度条
+  .admin-resource-bar {
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--bg-tertiary);
+    overflow: hidden;
+    margin-top: var(--spacing-xs);
+
+    .admin-resource-bar-fill {
+      height: 100%;
+      border-radius: var(--radius-full);
+      transition: width 0.3s ease;
+
+      &-ok {
+        background: linear-gradient(90deg, var(--status-success), var(--chart-success));
+      }
+
+      &-warn {
+        background: linear-gradient(90deg, var(--status-warning), var(--chart-warning));
+      }
+
+      &-danger {
+        background: linear-gradient(90deg, var(--status-error), var(--chart-error));
+      }
+    }
+  }
+}

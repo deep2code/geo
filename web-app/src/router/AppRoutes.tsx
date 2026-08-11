@@ -12,6 +12,11 @@ const AlertEmail = lazy(() => import('@/pages/AlertEmail'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const Compare = lazy(() => import('@/pages/Compare'))
 const Leaderboard = lazy(() => import('@/pages/Leaderboard'))
+// 新增模块
+const Admin = lazy(() => import('@/pages/Admin'))
+const Help = lazy(() => import('@/pages/Help'))
+const Tickets = lazy(() => import('@/pages/Tickets'))
+const Landing = lazy(() => import('@/pages/Landing'))
 
 const PageFallback: React.FC = () => (
   <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
@@ -55,8 +60,21 @@ export const AppRoutes: React.FC = () => {
         <Route path="settings" element={
           <Suspense fallback={<PageFallback />}><Settings /></Suspense>
         } />
+        <Route path="admin" element={
+          <Suspense fallback={<PageFallback />}><Admin /></Suspense>
+        } />
+        <Route path="help" element={
+          <Suspense fallback={<PageFallback />}><Help /></Suspense>
+        } />
+        <Route path="tickets" element={
+          <Suspense fallback={<PageFallback />}><Tickets /></Suspense>
+        } />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
+      {/* 落地页独立全屏页面，不使用 Layout */}
+      <Route path="/landing" element={
+        <Suspense fallback={<PageFallback />}><Landing /></Suspense>
+      } />
     </Routes>
   )
 }

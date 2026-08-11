@@ -54,8 +54,8 @@ mindmap
 graph TB
     subgraph 用户入口["👤 用户入口层"]
         CLI["💻 CLI 工具链<br/>geo optimize / score / audit / discover"]
-        WEB["🌐 Web UI<br/>go:embed 单文件"]
-        API["🔌 REST API<br/>/api/v1/* (25+ 端点)"]
+        WEB["🌐 Web SPA<br/>Vite+React+TS<br/>10+ 页面 i18n"]
+        API["🔌 REST API<br/>/api/v1/* (60+ 端点)"]
         MCP["🤖 MCP Server<br/>JSON-RPC 2.0 over stdio"]
     end
 
@@ -63,6 +63,7 @@ graph TB
         GEO["📝 GEO Engine<br/>pkg/geo<br/>（内容优化/评分/分析）"]
         BRAND["🏢 Brand Engine<br/>internal/brand<br/>（审计/调度/告警）"]
         DISCOVER["🔍 Discover Engine<br/>internal/brand/discover<br/>（关键词→公司→报告）"]
+        CRAW["🕷 官网爬虫<br/>自动补全品牌画像"]
     end
 
     subgraph AI引擎适配["🧠 13 AI 引擎适配层"]
@@ -80,11 +81,13 @@ graph TB
         HISDB["📜 审计历史库<br/>SQLite / MySQL<br/>时序+JSON快照"]
         CACHE["⚡ China-Check 缓存<br/>JSONL / Redis<br/>K/V + TTL"]
         KB["📚 SinoFacts 知识库<br/>JSONL 只读 (CC BY 4.0)"]
+        VEC["📐 向量检索<br/>TF-IDF + Embedding"]
     end
 
     subgraph 外部服务["🌐 外部服务"]
         CC["✅ China-Check MCP<br/>GSXT/SAMR 官方实时查询（免费）"]
         LLM["🧩 大模型 API<br/>统一 OpenAI 兼容协议"]
+        DOM["📊 国内信号源<br/>百度/微信/知乎/抖音等"]
     end
 
     CLI --> GEO & BRAND & DISCOVER
@@ -788,10 +791,32 @@ graph TB
         RD["readiness/ci-gate GET"]
     end
 
+    subgraph 商业化["💼 商业化与交付 /api/v1/"]
+        AD["admin/* GET/POST<br/>管理员后台"]
+        TK["tickets GET/POST<br/>工单系统"]
+        HP["help/* GET<br/>帮助中心"]
+        PR["pricing/* GET<br/>定价方案"]
+        LD["landing/* GET<br/>落地页"]
+    end
+
+    subgraph 安全["🛡 安全与白标 /api/v1/"]
+        SE["security/audit GET<br/>安全审计"]
+        WL["meta/whitelabel GET<br/>白标配置"]
+    end
+
+    subgraph 对标["📊 对标与排行 /api/v1/"]
+        CP["brand/compare GET<br/>竞品对标"]
+        LB["leaderboard GET<br/>GEO 排行榜"]
+        CMS["cms/* GET/POST<br/>CMS 检查"]
+    end
+
     style 入口层 fill:#ecfeff,stroke:#0891b2
     style 内容层 fill:#dbeafe,stroke:#1d4ed8
     style 品牌层 fill:#dcfce7,stroke:#15803d
     style 扩展层 fill:#fef3c7,stroke:#b45309
+    style 商业化 fill:#e0e7ff,stroke:#4f46e5
+    style 安全 fill:#fee2e2,stroke:#b91c1c
+    style 对标 fill:#d1fae5,stroke:#047857
 ```
 
 ---
@@ -804,7 +829,7 @@ graph TB
 graph TB
     subgraph 单机["🟢 单机部署（推荐个人）"]
         direction LR
-        BIN["📦 geo 二进制<br/>单文件无依赖"]
+        BIN["📦 geo 二进制<br/>含 SPA 前端 + 降级缓存"]
         BIN --> SQL["💿 SQLite 文件<br/>~/.local/share/geo/"]
         BIN --> JL["⚡ JSONL 缓存<br/>~/.cache/geo/"]
     end
@@ -862,11 +887,32 @@ graph LR
         WK["GEO_SCHEDULER_WEBHOOK=xxx"]
     end
 
+    subgraph 安全白标["🛡 安全与白标"]
+        AK["GEO_API_KEY"]
+        ADM["GEO_ADMIN_KEY"]
+        CO["GEO_CORS_ORIGINS"]
+        RL["GEO_RATE_LIMIT_GLOBAL"]
+        WB["GEO_WHITELABEL_BRAND_NAME"]
+        WC["GEO_WHITELABEL_PRIMARY_COLOR"]
+    end
+
+    subgraph 国内信号["📊 国内信号源"]
+        BI["GEO_BAIDU_INDEX_KEY"]
+        WI["GEO_WECHAT_INDEX_KEY"]
+        ZH["GEO_ZHIHU_HOT_KEY"]
+        XH["GEO_XHS_KEY"]
+        DY["GEO_DOUYIN_OCEAN_KEY"]
+        NW["GEO_NEWSWIRE_KEY"]
+        CR["GEO_CRM_KEY"]
+    end
+
     style 基础 fill:#e0f2fe,stroke:#0369a1
     style LLM fill:#f3e8ff,stroke:#7c3aed
     style Engines fill:#fed7aa,stroke:#ea580c
     style DBs fill:#dcfce7,stroke:#16a34a
     style 调度 fill:#fee2e2,stroke:#dc2626
+    style 安全白标 fill:#ede9fe,stroke:#6d28d9
+    style 国内信号 fill:#dbeafe,stroke:#1d4ed8
 ```
 
 ---

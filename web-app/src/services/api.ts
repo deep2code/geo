@@ -245,6 +245,111 @@ export const api = {
       `/leaderboard?${params.toString()}`,
       { method: 'GET' }
     )
+  },
+
+  // 管理员后台
+  admin: {
+    // 租户列表（支持状态/套餐/分页过滤）
+    tenants: (params?: { status?: string; plan?: string; page?: number; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.status) qs.set('status', params.status)
+      if (params?.plan) qs.set('plan', params.plan)
+      if (params?.page) qs.set('page', String(params.page))
+      if (params?.limit) qs.set('limit', String(params.limit))
+      return request<any>(`/admin/tenants?${qs.toString()}`, { method: 'GET' })
+    },
+    // 租户详情
+    tenantDetail: (id: string) =>
+      request<any>(`/admin/tenants/${id}`, { method: 'GET' }),
+    // 更新租户状态（active/suspended）
+    updateTenantStatus: (id: string, status: string) =>
+      request<any>(`/admin/tenants/${id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status })
+      }),
+    // 全局用量统计
+    usage: () => request<any>('/admin/usage', { method: 'GET' }),
+    // 公告列表
+    announcements: () => request<any>('/admin/announcements', { method: 'GET' }),
+    // 创建公告
+    createAnnouncement: (data: any) =>
+      request<any>('/admin/announcements', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+    // 删除公告
+    deleteAnnouncement: (id: string) =>
+      request<any>(`/admin/announcements/${id}`, { method: 'DELETE' }),
+    // 系统信息
+    system: () => request<any>('/admin/system', { method: 'GET' })
+  },
+
+  // 帮助中心
+  help: {
+    // 按分类获取帮助文章列表
+    articles: (category?: string) => {
+      const qs = new URLSearchParams()
+      if (category) qs.set('category', category)
+      return request<any>(`/help/articles?${qs.toString()}`, { method: 'GET' })
+    },
+    // 文章详情
+    articleDetail: (id: string) =>
+      request<any>(`/help/articles/${id}`, { method: 'GET' }),
+    // 新手引导进度
+    onboarding: () => request<any>('/help/onboarding', { method: 'GET' }),
+    // 完成引导步骤
+    completeStep: (step: number) =>
+      request<any>(`/help/onboarding/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ step })
+      })
+  },
+
+  // 工单系统
+  tickets: {
+    // 工单列表（支持状态/类别/分页过滤）
+    list: (params?: { status?: string; category?: string; page?: number; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.status) qs.set('status', params.status)
+      if (params?.category) qs.set('category', params.category)
+      if (params?.page) qs.set('page', String(params.page))
+      if (params?.limit) qs.set('limit', String(params.limit))
+      return request<any>(`/tickets?${qs.toString()}`, { method: 'GET' })
+    },
+    // 工单详情（含回复列表）
+    detail: (id: string) =>
+      request<any>(`/tickets/${id}`, { method: 'GET' }),
+    // 创建工单
+    create: (data: any) =>
+      request<any>('/tickets', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      }),
+    // 回复工单
+    reply: (id: string, content: string) =>
+      request<any>(`/tickets/${id}/replies`, {
+        method: 'POST',
+        body: JSON.stringify({ content })
+      }),
+    // 更新工单状态
+    updateStatus: (id: string, status: string) =>
+      request<any>(`/tickets/${id}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status })
+      })
+  },
+
+  // 官网落地页
+  landing: {
+    // 功能亮点
+    features: () => request<any>('/landing/features', { method: 'GET' }),
+    // 平台数据
+    stats: () => request<any>('/landing/stats', { method: 'GET' }),
+    // 定价方案列表
+    plans: () => request<any>('/landing/plans', { method: 'GET' }),
+    // 定价方案详情
+    planDetail: (id: string) =>
+      request<any>(`/landing/plans/${id}`, { method: 'GET' })
   }
 }
 

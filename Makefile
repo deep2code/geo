@@ -99,3 +99,33 @@ release: build-all ## 打包发布产物到 dist/
 		tar -czf dist/$(BINARY)-$$os-$$arch-$(VERSION).tar.gz -C bin $$(basename $$f); \
 	done
 	@echo "✓ 发布包已生成于 dist/"
+
+# ===== 安全扫描 =====
+
+.PHONY: security
+security: security-go security-web ## 安全扫描：Go 漏洞扫描 + 前端依赖审计
+	@echo "✓ 安全扫描完成"
+
+.PHONY: security-go
+security-go: ## Go 依赖漏洞扫描（govulncheck）
+	@echo "→ Go 依赖漏洞扫描..."
+	@which govulncheck > /dev/null 2>&1 || { \
+		echo "  govulncheck 未安装，正在安装..."; \
+		go install golang.org/x/vuln/cmd/govulncheck@latest; \
+	}
+	govulncheck ./...
+	@echo "✓ Go 依赖漏洞扫描通过"
+
+.PHONY: security-web
+security-web: ## 前端依赖漏洞审计（npm audit）
+	@echo "→ 前端依赖漏洞审计..."
+	cd web-app && npm audit --omit=dev --audit-level=high || { \
+		echo "⚠ 发现高危漏洞，请运行 'cd web-app && npm audit fix' 修复"; \
+		exit 1; \
+	}
+	@echo "✓ 前端依赖漏洞审计通过"
+
+.PHONY: security-fix
+security-fix: ## 自动修复前端高危依赖
+	cd web-app && npm audit fix --force
+	@echo "✓ 前端依赖已尝试自动修复，请重新运行 make security 验证"

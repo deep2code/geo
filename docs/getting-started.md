@@ -1019,27 +1019,6 @@ geo mcp-server
 - `GEO_HISTORY_DB_TYPE=mysql` — MySQL（生产高并发）
 - `GEO_CHINACHECK_CACHE_TYPE=redis` — Redis（分布式缓存）
 
-### Q: 如何作为 MCP Server 被 AI 编程助手调用？
-
-```bash
-# 启动 MCP Server
-geo mcp-server
-```
-
-在 Claude Code / Cursor / TraeCode 的 MCP 配置中添加：
-```json
-{
-  "mcpServers": {
-    "geo": {
-      "command": "geo",
-      "args": ["mcp-server"]
-    }
-  }
-}
-```
-
-暴露的工具：`brand_audit` / `optimize` / `search_companies` / `chinacheck` / `readiness`
-
 ### Q: GEO 优化后多久能看到效果？
 
 ```mermaid

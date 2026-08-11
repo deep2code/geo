@@ -58,14 +58,17 @@ graph TB
         KB["📚 SinoFacts 知识库<br/>383家中国软件企业"]
     end
 
-    subgraph AI层["🧠 13 AI 引擎适配器"]
+    subgraph AI层["🧠 13+ AI 引擎适配器"]
         E1["🔵 ChatGPT"]
         E2["🟡 Perplexity"]
         E3["🟢 Gemini"]
         E4["🟠 Claude"]
         E5["🔴 通义千问"]
         E6["🟣 智谱GLM"]
-        E7["⚪ DeepSeek 等"]
+        E7["⚪ DeepSeek"]
+        E8["🟤 文心一言"]
+        E9["⚫ Kimi"]
+        E10["🟪 豆包 等"]
     end
 
     用户层 --> 引擎层
@@ -122,6 +125,36 @@ graph TB
     style C fill:#dcfce7,stroke:#16a34a
 ```
 
+### 商业化与交付能力
+
+```mermaid
+graph TB
+    subgraph D["🏢 商业化"]
+        D1["白标定制<br/>Logo/域名/主题色"]
+        D2["管理员后台<br/>租户/用量/公告"]
+        D3["工单系统<br/>创建/回复/流转"]
+        D4["定价方案<br/>免费/专业/企业"]
+    end
+
+    subgraph E["🔌 集成扩展"]
+        E1["Chrome 扩展<br/>一键查 GEO 分数"]
+        E2["CMS 插件<br/>WordPress/Shopify"]
+        E3["GEO 排行榜<br/>公开榜单+SEO"]
+        E4["竞品对标<br/>跨品牌对比"]
+    end
+
+    subgraph F["🛡 安全与可靠性"]
+        F1["限流+WAF<br/>SQLi/XSS/CSRF 防护"]
+        F2["降级缓存<br/>LLM 不可用兜底"]
+        F3["安全扫描<br/>govulncheck/npm audit"]
+        F4["向量检索<br/>TF-IDF+Embedding"]
+    end
+
+    style D fill:#fef3c7,stroke:#d97706
+    style E fill:#dbeafe,stroke:#2563eb
+    style F fill:#dcfce7,stroke:#16a34a
+```
+
 ---
 
 ## 🗄 数据库选型（按功能模块化）
@@ -170,7 +203,7 @@ mindmap
 | 审计历史库 | 时序写入 + JSON 快照 | SQLite | MySQL | `GEO_HISTORY_DB_TYPE` |
 | CC 查询缓存 | K/V + TTL + 高频读 | JSONL 文件 | Redis | `GEO_CHINACHECK_CACHE_TYPE` |
 
-> **承诺**：所有模块默认开箱即用，**安装任何外部数据库**。
+> **承诺**：所有模块默认开箱即用，**无需安装任何外部数据库**。
 
 ---
 
@@ -203,26 +236,24 @@ make build    # 产物 bin/geo
 docker compose up -d    # 访问 http://localhost:8080
 ```
 
-### Web 前端构建（go:embed）
+### Web 前端构建（Vite + React + go:embed）
 
-> 后端使用 `//go:embed web/dist/*` 将前端构建产物内嵌到二进制中。若 `web/dist/` 为空，编译仍可通过（`.gitkeep` 占位），但运行时 Web 界面会**降级**到 `web/index.html`（简易开发版页面）。
+> 前端 SPA 基于 Vite + React 18 + TypeScript，构建产物输出到 `internal/server/web/dist/`，通过 `//go:embed` 内嵌到 Go 二进制。
 
 ```bash
 # 完整构建（前端 + 后端）
-# 1. 先构建前端产物（假设前端源码位于 internal/server/web/ 下，有 package.json）
-cd internal/server/web && npm install && npm run build
+# 1. 先构建前端产物
+cd web-app && npm install && npm run build
 #    产物会输出到 internal/server/web/dist/（index.html + assets/*）
 
 # 2. 再构建 Go 二进制
-cd ../../.. && make build    # 或 go build ./cmd/geo
+cd .. && make build    # 或 go build ./cmd/geo
 ```
 
 | 场景 | web/dist 内容 | 行为 |
 |---|---|---|
-| 生产构建 | `npm run build` 产物 | ✅ 完整 SPA 界面，`/assets/*` 静态资源 + 路由回退 |
-| 开发/CI 编译 | 仅 `.gitkeep` | ⚠️ 降级使用 `web/index.html`（dev fallback） |
-
-> 提示：`web/index.html` 始终保留作为开发兜底，不会被删除。
+| 生产构建 | `npm run build` 产物 | ✅ 完整 SPA 界面（10+ 页面，PWA 离线，i18n ZH/EN/JA） |
+| 开发/CI 编译 | 仅 `.gitkeep` | ⚠️ 降级使用简易页面 |
 
 ### 最小可用示例
 
@@ -378,6 +409,25 @@ graph TB
 | POST | `/api/v1/brand/localseo/audit` | Local SEO 审计 |
 | POST | `/api/v1/autorewriter/rewrite` | AutoGEO 规则重写 |
 | GET | `/api/v1/brand/readiness/ci-gate` | AI 就绪度 CI 闸门 |
+| GET | `/api/v1/brand/compare` | 竞品对标矩阵 |
+| GET | `/api/v1/brand/compare/export` | 竞品对比报告导出（HTML/JSON） |
+| GET | `/api/v1/brand/profile/autocomplete` | 品牌画像自动补全 |
+| GET | `/api/v1/leaderboard` | GEO 公开排行榜 |
+| GET | `/api/v1/leaderboard/categories` | 排行榜类目列表 |
+| GET | `/api/v1/cms/check` | CMS 内容 GEO 检查 |
+| GET | `/api/v1/cms/info` | CMS 插件信息 |
+| GET | `/api/v1/meta/whitelabel` | 白标配置 |
+| GET | `/api/v1/security/audit` | 安全审计信息 |
+| GET | `/api/v1/admin/tenants` | 管理员-租户列表 |
+| GET | `/api/v1/admin/usage` | 管理员-用量统计 |
+| GET | `/api/v1/admin/system` | 管理员-系统信息 |
+| GET/POST | `/api/v1/admin/announcements` | 管理员-公告管理 |
+| GET | `/api/v1/help/articles` | 帮助文章列表 |
+| GET | `/api/v1/help/onboarding` | 新手引导步骤 |
+| GET/POST | `/api/v1/tickets` | 工单创建/列表 |
+| GET | `/api/v1/pricing/plans` | 定价方案列表 |
+| GET | `/api/v1/landing/features` | 功能亮点 |
+| GET | `/api/v1/landing/stats` | 平台统计 |
 
 </details>
 
@@ -408,7 +458,16 @@ tree
     │   ├── 📂 llm/ ["LLM 管理器"]
     │   ├── 📂 optimizer/ ["9法策略 + AutoGEO"]
     │   ├── 📂 scorer/ ["评分器"]
-    │   └── 📂 server/ ["REST API + go:embed 前端"]
+    │   └── 📂 server/ ["REST API + go:embed 前端（构建产物来自 web-app/）"]
+    ├── 📂 web-app/ ["前端 SPA (Vite + React + TS)"]
+    │   ├── 📂 src/pages/ ["10+ 页面组件"]
+    │   ├── 📂 src/components/ ["UI 组件库"]
+    │   ├── 📂 src/services/ ["API 客户端"]
+    │   └── 📂 src/i18n/ ["国际化 ZH/EN/JA"]
+    ├── 📂 integrations/ ["第三方集成"]
+    │   ├── 📂 chrome-extension/ ["Chrome MV3 扩展"]
+    │   ├── 📂 wordpress/ ["WordPress 插件"]
+    │   └── 📂 shopify/ ["Shopify 插件"]
     ├── 📂 scripts/ ["运行部署脚本"]
     ├── 📂 .github/workflows/ ["CI + Release"]
     ├── 📂 docs/ ["架构 + 入门文档"]

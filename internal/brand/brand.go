@@ -23,6 +23,7 @@ import (
 
 	"my-geo/internal/adapter"
 	"my-geo/internal/brand/chinacheck"
+	"my-geo/internal/brand/crawler"
 	"my-geo/internal/brand/history"
 	"my-geo/internal/brand/knowledge"
 	"my-geo/internal/brand/market"
@@ -33,14 +34,15 @@ import (
 
 // Engine 品牌可见度评估引擎。
 type Engine struct {
-	monitor       *Monitor
-	scorer        *Scorer
-	reporter      *Reporter
-	llmMgr        *llm.Manager
-	kb            *knowledge.Knowledge
-	chinaCheck    *chinacheck.Client // 可选：工商注册实时核验（GSXT / SAMR，免鉴权免费）
-	offlineDB     offlinedb.DB       // 可选：1978-2019 离线工商注册库（接口，多后端）
-	historyDB     history.DB         // 可选：审计历史时间序列库（接口，多后端）
+	monitor    *Monitor
+	scorer     *Scorer
+	reporter   *Reporter
+	llmMgr     *llm.Manager
+	kb         *knowledge.Knowledge
+	chinaCheck *chinacheck.Client      // 可选：工商注册实时核验（GSXT / SAMR，免鉴权免费）
+	offlineDB  offlinedb.DB            // 可选：1978-2019 离线工商注册库（接口，多后端）
+	historyDB  history.DB              // 可选：审计历史时间序列库（接口，多后端）
+	crawler    *crawler.WebsiteCrawler // 可选：官网爬虫（默认自动初始化，无需外部配置）
 	// configuredEngines 记录哪些引擎已配置真实 API Key。
 	configuredEngines map[models.EngineType]bool
 }
@@ -104,17 +106,28 @@ func WithHistoryDB(db history.DB) Option {
 // HistoryDB 返回审计历史存储接口（可能为 nil）。
 func (e *Engine) HistoryDB() history.DB { return e.historyDB }
 
+// WithCrawler 注入官网爬虫（默认在 New() 中自动初始化，无需手动注入）。
+// 调用方可传入自定义配置（如自定义 http.Client）的爬虫实例覆盖默认。
+func WithCrawler(c *crawler.WebsiteCrawler) Option {
+	return func(e *Engine) { e.crawler = c }
+}
+
+// Crawler 返回当前官网爬虫实例（可能为 nil）。
+func (e *Engine) Crawler() *crawler.WebsiteCrawler { return e.crawler }
+
 // New 创建品牌可见度评估引擎。
 //
 // 默认自动加载内嵌的 SinoFacts 知识库（CC BY 4.0），
 // 加载失败不影响其他功能（Autocomplete 会退化为纯 LLM 模式）。
 // China-Check 默认不启用，如需工商实时核验需显式 WithChinaCheck。
+// 官网爬虫默认自动初始化（无需外部配置），可通过 WithCrawler 覆盖。
 func New(opts ...Option) *Engine {
 	e := &Engine{
 		monitor:           NewMonitor(nil),
 		scorer:            NewScorer(),
 		reporter:          NewReporter(),
 		configuredEngines: map[models.EngineType]bool{},
+		crawler:           crawler.New(),
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -148,13 +161,13 @@ func (e *Engine) Close() {
 // 放在 brand 包内，knowledge 保持 leaf 无循环依赖。
 func entryToCandidate(e *knowledge.Entry) *AutocompleteCandidate {
 	c := &AutocompleteCandidate{
-		Name:        e.BrandName,
-		Domain:      e.BrandDomain,
-		Aliases:     append([]string{}, e.BrandAliases...),
-		Industry:    e.Industry,
-		Category:    e.Category,
-		Products:    append([]string{}, e.Products...),
-		Summary:     e.DescriptionZh,
+		Name:     e.BrandName,
+		Domain:   e.BrandDomain,
+		Aliases:  append([]string{}, e.BrandAliases...),
+		Industry: e.Industry,
+		Category: e.Category,
+		Products: append([]string{}, e.Products...),
+		Summary:  e.DescriptionZh,
 	}
 	c.Company = &Company{
 		Name:         e.CompanyName,
@@ -198,7 +211,9 @@ func defaultPromptsForEntry(industry, category, brandName string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(prompts))
 	for _, p := range prompts {
-		if seen[p] { continue }
+		if seen[p] {
+			continue
+		}
 		seen[p] = true
 		out = append(out, p)
 	}
@@ -284,12 +299,12 @@ type AutocompleteRequest struct {
 
 // AutocompleteCandidate 品牌智能补全候选画像。
 type AutocompleteCandidate struct {
-	Name        string       `json:"name"`
-	Domain      string       `json:"domain,omitempty"`
-	Aliases     []string     `json:"aliases,omitempty"`
-	Industry    string       `json:"industry,omitempty"`
-	Category    string       `json:"category,omitempty"`
-	Products    []string     `json:"products,omitempty"`
+	Name     string   `json:"name"`
+	Domain   string   `json:"domain,omitempty"`
+	Aliases  []string `json:"aliases,omitempty"`
+	Industry string   `json:"industry,omitempty"`
+	Category string   `json:"category,omitempty"`
+	Products []string `json:"products,omitempty"`
 	// 关联公司信息（母公司/集团）。
 	Company     *Company     `json:"company,omitempty"`
 	Competitors []Competitor `json:"competitors,omitempty"`
@@ -409,6 +424,41 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 			ccContext = ccSource
 		}
 	}
+
+	// 步骤 2.5：官网爬虫自动补全（在知识库搜索之后、LLM 调用之前）
+	//  - 优先用知识库中已有的域名；缺则并行猜测候选域名（brandname.com 等）
+	//  - 爬取首页 HTML，提取 title/meta description/keywords/H1/H2/nav 产品线索
+	//  - 补全候选画像中缺失的 domain 与 products 字段
+	//  - 爬虫失败不影响主流程（降级继续 LLM 路径）
+	var crawlerContext string
+	if e.crawler != nil {
+		domain := ""
+		if kbCandidate != nil && kbCandidate.Domain != "" {
+			domain = kbCandidate.Domain
+		}
+		if domain == "" {
+			// 猜测域名
+			if guessed, err := e.crawler.GuessDomain(ctx, brandName); err == nil {
+				domain = guessed
+			}
+		}
+		if domain != "" {
+			if info, err := e.crawler.Crawl(ctx, domain); err == nil {
+				crawlerContext = fmt.Sprintf("官网爬虫（%s）：\n- 标题: %s\n- 描述: %s\n- 关键词: %v\n- 产品线索: %v",
+					domain, info.Title, info.Description, info.Keywords, info.ProductHints)
+				// 补全缺失字段
+				if kbCandidate != nil {
+					if kbCandidate.Domain == "" {
+						kbCandidate.Domain = domain
+					}
+					if len(kbCandidate.Products) == 0 && len(info.ProductHints) > 0 {
+						kbCandidate.Products = info.ProductHints
+					}
+				}
+			}
+		}
+	}
+
 	// 无联网但有高置信知识库候选 → 直接返回（若有工商核验，合并后返回）
 	if searchResult == "" && kbCandidate != nil && (e.llmMgr == nil || !e.llmMgr.HasAvailable()) {
 		if ccSnap != nil {
@@ -449,12 +499,14 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 		return nil, fmt.Errorf("品牌智能补全需要配置 LLM（GEO_LLM_KEY 环境变量）或命中离线知识库")
 	}
 
-	// 步骤 3：LLM 结构化分析（知识库上下文 + 建议候选 + 联网 + 工商核验 全量传入）
-	prompt := buildAutocompletePrompt(brandName, kbContext, kbCandidate, odbContext, ccContext, searchResult)
+	// 步骤 3：LLM 结构化分析（知识库上下文 + 建议候选 + 联网 + 工商核验 + 官网爬虫 全量传入）
+	prompt := buildAutocompletePrompt(brandName, kbContext, kbCandidate, odbContext, ccContext, crawlerContext, searchResult)
 	raw, err := e.llmMgr.Rewrite(ctx, prompt, "")
 	if err != nil {
 		if kbCandidate != nil {
-			if ccSnap != nil { mergeGSXT(kbCandidate, ccSnap) }
+			if ccSnap != nil {
+				mergeGSXT(kbCandidate, ccSnap)
+			}
 			if len(odbCompanies) > 0 && kbCandidate.Company == nil {
 				kbCandidate.Company = offlineToBrandCompany(&odbCompanies[0])
 			}
@@ -466,7 +518,9 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 	candidate, err := parseAutocompleteJSON(raw, brandName)
 	if err != nil {
 		if kbCandidate != nil {
-			if ccSnap != nil { mergeGSXT(kbCandidate, ccSnap) }
+			if ccSnap != nil {
+				mergeGSXT(kbCandidate, ccSnap)
+			}
 			if len(odbCompanies) > 0 && kbCandidate.Company == nil {
 				kbCandidate.Company = offlineToBrandCompany(&odbCompanies[0])
 			}
@@ -509,8 +563,9 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 // kbCandidate: 知识库高置信候选（≥60 分），作为"建议画像"给 LLM 参考
 // odbContext: 1978-2019 离线工商库（历史 ground truth，比知识库/LLM 更高可信，字段是国家工商公示的历史登记值）
 // gsxtContext: 来自 GSXT/SAMR（国家工商公示系统）的**实时**官方核验信息（可能为空）—— LLMs 应**完全信任**其中名称/信用代码/成立日期等字段，视为最高 ground truth
+// crawlerContext: 来自品牌官网爬虫的首页信息（title/meta description/keywords/产品线索），用于补全 domain/products/aliases
 // searchResult: 联网搜索到的品牌信息
-func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *AutocompleteCandidate, odbContext, gsxtContext, searchResult string) string {
+func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *AutocompleteCandidate, odbContext, gsxtContext, crawlerContext, searchResult string) string {
 	prompt := fmt.Sprintf(`你是一位品牌分析专家。请根据以下信息，为品牌「%s」生成一份结构化的品牌画像 JSON。
 
 `, brandName)
@@ -533,6 +588,16 @@ func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *Autocompl
 ---
 
 `, odbContext)
+	}
+	if crawlerContext != "" {
+		prompt += fmt.Sprintf(`【官网爬虫 · 参考信号】来自品牌官网首页（由爬虫自动抓取并解析）。
+其中域名与产品线索（H1/H2/nav）可作为 domain/products 字段的参考；
+title/description/keywords 可用于校验行业与品类。注意官网文案可能存在营销夸大，请结合其他来源交叉验证。
+---
+%s
+---
+
+`, crawlerContext)
 	}
 	if kbCandidate != nil {
 		// 建议画像（SinoFacts 离线库，CC BY 4.0）：LLM 应优先采纳正确字段，
@@ -562,9 +627,9 @@ func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *Autocompl
 
 `, searchResult)
 	}
-	prompt += `请基于以上所有信息（离线工商库+知识库+联网+你的知识），综合生成如下 JSON 格式的品牌画像（仅输出 JSON，不要其他文字）。
+	prompt += `请基于以上所有信息（离线工商库+知识库+官网爬虫+联网+你的知识），综合生成如下 JSON 格式的品牌画像（仅输出 JSON，不要其他文字）。
 注意：
-  【工商核验实时数据】>【离线工商历史数据】>【SinoFacts 事实核验知识库】>【一般联网搜索】>【LLM 自身知识】
+  【工商核验实时数据】>【离线工商历史数据】>【SinoFacts 事实核验知识库】>【官网爬虫信号】>【一般联网搜索】>【LLM 自身知识】
   当多个来源给出相同硬字段时，以可信度更高的来源为准，不要混用；信息不足时留空，不要编造。
 {
   "name": "品牌全称",

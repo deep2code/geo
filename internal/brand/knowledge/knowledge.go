@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -24,13 +25,13 @@ var dataFS embed.FS
 
 // Record SinoFacts 原始记录（只解析我们关心的字段）。
 type Record struct {
-	Source    string  `json:"source"`
-	Canonical string  `json:"canonical"`
-	CiteAs    string  `json:"cite_as"`
-	Slug      string  `json:"slug"`
-	Domain    string  `json:"domain"`
+	Source     string  `json:"source"`
+	Canonical  string  `json:"canonical"`
+	CiteAs     string  `json:"cite_as"`
+	Slug       string  `json:"slug"`
+	Domain     string  `json:"domain"`
 	Confidence float64 `json:"-"`
-	Profile   struct {
+	Profile    struct {
 		NameEn        string   `json:"name_en"`
 		NameZh        string   `json:"name_zh"`
 		ProductNames  []string `json:"product_names"`
@@ -85,6 +86,8 @@ type Knowledge struct {
 	byDomain map[string]int
 	// 条目总数
 	N int
+	// 向量存储（TF-IDF / Embedding），用于语义检索
+	vectorStore *HybridVectorStore
 }
 
 var (
@@ -136,6 +139,22 @@ func Load() (*Knowledge, error) {
 		kb.addIndex(i, e)
 	}
 	kb.N = len(kb.entries)
+	// 构建向量存储（HybridVectorStore）：优先 Embedding API，回退本地 TF-IDF
+	// 每个 entry 的 text 拼接 BrandName + BrandDomain + Products + Industry + Description
+	kb.vectorStore = NewHybridVectorStore()
+	for i, e := range kb.entries {
+		text := e.BrandName + " " + e.BrandDomain + " " +
+			strings.Join(e.Products, " ") + " " + e.Industry + " " + e.DescriptionZh
+		id := e.Canonical
+		if id == "" {
+			id = strconv.Itoa(i)
+		}
+		_ = kb.vectorStore.Add(id, text, map[string]string{
+			"brand":    e.BrandName,
+			"domain":   e.BrandDomain,
+			"industry": e.Industry,
+		})
+	}
 	globalKB = kb
 	return kb, nil
 }
@@ -377,4 +396,18 @@ func (kb *Knowledge) LookupByDomain(domain string) *Entry {
 		return &kb.entries[i]
 	}
 	return nil
+}
+
+// VectorSearch 向量语义搜索（基于 TF-IDF 或 Embedding API）。
+// 与 Search 的关键词倒排匹配不同，VectorSearch 基于词频-逆文档频率向量化的
+// 余弦相似度检索，能命中"语义相近但字面不同"的品牌条目。
+// topN <= 0 时默认返回 5 条。
+func (kb *Knowledge) VectorSearch(query string, topN int) []VectorSearchResult {
+	if kb.vectorStore == nil || kb.vectorStore.Size() == 0 {
+		return nil
+	}
+	if topN <= 0 {
+		topN = 5
+	}
+	return kb.vectorStore.Search(query, topN)
 }
