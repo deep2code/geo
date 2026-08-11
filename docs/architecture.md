@@ -855,6 +855,52 @@ graph TB
     style 生产 fill:#fed7aa,stroke:#ea580c
 ```
 
+### 硬件要求与部署规格
+
+> **设计原则**：MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），
+> 所有计算集中在**爬虫 HTML 解析 + 评分加权 + JSONL/SQLite 写入**，
+> 因此**不需要 GPU**，按场景用 CPU/内存/SSD 三要素即可选型。
+>
+> OS 支持：生产推荐 **Linux x86_64 / arm64**（Ubuntu 22.04+、Debian 12+、RHEL 9+、AlmaLinux 9+）；
+> macOS / Windows 仅用于本地开发或 Demo，不在生产支持范围内。
+>
+> 网络出口：所有部署形态均要求服务器能访问外网（LLM API + 公开引擎抓取 + 可选 13 种信号源 Key），
+> 推荐公网带宽 **≥ 100 Mbps**；企业内网场景需开放 LLM Base 域名 + 目标官网域名（443 / 80）。
+
+| 场景 | 形态 | 最低规格 | 推荐规格 | 磁盘 | 并发能力 | 典型用户 |
+|------|------|----------|----------|------|----------|----------|
+| 🟢 试用 / 个人 | 单机二进制 | 1 vCPU · 1 GB RAM | 2 vCPU · 2 GB RAM | 10 GB SSD（OS + 数据）<br/>含 SQLite/JSONL 缓存 | 1-2 并发审计<br/>QPS ≤ 5 | 个人开发者、单品牌试用、Demo 演示 |
+| 🔵 小团队 | Docker Compose | 2 vCPU · 4 GB RAM | 4 vCPU · 8 GB RAM | 50-100 GB SSD（建议 nvme）<br/>挂载 `/data/geo` 持久化 Volume | 5-10 并发审计<br/>调度器常开<br/>QPS ≤ 50 | 10-20 人市场/SEO 团队、单租户部门部署 |
+| 🟠 大规模生产 | K8s / 多副本 | 详见下方 Pod 规格 | 详见下方 Pod 规格 | 数据层独立存储 | 横向扩容<br/>QPS ≥ 500 | 多租户 SaaS / 平台化 / 日审计任务 ≥ 500 品牌 |
+
+**生产（K8s / 多副本）Pod 规格建议**（按无状态 + 有状态拆分）：
+
+| 组件 | 形态 | CPU 请求 / 限制 | 内存 请求 / 限制 | 磁盘 | 副本数建议 |
+|------|------|-----------------|------------------|------|------------|
+| `geo` 应用服务（API + SPA） | Deployment · 无状态 | 1 / 2 vCPU | 2 / 4 GB | 不需要持久卷 | 2 起步，按 QPS HPA 扩（CPU ≥ 70% 触发） |
+| 审计历史库 `GEO_HISTORY_DB_TYPE=mysql` | MySQL 主从 / 集群 | 4 / 8 vCPU | 8 / 16 GB | 200 GB+ nvme SSD（按 1 品牌审计 5MB 估算） | 主 1 + 从 1-2 |
+| 缓存层 `GEO_CHINACHECK_CACHE_TYPE=redis` | Redis 哨兵 / Cluster | 2 / 4 vCPU | 4 / 8 GB | 可选 AOF 持久化 20 GB | 3 节点哨兵起步 |
+| 离线工商库 `GEO_OFFLINE_DB_TYPE=duckdb` | StatefulSet（只读共享挂载） | 2 / 4 vCPU | 8 / 16 GB（按千万级记录需要内存 MAP） | 共享 SSD / NAS 100 GB+ | 1-2（读多写少） |
+| Ingress / LB | 云厂商 SLB / Nginx Ingress | — | — | — | 2 高可用 |
+
+**关键容量估算公式**（帮助采购核算）：
+
+```
+审计历史数据量 ≈ 品牌数 × 审计频次 × 5 MB/份
+  例：500 品牌 × 每周 1 次 × 52 周 × 5 MB ≈ 130 GB/年 → 推荐 500 GB SSD
+
+爬虫带宽 ≈ 并发品牌数 × 平均每页 1 MB × 平均每页 10 链接 × (1/600ms)
+  例：单机 1 并发 ≈ 16 MB/min ≈ 2.7 Mbps → 100 Mbps 出口足够
+```
+
+### 可选增强规格
+
+| 能力 | 推荐硬件 | 说明 |
+|------|----------|------|
+| Playwright UI 双模式捕获（见 §3.16） | +2 vCPU / +4 GB RAM / Chrome headless | 开启 `GEO_CAPTURE_DRIVER=playwright` 时每 Pod 增加；建议用独立 worker 节点池 |
+| 本地嵌入模型（向量检索 768 维） | +1 vCPU / +2 GB RAM（纯 CPU 跑 bge-m3）<br/>或 1 张 T4 / 3090 24GB（≥ 1000 QPS 向量检索） | 默认关闭；开启 `GEO_VECTOR_BACKEND=local` 时需要 |
+| 高可用跨 AZ / 双活 | 主库 + 缓存 + DuckDB 均跨 AZ 部署 | 建议 RPO ≤ 1h / RTO ≤ 4h；通过定时备份到对象存储实现 |
+
 ### 环境变量分组全景
 
 ```mermaid

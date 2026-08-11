@@ -33,6 +33,18 @@ graph LR
 | 📘 [入门指南](docs/getting-started.md) | GEO 概念、5 分钟上手、优化实战、审计指南、FAQ | 12+ |
 | 🏗 [架构文档](docs/architecture.md) | 系统全景、数据流、数据库选型、MCP 协议、部署 | 15+ |
 
+### 🖥️ 部署硬件快速参考
+
+MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），**无需 GPU**，按 CPU / 内存 / SSD 三要素选型即可。生产推荐 **Linux x86_64 / arm64**，公网出口 ≥ 100 Mbps：
+
+| 场景 | 形态 | CPU | 内存 | SSD | 典型用户 |
+|------|------|-----|------|-----|----------|
+| 🟢 试用 / 个人 | 单机二进制 | 1-2 vCPU | 1-2 GB | 10 GB | 开发者 / 单品牌 Demo |
+| 🔵 小团队 | Docker Compose | 2-4 vCPU | 4-8 GB | 50-100 GB | 10-20 人市场/SEO 团队 |
+| 🟠 大规模生产 | K8s / 多副本 | 无状态 1/2 vCPU Pod×2+<br/>MySQL 4/8 vCPU<br/>Redis 2/4 vCPU | 无状态 2/4 GB<br/>MySQL 8/16 GB<br/>Redis 4/8 GB | MySQL ≥ 200 GB nvme<br/>共享存储 ≥ 100 GB | SaaS 多租户 / 日审计 ≥ 500 品牌 |
+
+> 完整规格（含容量估算公式 / Playwright / 本地嵌入模型 / 跨 AZ 高可用）见 [architecture.md §10 硬件要求与部署规格](docs/architecture.md#硬件要求与部署规格)。
+
 ---
 
 ## 🎯 系统全景
