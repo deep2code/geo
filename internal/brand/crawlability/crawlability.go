@@ -30,6 +30,10 @@ import (
 	"my-geo/internal/util"
 )
 
+// ── 合规：审计用请求一律使用避风港 MyGEOBot UA，并在请求前对每主机做礼貌限频。 ──
+// 说明：crawlability 是对第三方网站"AI 可爬性"的审计（只读、不会训练模型），
+// 但为了满足避风港与爬虫合规要求，同样使用统一身份、限频与联系信息。
+
 // AIBotTier AI 爬虫分级。
 type AIBotTier string
 
@@ -222,7 +226,11 @@ func fetchRobotsTxt(ctx context.Context, baseURL string) string {
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("User-Agent", "geo-crawlability-auditor/1.0")
+	req.Header.Set("User-Agent", util.MyGEOUserAgent)
+	u, _ := url.Parse(baseURL)
+	if u != nil {
+		util.HostThrottle(u.Host)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return ""
@@ -442,7 +450,10 @@ func checkURL(ctx context.Context, rawURL string) bool {
 	if err != nil {
 		return false
 	}
-	req.Header.Set("User-Agent", "geo-crawlability-auditor/1.0")
+	req.Header.Set("User-Agent", util.MyGEOUserAgent)
+	if u, err := url.Parse(rawURL); err == nil {
+		util.HostThrottle(u.Host)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return false
@@ -458,7 +469,10 @@ func fetchPage(ctx context.Context, pageURL string) string {
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("User-Agent", "geo-crawlability-auditor/1.0")
+	req.Header.Set("User-Agent", util.MyGEOUserAgent)
+	if u, err := url.Parse(pageURL); err == nil {
+		util.HostThrottle(u.Host)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return ""

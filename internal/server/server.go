@@ -511,6 +511,13 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/pricing/plans/", s.handlePricingPlanDetail)
 	s.mux.HandleFunc("/api/v1/landing/features", s.handleLandingFeatures)
 	s.mux.HandleFunc("/api/v1/landing/stats", s.handleLandingStats)
+	// ── 法务计划 #80 & #81 合规入口 ──────────────────────────────────
+	s.mux.HandleFunc("/legal/bot", s.handleLegalBot)
+	s.mux.HandleFunc("/robots.txt", s.handleRobotsTxt)
+	s.mux.HandleFunc("/api/v1/legal/data-access", s.handleLegalDataAccess)
+	s.mux.HandleFunc("/api/v1/legal/data-export", s.handleLegalDataExport)
+	s.mux.HandleFunc("/api/v1/legal/data-delete", s.handleLegalDataDelete)
+	s.mux.HandleFunc("/api/v1/meta/compliance", s.handleMetaCompliance)
 	// Web SPA 前端（必须放在最后，catch-all 非 API 路径）
 	s.mux.HandleFunc("/", s.handleWebSPA)
 }

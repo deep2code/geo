@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '@/components/Card'
 import { Input, Button, Tabs, TabPane } from '@/components'
 import { useAppStore, type ThemeMode, type UIDensity } from '@/store/useAppStore'
@@ -10,6 +11,7 @@ import '../Dashboard/Dashboard.scss'
 
 const Settings: React.FC = () => {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const theme = useAppStore(s => s.theme)
   const density = useAppStore(s => s.density)
   const apiBaseUrl = useAppStore(s => s.apiBaseUrl)
@@ -356,20 +358,140 @@ const Settings: React.FC = () => {
             </Card>
           </div>
         </TabPane>
+
+        <TabPane tabKey="data-rights" tab="🛡️ 数据权利">
+          <Card title="数据权利" subtitle="根据适用法律法规，您可对您的个人数据行使以下权利" compact>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+              <div style={{
+                padding: 20, borderRadius: 12,
+                border: '1px solid var(--border-primary)',
+                background: 'var(--surface-secondary)',
+                display: 'flex', flexDirection: 'column', gap: 12
+              }}>
+                <div style={{ fontSize: 32 }}>🔍</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>访问我的数据</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, flex: 1 }}>
+                  查询我们持有您的哪些个人信息，包括账户数据、品牌画像、使用记录等。
+                </div>
+                <Button onClick={async () => {
+                  try {
+                    const r = await api.legal.requestDataAccess()
+                    showToast(
+                      `✅ 请求受理成功 · 单号 ${r.request_id} · SLA ${r.sla}\n${r.note}`,
+                      'info'
+                    )
+                  } catch (e: any) {
+                    showToast(`提交失败：${e.message || e}`, 'error')
+                  }
+                }}>
+                  🔍 提交访问请求
+                </Button>
+              </div>
+
+              <div style={{
+                padding: 20, borderRadius: 12,
+                border: '1px solid var(--border-primary)',
+                background: 'var(--surface-secondary)',
+                display: 'flex', flexDirection: 'column', gap: 12
+              }}>
+                <div style={{ fontSize: 32 }}>📦</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>导出我的数据</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, flex: 1 }}>
+                  以机器可读格式（JSON）导出您的全部个人数据副本，可迁移至其他服务。
+                </div>
+                <Button variant="secondary" onClick={async () => {
+                  try {
+                    const r = await api.legal.requestDataExport()
+                    showToast(
+                      `✅ 导出任务已创建 · 单号 ${r.request_id} · SLA ${r.sla}\n${r.note}`,
+                      'success'
+                    )
+                  } catch (e: any) {
+                    showToast(`提交失败：${e.message || e}`, 'error')
+                  }
+                }}>
+                  📦 开始导出
+                </Button>
+              </div>
+
+              <div style={{
+                padding: 20, borderRadius: 12,
+                border: '1px solid var(--border-primary)',
+                background: 'linear-gradient(135deg, color-mix(in srgb, var(--status-error) 6%, var(--surface-secondary)), var(--surface-secondary))',
+                display: 'flex', flexDirection: 'column', gap: 12
+              }}>
+                <div style={{ fontSize: 32 }}>🗑️</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>删除我的数据</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, flex: 1 }}>
+                  永久删除您的账户及全部关联数据（法律法规要求保留的除外）。此操作不可撤销。
+                </div>
+                <Button variant="danger" onClick={async () => {
+                  if (!confirm('确定要删除您的全部个人数据吗？此操作不可撤销，账户将被永久注销。')) return
+                  try {
+                    const r = await api.legal.requestDataDelete()
+                    showToast(
+                      `⚠️ 删除请求已受理 · 单号 ${r.request_id} · SLA ${r.sla}\n${r.note}`,
+                      'warning'
+                    )
+                  } catch (e: any) {
+                    showToast(`提交失败：${e.message || e}`, 'error')
+                  }
+                }}>
+                  🗑️ 请求删除
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </TabPane>
       </Tabs>
 
-      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <Button variant="danger" onClick={() => {
-          if (confirm('恢复默认设置？（主题、语言、API 配置等将被重置）')) {
-            resetSettings()
-            showToast('已恢复默认设置', 'success')
-          }
-        }}>
-          ♻️ {t('settings.resetSettings')}
-        </Button>
-        <Button onClick={() => showToast('全部设置已保存', 'success')}>
-          💾 {t('settings.saveSettings')}
-        </Button>
+      <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/terms')}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            服务条款
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/privacy')}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            隐私政策
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/dpa')}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
+            }}
+          >
+            数据处理协议 (DPA)
+          </button>
+        </div>
+
+        <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button variant="danger" onClick={() => {
+            if (confirm('恢复默认设置？（主题、语言、API 配置等将被重置）')) {
+              resetSettings()
+              showToast('已恢复默认设置', 'success')
+            }
+          }}>
+            ♻️ {t('settings.resetSettings')}
+          </Button>
+          <Button onClick={() => showToast('全部设置已保存', 'success')}>
+            💾 {t('settings.saveSettings')}
+          </Button>
+        </div>
       </div>
     </div>
   )

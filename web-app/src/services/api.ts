@@ -350,6 +350,46 @@ export const api = {
     // 定价方案详情
     planDetail: (id: string) =>
       request<any>(`/landing/plans/${id}`, { method: 'GET' })
+  },
+
+  // ── 法务合规：合规元数据与数据权利（roadmap #80 / #81） ──
+  meta: {
+    compliance: () => request<any>('/meta/compliance', { method: 'GET' })
+  },
+  legal: {
+    // 访问我的数据（个保法第 44-47 条 / GDPR Art.15）
+    requestDataAccess: () =>
+      request<{
+        ok: boolean
+        request_id: string
+        action: string
+        accepted_at: string
+        sla: string
+        contact: string
+        note: string
+      }>('/legal/data-access', { method: 'GET' }),
+    // 导出我的数据（可携带权：个保法第 45 条 / GDPR Art.20）
+    requestDataExport: () =>
+      request<{
+        ok: boolean
+        request_id: string
+        action: string
+        accepted_at: string
+        sla: string
+        contact: string
+        note: string
+      }>('/legal/data-export', { method: 'GET' }),
+    // 删除我的数据（删除权 / 被遗忘权：个保法第 47 条 / GDPR Art.17）
+    requestDataDelete: () =>
+      request<{
+        ok: boolean
+        request_id: string
+        action: string
+        accepted_at: string
+        sla: string
+        contact: string
+        note: string
+      }>('/legal/data-delete', { method: 'POST' })
   }
 }
 

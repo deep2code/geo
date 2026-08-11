@@ -21,7 +21,18 @@ import (
 	"time"
 
 	"my-geo/internal/brand"
+	"my-geo/internal/util"
 )
+
+// aiDisclaimerFull 完整 AI 生成免责声明（法务 #81）。
+// 放置在 HTML/PDF 报告页脚，显著标注内容性质 + 引用追溯 + 不构成建议。
+const aiDisclaimerFull = `
+⚠️ <strong>AI 生成内容声明：</strong>本报告中的品牌评分、摘要、改写建议、运营行动项均由 AI（大语言模型）生成，
+仅供内部参考，不构成任何投资、商业、法律或税务建议。MyGEO 对 AI 生成内容的准确性、完整性与及时性不做保证。
+所有结论请结合品牌实际情况与原始引用来源（已在正文中附引用链接与引擎来源）进行独立验证与判断。
+若发现事实错误或权利投诉，请联系
+<a href="mailto:` + util.MyGEOComplianceEmail + `" style="color:#2563eb;text-decoration:none">` + util.MyGEOComplianceEmail + `</a>，
+我们将在 3 个工作日内完成核实与修正/删除。`
 
 // scoreDim 评分明细中的单个维度（名称/得分/权重）。
 type scoreDim struct {
@@ -526,9 +537,10 @@ func buildFooter(r *brand.VisibilityReport) string {
 	if genTime.IsZero() {
 		genTime = time.Now()
 	}
-	return `<div class="footer">
+	return `<div class="ai-disclaimer" style="border-top:2px solid #fee2e2;background:#fff5f5;color:#92400e;padding:14px 18px;border-radius:8px;font-size:12px;line-height:1.65;margin-bottom:14px">` + aiDisclaimerFull + `</div>
+<div class="footer">
   报告生成时间：` + genTime.Local().Format("2006-01-02 15:04:05") + ` · 品牌：` + html.EscapeString(r.BrandName) + `<br>
-  由 GEO 生成式引擎优化系统生成
+  由 GEO 生成式引擎优化系统生成 · <a href="/legal/bot" style="color:#4f8cff">爬虫声明</a> · <a href="/privacy" style="color:#4f8cff">隐私政策</a>
 </div>`
 }
 

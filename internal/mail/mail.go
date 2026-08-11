@@ -35,7 +35,25 @@ import (
 	"time"
 
 	"my-geo/internal/config"
+	"my-geo/internal/util"
 )
+
+// aiMailDisclaimerShort 邮件末尾附的短版 AI 生成声明（法务 #81）。
+// 放在所有邮件（告警、周报、报告）的 HTML footer；纯文本同步附短声明。
+const aiMailDisclaimerShort = "内容由 AI 生成，仅供参考，不构成商业/法律建议。"
+
+const aiMailFooterHTML = `
+<div style="border-top:1px solid #f1f5f9;margin-top:20px;padding-top:12px;color:#64748b;font-size:12px;line-height:1.6">
+  <div style="color:#b45309">⚠️ ` + aiMailDisclaimerShort + `</div>
+  <div>合规与投诉：<a href="mailto:` + util.MyGEOComplianceEmail + `" style="color:#2563eb;text-decoration:none">` + util.MyGEOComplianceEmail + `</a>
+  · <a href="/legal/bot" style="color:#2563eb;text-decoration:none">爬虫声明</a>
+  · <a href="/privacy" style="color:#2563eb;text-decoration:none">隐私政策</a>
+  · <a href="/terms" style="color:#2563eb;text-decoration:none">服务条款</a></div>
+</div>`
+
+const aiMailFooterText = "\n\n-- \n" + aiMailDisclaimerShort +
+	"\n合规与投诉：" + util.MyGEOComplianceEmail +
+	"\n爬虫声明：/legal/bot · 隐私政策：/privacy · 服务条款：/terms"
 
 // Attachment 邮件附件。
 type Attachment struct {
@@ -113,11 +131,34 @@ func (s *Sender) Send(m *Message) error {
 	if len(recipients) == 0 {
 		return fmt.Errorf("mail: 没有收件人")
 	}
+	// 法务 #81：所有 AI 生成邮件统一追加免责声明与合规链接（HTML/Plain 双版本）。
+	// 保证每个投递的邮件都有合规声明，调用方无需关心插入逻辑。
+	withLegal(m)
 	data, err := s.compose(m)
 	if err != nil {
 		return err
 	}
 	return s.deliver(recipients, data)
+}
+
+// withLegal 给 Message 注入 AI 生成声明与合规页脚（法务 #81）。
+func withLegal(m *Message) {
+	if m == nil {
+		return
+	}
+	if m.TextBody != "" && !strings.Contains(m.TextBody, aiMailDisclaimerShort) {
+		m.TextBody = m.TextBody + aiMailFooterText
+	}
+	if m.HTMLBody != "" && !strings.Contains(m.HTMLBody, aiMailDisclaimerShort) {
+		// 优先插入到 </body> 前；无 body 标记时追加在末尾
+		lower := strings.ToLower(m.HTMLBody)
+		idx := strings.LastIndex(lower, "</body>")
+		if idx >= 0 {
+			m.HTMLBody = m.HTMLBody[:idx] + aiMailFooterHTML + m.HTMLBody[idx:]
+		} else {
+			m.HTMLBody = m.HTMLBody + aiMailFooterHTML
+		}
+	}
 }
 
 // Deliver 低阶：直接投递已组装的邮件字节。

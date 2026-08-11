@@ -17,6 +17,9 @@ const Admin = lazy(() => import('@/pages/Admin'))
 const Help = lazy(() => import('@/pages/Help'))
 const Tickets = lazy(() => import('@/pages/Tickets'))
 const Landing = lazy(() => import('@/pages/Landing'))
+const Terms = lazy(() => import('@/pages/Terms'))
+const Privacy = lazy(() => import('@/pages/Privacy'))
+const DPA = lazy(() => import('@/pages/DPA'))
 
 const PageFallback: React.FC = () => (
   <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
@@ -68,6 +71,15 @@ export const AppRoutes: React.FC = () => {
         } />
         <Route path="tickets" element={
           <Suspense fallback={<PageFallback />}><Tickets /></Suspense>
+        } />
+        <Route path="terms" element={
+          <Suspense fallback={<PageFallback />}><Terms /></Suspense>
+        } />
+        <Route path="privacy" element={
+          <Suspense fallback={<PageFallback />}><Privacy /></Suspense>
+        } />
+        <Route path="dpa" element={
+          <Suspense fallback={<PageFallback />}><DPA /></Suspense>
         } />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"my-geo/internal/util"
 )
 
 // CORS 与认证中间件配置。
@@ -76,7 +78,7 @@ func (s *statusRecorder) WriteHeader(code int) {
 // ===== 中间件链组装 =====
 
 // withMiddleware 应用完整中间件链：
-// recovery → requestLogger → rateLimitGlobal → waf → cors(+CSRF) → auth → handler
+// recovery → requestLogger → rateLimitGlobal → waf → cors(+CSRF) → auth → aiGeneratedHeaders → handler
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	return s.recovery(
 		s.requestLogger(
@@ -84,13 +86,39 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 				s.withWAF(
 					s.withCSRF(
 						s.withCORS(
-							s.withAuth(h),
+							s.withAuth(
+								s.withAIGeneratedHeaders(h),
+							),
 						),
 					),
 				),
 			),
 		),
 	)
+}
+
+// ===== AI 生成合规头（法务 #81） =====
+
+// withAIGeneratedHeaders 给"内容可能由 AI 生成"的响应统一追加机器可读标识：
+//   - X-AI-Generated: true            （通用声明）
+//   - X-AI-Disclaimer: ...            （人类可读短声明）
+//   - X-Content-Source: ai-llm, refs  （内容来源：AI 生成 + 附引用）
+//   - X-Compliance-Contact: compliance@mygeo.ai
+//
+// 覆盖范围（详见 shouldMarkAIGenerated 判定函数）：
+//   - 所有 SPA 页面（页面内可能含 AI 产出区块，已在 UI 层标注）
+//   - 报告 HTML/PDF/邮件 导出
+//   - /analyze /score /optimize /audit /readiness /crawlability /autorewriter 等 LLM 接口
+func (s *Server) withAIGeneratedHeaders(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if shouldMarkAIGenerated(r.URL.Path) {
+			w.Header().Set("X-AI-Generated", "true")
+			w.Header().Set("X-AI-Disclaimer", aiGeneratedDisclaimerShort)
+			w.Header().Set("X-Content-Source", "ai-llm, refs")
+			w.Header().Set("X-Compliance-Contact", util.MyGEOComplianceEmail)
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // ===== CORS =====

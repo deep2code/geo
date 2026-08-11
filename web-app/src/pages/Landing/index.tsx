@@ -210,6 +210,9 @@ const Landing: React.FC = () => {
             <a href="#pricing">{t('landing.navPricing')}</a>
             <a href="/help">{t('landing.navHelp')}</a>
             <a href="/tickets">{t('landing.footerSupport')}</a>
+            <a href="/terms">服务条款</a>
+            <a href="/privacy">隐私政策</a>
+            <a href="/dpa">DPA</a>
             <a href="/landing">{t('landing.footerAbout')}</a>
           </div>
         </div>

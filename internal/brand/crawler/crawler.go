@@ -91,6 +91,9 @@ var (
 // Crawl 爬取官网，提取品牌信息。
 // 自动从 HTML 中提取：title、meta description、域名、产品/服务关键词。
 // 出错时返回带 Error 字段的 WebsiteInfo（不返回 error），便于调用方降级处理。
+//
+// 合规：请求前检查 robots.txt（MyGEOBot/* Disallow），并应用跨包每主机限频（默认 600ms），
+// 使用合规 User-Agent MyGEOBot/1.0（避风港格式，含信息页 + 联系邮箱）。
 func (c *WebsiteCrawler) Crawl(ctx context.Context, domain string) (*WebsiteInfo, error) {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
@@ -114,16 +117,29 @@ func (c *WebsiteCrawler) Crawl(ctx context.Context, domain string) (*WebsiteInfo
 		return info, nil
 	}
 
+	// ── 合规：robots + 限频 ────────────────────────────────────
+	if !util.RobotsAllows(ctx, rawURL, "/") {
+		info.Error = fmt.Sprintf("crawler: robots.txt 禁止 MyGEOBot 访问 %s", domain)
+		return info, nil
+	}
+	util.HostThrottle(domain)
+
 	body, status, err := c.fetchHTML(ctx, rawURL)
 	if err != nil {
 		// https 失败，回退 http
 		rawURL = "http://" + domain + "/"
-		body2, status2, err2 := c.fetchHTML(ctx, rawURL)
-		if err2 != nil {
-			info.Error = fmt.Sprintf("https 与 http 均失败: %v; %v", err, err2)
+		if util.RobotsAllows(ctx, rawURL, "/") {
+			util.HostThrottle(domain)
+			body2, status2, err2 := c.fetchHTML(ctx, rawURL)
+			if err2 != nil {
+				info.Error = fmt.Sprintf("https 与 http 均失败: %v; %v", err, err2)
+				return info, nil
+			}
+			body, status = body2, status2
+		} else {
+			info.Error = fmt.Sprintf("https 失败 %v；http robots 禁止访问", err)
 			return info, nil
 		}
-		body, status = body2, status2
 	}
 	info.StatusCode = status
 
@@ -176,12 +192,18 @@ func (c *WebsiteCrawler) GuessDomain(ctx context.Context, brandName string) (str
 				resultCh <- result{domain: d, ok: false}
 				return
 			}
+			// 合规：robots 预检 + 跨包限频（避免并发打爆域名）
+			if !util.RobotsAllows(ctx, rawURL, "/") {
+				resultCh <- result{domain: d, ok: false}
+				return
+			}
+			util.HostThrottle(d)
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 			if err != nil {
 				resultCh <- result{domain: d, ok: false}
 				return
 			}
-			req.Header.Set("User-Agent", "geo-brand-crawler/1.0")
+			req.Header.Set("User-Agent", util.MyGEOUserAgent)
 			resp, err := c.httpClient.Do(req)
 			if err != nil {
 				resultCh <- result{domain: d, ok: false}
@@ -219,7 +241,7 @@ func (c *WebsiteCrawler) fetchHTML(ctx context.Context, rawURL string) (string, 
 	if err != nil {
 		return "", 0, err
 	}
-	req.Header.Set("User-Agent", "geo-brand-crawler/1.0")
+	req.Header.Set("User-Agent", util.MyGEOUserAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

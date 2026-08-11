@@ -7,12 +7,194 @@
 package util
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 )
+
+// ── 爬虫合规：共享 User-Agent（带避风港格式） ────────────────────────
+
+const (
+	// MyGEOUserAgent 所有对外爬虫请求统一使用的 User-Agent。
+	// 格式符合 RFC 7231 及主流爬虫避风港约定：产品名/版本 (+信息页URL; 联系邮箱)。
+	// 信息页 /legal/bot 由服务端注册，说明爬虫目的、频次、退出联系与 robots 遵循声明。
+	MyGEOUserAgent = "MyGEOBot/1.0 (+/legal/bot; compliance@mygeo.ai)"
+
+	// MyGEOCrawlInfoURL 对外可访问的爬虫说明页路径。
+	MyGEOCrawlInfoURL = "/legal/bot"
+
+	// MyGEOComplianceEmail 合规/退出联系邮箱。
+	MyGEOComplianceEmail = "compliance@mygeo.ai"
+
+	// defaultCrawlMinInterval 同一主机两次请求之间的最小间隔（礼貌爬取）。
+	defaultCrawlMinInterval = 600 * time.Millisecond
+)
+
+// ── 每主机限频（礼貌爬取） ──────────────────────────────────────────
+
+type hostRateLimiter struct {
+	mu      sync.Mutex
+	lastReq map[string]time.Time
+	minInt  time.Duration
+}
+
+var sharedHostLimiter = &hostRateLimiter{
+	lastReq: map[string]time.Time{},
+	minInt:  defaultCrawlMinInterval,
+}
+
+// HostThrottle 阻塞直到当前 host 距离上次请求已至少 minInterval，用于跨包礼貌爬取。
+// host 可为域名（含端口时取 host 部分）。线程安全。
+func HostThrottle(host string) {
+	host = cleanHost(host)
+	if host == "" {
+		return
+	}
+	sharedHostLimiter.mu.Lock()
+	last := sharedHostLimiter.lastReq[host]
+	sharedHostLimiter.lastReq[host] = time.Now()
+	sharedHostLimiter.mu.Unlock()
+	sleepFor := sharedHostLimiter.minInt - time.Since(last)
+	if sleepFor > 0 {
+		time.Sleep(sleepFor)
+	}
+}
+
+// SetHostThrottleInterval 覆盖默认限频（仅用于测试/本地加速；生产环境不建议改）。
+func SetHostThrottleInterval(d time.Duration) {
+	if d > 0 {
+		sharedHostLimiter.mu.Lock()
+		sharedHostLimiter.minInt = d
+		sharedHostLimiter.mu.Unlock()
+	}
+}
+
+func cleanHost(host string) string {
+	host = strings.TrimSpace(host)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return strings.ToLower(host)
+}
+
+// ── robots.txt 简易允许判断（遵循 RFC 9309 基础子集） ─────────────
+
+// RobotsAllows 拉取 scheme://host/robots.txt，判断 MyGEOBot 与 * 是否允许访问 path。
+// 拉取失败 / robots 缺失 / 格式异常时默认返回 true（不阻塞业务），调用方应记录日志。
+// 只做基础支持：User-Agent: MyGEOBot/* 行 + Disallow: 前缀匹配；不处理 Allow、Crawl-delay、Sitemap。
+func RobotsAllows(ctx context.Context, rawBaseURL, path string) bool {
+	u, err := url.Parse(strings.TrimRight(rawBaseURL, "/"))
+	if err != nil || u.Host == "" {
+		return true
+	}
+	robotURL := u.Scheme + "://" + u.Host + "/robots.txt"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, robotURL, nil)
+	if err != nil {
+		return true
+	}
+	req.Header.Set("User-Agent", MyGEOUserAgent)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return true
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 500 {
+		return false // 服务端报错：保守不爬
+	}
+	if resp.StatusCode == 404 {
+		return true
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	return robotsAllows(string(body), "MyGEOBot", path)
+}
+
+func robotsAllows(robotsTxt, bot, path string) bool {
+	if strings.TrimSpace(robotsTxt) == "" {
+		return true
+	}
+	lines := strings.Split(robotsTxt, "\n")
+	var (
+		inMyGroup  bool
+		inStarGroup bool
+		myDisallow   []string
+		starDisallow []string
+	)
+	flushStar := func() { inStarGroup = false }
+	flushMy := func() { inMyGroup = false }
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		low := strings.ToLower(line)
+		if strings.HasPrefix(low, "user-agent:") {
+			// 切换分组：遇到新 UA 结束旧 UA 组
+			val := strings.TrimSpace(line[len("user-agent:"):])
+			val = strings.SplitN(val, "#", 2)[0]
+			val = strings.TrimSpace(val)
+			if val == "*" {
+				flushMy()
+				inStarGroup = true
+			} else if strings.EqualFold(val, bot) {
+				flushStar()
+				inMyGroup = true
+			} else {
+				flushStar()
+				flushMy()
+			}
+			continue
+		}
+		if strings.HasPrefix(low, "disallow:") {
+			val := strings.TrimSpace(line[len("disallow:"):])
+			val = strings.SplitN(val, "#", 2)[0]
+			val = strings.TrimSpace(val)
+			if val == "" {
+				continue
+			}
+			if inMyGroup {
+				myDisallow = append(myDisallow, val)
+			} else if inStarGroup {
+				starDisallow = append(starDisallow, val)
+			}
+			continue
+		}
+		// Allow / Crawl-delay / Sitemap 等当前忽略，不影响最小合规
+	}
+	disallowed := func(rules []string) bool {
+		for _, r := range rules {
+			// robots disallow 前缀匹配；支持末尾 * 通配，遇到 % 先不转码以保守匹配
+			if strings.HasSuffix(r, "*") {
+				prefix := strings.TrimSuffix(r, "*")
+				if strings.HasPrefix(path, prefix) {
+					return true
+				}
+				continue
+			}
+			if strings.HasPrefix(path, r) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(myDisallow) > 0 {
+		if disallowed(myDisallow) {
+			return false
+		}
+		return true
+	}
+	if disallowed(starDisallow) {
+		return false
+	}
+	return true
+}
 
 // HumanBytes 将字节数格式化为人类可读字符串（如 "1.5 MB"）。
 // 采用 1024 进制，单位 B/KB/MB/GB/TB/PB。

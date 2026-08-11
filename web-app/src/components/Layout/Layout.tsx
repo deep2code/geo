@@ -103,6 +103,15 @@ export const Layout: React.FC = () => {
           ))}
         </nav>
         <div className="app-sidebar-footer">
+          <div className="app-sidebar-footer-links">
+            <NavLink to="/terms" className="app-sidebar-footer-link" onClick={() => navigate('/terms')}>
+              {sidebarOpen ? '服务条款' : '条款'}
+            </NavLink>
+            <NavLink to="/privacy" className="app-sidebar-footer-link" onClick={() => navigate('/privacy')}>
+              {sidebarOpen ? '隐私政策' : '隐私'}
+            </NavLink>
+            <NavLink to="/dpa" className="app-sidebar-footer-link" onClick={() => navigate('/dpa')}>DPA</NavLink>
+          </div>
           <div className="app-sidebar-version">v1.0.0</div>
         </div>
       </aside>
