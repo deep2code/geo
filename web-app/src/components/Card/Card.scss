@@ -89,3 +89,20 @@
     background: linear-gradient(135deg, var(--surface-primary), var(--surface-secondary));
   }
 }
+
+@media (max-width: 768px) {
+  .card {
+    border-radius: var(--radius-md);
+    &-header, &-body { padding: var(--spacing-md); }
+    &-footer { padding: var(--spacing-sm) var(--spacing-md); }
+    &-title { font-size: var(--font-size-base); }
+    &-actions { gap: var(--spacing-xs); flex-wrap: wrap; }
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    &-header, &-body { padding: var(--spacing-sm); }
+    &-footer { padding: var(--spacing-xs) var(--spacing-sm); gap: var(--spacing-xs); }
+  }
+}

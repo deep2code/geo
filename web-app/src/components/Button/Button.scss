@@ -128,3 +128,21 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+@media (max-width: 768px) {
+  .button {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    gap: var(--spacing-xs);
+
+    &-lg { padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-sm); }
+    &-icon { padding: var(--spacing-xs); }
+  }
+}
+
+@media (max-width: 480px) {
+  .button {
+    min-height: 36px;
+    &-full-sm { width: 100%; }
+  }
+}

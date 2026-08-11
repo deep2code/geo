@@ -129,3 +129,27 @@
     background-color: var(--status-error-bg);
   }
 }
+
+@media (max-width: 768px) {
+  .input-wrapper {
+    gap: 2px;
+    &-label { font-size: var(--font-size-xs); }
+    &-hint, &-error { font-size: 11px; }
+  }
+  .input, .textarea {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+    border-radius: var(--radius-sm);
+    min-height: 36px;
+  }
+  .input-lg, .textarea-lg { padding: var(--spacing-sm) var(--spacing-md); font-size: var(--font-size-sm); }
+  .input-search {
+    padding-left: 36px;
+    background-size: 14px;
+    background-position: var(--spacing-sm) center;
+  }
+}
+
+@media (max-width: 480px) {
+  .textarea { min-height: 80px; }
+}

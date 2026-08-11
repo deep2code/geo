@@ -143,3 +143,28 @@
     }
   }
 }
+
+@media (max-width: 768px) {
+  .tabs {
+    &-tab {
+      padding: var(--spacing-sm) var(--spacing-md);
+      font-size: var(--font-size-xs);
+    }
+    &-content { padding-top: var(--spacing-md); }
+    &-variant-pills {
+      .tabs-nav { padding: 2px; border-radius: var(--radius-md); }
+      .tabs-tab { padding: var(--spacing-xs) var(--spacing-sm); }
+    }
+    &-size-sm .tabs-tab { padding: var(--spacing-xs) var(--spacing-sm); font-size: 11px; }
+  }
+}
+
+@media (max-width: 480px) {
+  .tabs-nav {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+  }
+  .tabs-tab {
+    scroll-snap-align: start;
+  }
+}

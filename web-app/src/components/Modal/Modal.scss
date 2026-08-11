@@ -102,3 +102,42 @@
     border-radius: 0 0 var(--radius-xl) var(--radius-xl);
   }
 }
+
+@media (max-width: 768px) {
+  .modal {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 32px);
+    width: calc(100vw - 24px) !important;
+    border-radius: var(--radius-lg);
+    &-header, &-body { padding: var(--spacing-md); }
+    &-footer {
+      padding: var(--spacing-sm) var(--spacing-md);
+      flex-wrap: wrap;
+      gap: var(--spacing-xs);
+      border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    }
+    &-title { font-size: var(--font-size-lg); }
+    &-sm, &-md, &-lg, &-xl { width: calc(100vw - 24px) !important; }
+  }
+}
+
+@media (max-width: 480px) {
+  .modal {
+    max-width: 100vw;
+    max-height: 100vh;
+    width: 100vw !important;
+    height: 100vh;
+    top: 0;
+    left: 0;
+    transform: none;
+    border-radius: 0;
+    animation: none;
+    &-header, &-body { padding: var(--spacing-sm); }
+    &-footer {
+      position: sticky;
+      bottom: 0;
+      padding: var(--spacing-sm);
+    }
+    &-sm, &-md, &-lg, &-xl { width: 100vw !important; }
+  }
+}

@@ -161,3 +161,25 @@
     }
   }
 }
+
+@media (max-width: 768px) {
+  .kpi {
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    &-icon { width: 32px; height: 32px; font-size: var(--font-size-lg); border-radius: var(--radius-sm); }
+    &-value { font-size: var(--font-size-2xl); }
+    &-value-prefix, &-value-suffix { font-size: var(--font-size-base); }
+    &-footer { margin-top: var(--spacing-sm); padding-top: var(--spacing-sm); }
+    &-sparkline { height: 32px; margin-top: var(--spacing-sm); }
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi {
+    padding: var(--spacing-sm);
+    &-header { margin-bottom: var(--spacing-sm); }
+    &-label { font-size: var(--font-size-xs); }
+    &-value { font-size: var(--font-size-xl); }
+    &-trend { font-size: 10px; padding: 2px var(--spacing-xs); }
+  }
+}

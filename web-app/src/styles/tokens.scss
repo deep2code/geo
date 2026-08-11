@@ -206,3 +206,23 @@
   --z-toast: 1070;
   --z-tooltip: 1080;
 }
+
+/* ── 全局响应式工具类 ────────────────────────────────── */
+@media (max-width: 768px) {
+  html { font-size: 14px; }
+  .hide-md { display: none !important; }
+  .stack-md > * + * { margin-top: var(--spacing-sm); }
+  .stack-md { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+  .full-md { width: 100% !important; min-width: 0 !important; }
+  .scroll-x-md { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 480px) {
+  html { font-size: 13px; }
+  .hide-sm { display: none !important; }
+  .stack-sm > * + * { margin-top: var(--spacing-xs); }
+  .stack-sm { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+  .full-sm { width: 100% !important; }
+  .p-none-sm { padding: 0 !important; }
+  .m-none-sm { margin: 0 !important; }
+}

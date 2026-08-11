@@ -334,21 +334,91 @@
   }
 }
 
+.app-sidebar-backdrop {
+  display: none;
+}
+
+.app-menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  transition: background var(--transition-fast);
+  &:hover { background-color: var(--bg-hover); }
+}
+
+@media (max-width: 1024px) {
+  .app-lang-code { display: none; }
+  .app-header-tabs { max-width: calc(100vw - 420px); }
+}
+
 @media (max-width: 768px) {
+  .app-menu-toggle { display: inline-flex; }
+  .app-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: calc(var(--z-fixed) - 1);
+  }
   .app-sidebar {
     position: fixed;
     z-index: var(--z-fixed);
     box-shadow: var(--shadow-lg);
+    transition: transform 0.25s ease, width 0.25s ease;
 
+    &.is-open {
+      transform: translateX(0);
+      width: 260px;
+    }
     &.is-collapsed {
       transform: translateX(-100%);
-      width: 240px;
+      width: 260px;
     }
   }
-  .app-sidebar.is-collapsed ~ .app-main {
-    margin-left: 0;
+  .app-header {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    gap: var(--spacing-xs);
+  }
+  .app-header-right {
+    gap: var(--spacing-xs);
+  }
+  .app-theme-btn {
+    width: 28px;
+    height: 26px;
+  }
+  .app-lang-flag { font-size: 12px; }
+  .app-lang-btn { padding: 2px 4px; height: 26px; }
+  .app-header-tabs {
+    max-width: none;
+    width: 100%;
   }
   .app-content {
-    padding: var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+  .app-toast {
+    min-width: unset;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    bottom: var(--spacing-lg);
+  }
+}
+
+@media (max-width: 480px) {
+  .app-sidebar {
+    width: 84vw;
+    &.is-open, &.is-collapsed { width: 84vw; }
+  }
+  .app-header-tabs {
+    ::-webkit-scrollbar { display: none; }
+    scrollbar-width: none;
+  }
+  .app-lang-switcher { display: none; }
+  .app-content {
+    padding: var(--spacing-xs) var(--spacing-sm);
   }
 }

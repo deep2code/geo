@@ -61,6 +61,13 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="app-layout">
+      {sidebarOpen && (
+        <div
+          className="app-sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
       <aside className={`app-sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`}>
         <div className="app-sidebar-brand">
           <div className="app-logo">
@@ -103,6 +110,14 @@ export const Layout: React.FC = () => {
       <div className="app-main">
         <header className="app-header">
           <div className="app-header-left">
+            <button
+              type="button"
+              className="app-menu-toggle"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Menu"
+            >
+              ☰
+            </button>
             <h1 className="app-header-title" style={{ display: 'none' }}>{whitelabel.brand_name}</h1>
             <Tabs
               activeKey={activeTabKey}
