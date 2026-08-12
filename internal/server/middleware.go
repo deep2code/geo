@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,10 +22,61 @@ import (
 //   - GEO_CORS_ORIGINS：允许的跨域源（逗号分隔），默认仅 localhost。设为 "*" 表示全开放（仅限本地开发）。
 //   - GEO_API_KEY：API 密钥。设置后，除 health/web 外的所有接口需 Bearer token。未设置则不鉴权（向后兼容）。
 //   - 写操作（POST/DELETE/clear/import）在 CORS 设为具体源时始终校验 Origin（CSRF 防护）。
+//   - GEO_TRUSTED_PROXIES：可信代理列表（逗号分隔的 IP/CIDR）。设置后 X-Forwarded-For 仅在
+//     RemoteAddr 属于可信代理时才解析；否则直接用 RemoteAddr，避免 IP 伪造绕过限流/WAF。
 var (
-	corsOrigins = parseCORSOrigins()
-	apiKey      = strings.TrimSpace(os.Getenv("GEO_API_KEY"))
+	corsOrigins    = parseCORSOrigins()
+	apiKey         = strings.TrimSpace(os.Getenv("GEO_API_KEY"))
+	trustedProxies = parseTrustedProxies() // 可信代理（CIDR + 具体 IP）
 )
+
+// parseTrustedProxies 解析 GEO_TRUSTED_PROXIES 为 CIDR 列表；未设置时默认信任
+// 常见私有/回环子网（本机单机部署 + VPC Nginx Ingress/Cloudflare LB 常见场景）。
+// 环境变量示例：GEO_TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7"
+func parseTrustedProxies() []*net.IPNet {
+	var nets []*net.IPNet
+	raw := strings.TrimSpace(os.Getenv("GEO_TRUSTED_PROXIES"))
+	if raw == "" {
+		// 默认信任：回环 + 私有子网。企业生产应显式精确配置。
+		raw = "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7"
+	}
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		// 支持纯 IP（自动加 /32 或 /128）
+		if !strings.Contains(p, "/") {
+			if strings.Contains(p, ":") {
+				p = p + "/128"
+			} else {
+				p = p + "/32"
+			}
+		}
+		_, n, err := net.ParseCIDR(p)
+		if err != nil {
+			slog.Warn("GEO_TRUSTED_PROXIES 跳过非法条目",
+				slog.String("entry", p), slog.String("error", err.Error()))
+			continue
+		}
+		nets = append(nets, n)
+	}
+	return nets
+}
+
+// isTrustedProxy 检查一个 IP 是否属于可信代理列表。
+func isTrustedProxy(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range trustedProxies {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
 
 func parseCORSOrigins() map[string]bool {
 	raw := strings.TrimSpace(os.Getenv("GEO_CORS_ORIGINS"))
@@ -49,17 +102,62 @@ func parseCORSOrigins() map[string]bool {
 
 // ===== 请求日志 =====
 
-// requestLogger 结构化请求日志中间件（method/path/status/耗时）。
+// requestIDContextKey 是 request ID 注入 context 的唯一键类型，避免与其他包冲突。
+type requestIDContextKey struct{}
+
+// RequestIDFromContext 从 context 取出当前请求的 request ID（未设置返回空串）。
+// 供业务 handler 做日志关联 / 任务追踪使用。
+func RequestIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(requestIDContextKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// withRequestID 生成/继承 request ID：
+//   - 优先复用客户端传入的 X-Request-Id（便于链路追踪）；
+//   - 否则生成新的加密安全随机 ID（默认 16 位 hex）；
+//   - 注入 context + 回写响应头（前端可调取，上报工单便于后端检索）。
+func (s *Server) withRequestID(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rid := strings.TrimSpace(r.Header.Get("X-Request-Id"))
+		if rid == "" {
+			rid = util.RandomHexID(8)
+		}
+		w.Header().Set("X-Request-Id", rid)
+		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, rid))
+		h.ServeHTTP(w, r)
+	})
+}
+
+// requestLogger 结构化请求日志中间件（method/path/status/耗时/client_ip/request_id）。
 func (s *Server) requestLogger(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		h.ServeHTTP(rw, r)
+		rid := RequestIDFromContext(r.Context())
+		if rid == "" {
+			slog.Info("http request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.Int("status", rw.status),
+				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+				slog.String("client_ip", clientIP(r)),
+				slog.String("remote", r.RemoteAddr),
+			)
+			return
+		}
 		slog.Info("http request",
+			slog.String("request_id", rid),
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", rw.status),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			slog.String("client_ip", clientIP(r)),
 			slog.String("remote", r.RemoteAddr),
 		)
 	})
@@ -77,17 +175,20 @@ func (s *statusRecorder) WriteHeader(code int) {
 
 // ===== 中间件链组装 =====
 
-// withMiddleware 应用完整中间件链：
-// recovery → requestLogger → rateLimitGlobal → waf → cors(+CSRF) → auth → aiGeneratedHeaders → handler
+// withMiddleware 应用完整中间件链（顺序：外层先，然后层层嵌套向内）：
+// recovery → requestLogger → withRequestID → rateLimitGlobal → waf →
+// cors(+CSRF) → auth → aiGeneratedHeaders → handler
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	return s.recovery(
 		s.requestLogger(
-			s.rateLimitGlobal(
-				s.withWAF(
-					s.withCSRF(
-						s.withCORS(
-							s.withAuth(
-								s.withAIGeneratedHeaders(h),
+			s.withRequestID(
+				s.rateLimitGlobal(
+					s.withWAF(
+						s.withCSRF(
+							s.withCORS(
+								s.withAuth(
+									s.withAIGeneratedHeaders(h),
+								),
 							),
 						),
 					),
@@ -505,17 +606,66 @@ func (s *Server) recovery(h http.Handler) http.Handler {
 
 // ===== 工具函数 =====
 
-func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if i := strings.Index(fwd, ","); i > 0 {
-			return strings.TrimSpace(fwd[:i])
+// stripPort 从 "IP:port" / "[IPv6]:port" 中提取裸 IP。
+func stripPort(addr string) string {
+	if addr == "" {
+		return ""
+	}
+	// IPv6 带括号
+	if strings.HasPrefix(addr, "[") {
+		if i := strings.LastIndex(addr, "]:"); i > 0 {
+			return addr[1:i]
 		}
-		return fwd
+		return addr
 	}
-	if i := strings.LastIndex(r.RemoteAddr, ":"); i > 0 {
-		return r.RemoteAddr[:i]
+	if i := strings.LastIndex(addr, ":"); i > 0 {
+		// 避免 IPv6 字面（无端口无括号）被误切
+		if !strings.Contains(addr[i+1:], ":") {
+			return addr[:i]
+		}
 	}
-	return r.RemoteAddr
+	return addr
+}
+
+// clientIP 获取真实客户端 IP，默认仅当 RemoteAddr 属于可信代理（GEO_TRUSTED_PROXIES）
+// 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被任意客户端伪造绕过限流/WAF。
+//
+// 解析策略（仅在 RemoteAddr 可信时）：
+//   X-Forwarded-For: "client, proxy1, proxy2, ..." — 取第一个非可信代理的地址作为真实客户端。
+//   退而求其次：X-Real-IP。
+//   最后：RemoteAddr 本身。
+func clientIP(r *http.Request) string {
+	remoteIP := stripPort(r.RemoteAddr)
+
+	// RemoteAddr 不在可信代理列表：直接拒绝相信任何转发头
+	if !isTrustedProxy(remoteIP) {
+		return remoteIP
+	}
+
+	// 优先 X-Forwarded-For：从左到右，第一个"不在可信代理"的即真实客户端
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		for i := range parts {
+			ip := strings.TrimSpace(parts[i])
+			if ip == "" {
+				continue
+			}
+			if !isTrustedProxy(ip) {
+				return ip
+			}
+		}
+		// 所有段都在可信代理（极少数多层 LB），取第一个
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+
+	// 其次 X-Real-IP（Nginx 常见）
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+		return real
+	}
+
+	return remoteIP
 }
 
 // envInt 读取整型环境变量，未设置或解析失败返回 fallback。

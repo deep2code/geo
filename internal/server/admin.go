@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
 	"net/http"
@@ -53,13 +54,17 @@ var (
 )
 
 // checkAdminKey 校验管理员请求头。
-// 未配置 GEO_ADMIN_KEY 时允许访问（开发模式）。
+// ⚠️ 未配置 GEO_ADMIN_KEY 时拒绝访问（生产默认安全）。
+// 开发/本地 Demo 需要管理员接口时，务必显式配置：
+//   export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
 func (s *Server) checkAdminKey(r *http.Request) bool {
 	key := strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY"))
 	if key == "" {
-		return true
+		// 只在启动阶段打一次 warning 即可，这里避免每请求刷日志
+		return false
 	}
-	return r.Header.Get("X-Admin-Key") == key
+	// 恒定时间比较（避免时序攻击）
+	return subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Key")), []byte(key)) == 1
 }
 
 // adminForbidden 返回未授权错误。

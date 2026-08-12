@@ -8,6 +8,8 @@ package util
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -272,6 +274,21 @@ func ScoreToGrade(score float64) string {
 func ParseBool(s string) bool {
 	s = strings.TrimSpace(strings.ToLower(s))
 	return s == "true" || s == "1" || s == "yes" || s == "on"
+}
+
+// RandomHexID 生成加密安全的 2n 位十六进制请求/追踪 ID。
+// 默认 n=8 → 16 字符（64bit 熵，足够单机请求唯一）。
+// 用于 requestID 中间件与异步任务关联。
+func RandomHexID(n int) string {
+	if n <= 0 {
+		n = 8
+	}
+	b := make([]byte, n)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		// 极端回退：时间戳（不唯一但不应阻塞请求）
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
 }
 
 // IndexOf 返回 sub 在 s 中首次出现的字节索引，未找到返回 -1。

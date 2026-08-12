@@ -18,6 +18,7 @@ import (
 	"html"
 	"io"
 	"io/fs"
+	"log/slog"
 	"math"
 	"mime"
 	"net/http"
@@ -55,6 +56,7 @@ import (
 	"my-geo/internal/mail"
 	"my-geo/internal/models"
 	"my-geo/internal/optimizer/autorewriter"
+	"my-geo/internal/util"
 	"my-geo/pkg/geo"
 )
 
@@ -100,10 +102,14 @@ func loadWhitelabelFromEnv() Whitelabel {
 func New(engine *geo.Engine, addr string) *Server {
 	be := newBrandEngineFromEnv()
 	if be == nil {
-		fmt.Fprintln(os.Stderr, "[geo server 警告] 品牌审计引擎未初始化（无可用适配器）。"+
-			"POST /api/v1/brand/audit 将返回 503。请配置各引擎 API Key 环境变量。")
+		slog.Warn("品牌审计引擎未初始化（无可用适配器）；POST /api/v1/brand/audit 将返回 503。请配置各引擎 API Key 环境变量。")
 	} else if os.Getenv("GEO_LLM_KEY") == "" {
-		fmt.Fprintln(os.Stderr, "[geo server 警告] 未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
+		slog.Warn("未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
+	}
+	// 管理员安全：未配置 GEO_ADMIN_KEY 时所有 /api/admin/* 将默认拒绝，此处统一打一次告警
+	if strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY")) == "" {
+		slog.Warn("未配置 GEO_ADMIN_KEY，管理员接口（/api/admin/*）默认全部拒绝访问。" +
+			"如需启用请：export GEO_ADMIN_KEY=$(openssl rand -hex 16)")
 	}
 	s := &Server{
 		engine:      engine,
@@ -114,10 +120,10 @@ func New(engine *geo.Engine, addr string) *Server {
 	}
 	// 初始化邮件发送器（未配置 SMTP 时为 nil，邮件接口返回未启用提示）
 	if ms, err := mail.NewSender(); err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 邮件发送器初始化失败: %v\n", err)
+		slog.Warn("邮件发送器初始化失败", slog.Any("error", err))
 	} else if ms != nil {
 		s.mailSender = ms
-		fmt.Fprintln(os.Stderr, "[geo server] SMTP 邮件发送器已启用（告警/周报/PDF 报告邮件可用）。")
+		slog.Info("SMTP 邮件发送器已启用（告警/周报/PDF 报告邮件可用）。")
 	}
 	// 初始化定时审计调度器（默认不启动，需通过 API 或配置文件启用）
 	if be != nil {
@@ -141,14 +147,14 @@ func New(engine *geo.Engine, addr string) *Server {
 func newBrandEngineFromEnv() *brand.Engine {
 	adapters, errs := config.BrandAdaptersFromEnv()
 	for eng, e := range errs {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] %s 适配器创建失败: %v\n", eng, e)
+		slog.Warn("LLM 适配器创建失败", slog.String("engine", string(eng)), slog.Any("error", e))
 	}
 	if len(adapters) == 0 {
 		return nil
 	}
 	// 为每个适配器包装降级缓存（外部 LLM 不可用时返回缓存结果）
 	adapters = adapter.WrapWithFallback(adapters)
-	fmt.Fprintf(os.Stderr, "[geo server] LLM 适配器降级缓存已启用（TTL=1h，max=1000/引擎）。\n")
+	slog.Info("LLM 适配器降级缓存已启用", slog.String("ttl", "1h"), slog.Int("max_per_engine", 1000))
 	llmMgr := newLLMManagerFromEnv()
 	opts := []brand.Option{
 		brand.WithAdapters(adapters),
@@ -157,23 +163,26 @@ func newBrandEngineFromEnv() *brand.Engine {
 	// 注入 China-Check 工商核验客户端（默认启用，可通过环境变量关闭）
 	if cc := newChinaCheckFromEnv(); cc != nil {
 		opts = append(opts, brand.WithChinaCheck(cc))
-		fmt.Fprintln(os.Stderr, "[geo server] China-Check MCP 工商核验已启用（GSXT/SAMR 官方数据，免鉴权免费）。")
+		slog.Info("China-Check MCP 工商核验已启用（GSXT/SAMR 官方数据，免鉴权免费）。")
 	}
 	// 注入离线工商 SQLite 库（默认启用，空库也打开）
 	if odb := newOfflineDBFromEnv(); odb != nil {
 		opts = append(opts, brand.WithOfflineDB(odb))
 		st, err := odb.Stats(context.Background())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[geo server 警告] 离线工商库打开成功但统计失败: %v\n", err)
+			slog.Warn("离线工商库打开成功但统计失败", slog.Any("error", err))
 		} else {
-			fmt.Fprintf(os.Stderr, "[geo server] 离线工商 SQLite 库已启用：%s（共 %d 条，%d 字节） — 种子数据来源: guichong/- 仓库 json 分支。\n",
-				st.Path, st.Count, st.FileSize)
+			slog.Info("离线工商 SQLite 库已启用",
+				slog.String("path", st.Path),
+				slog.Int64("count", st.Count),
+				slog.Int64("size_bytes", st.FileSize),
+				slog.String("seed_source", "guichong/- 仓库 json 分支"))
 		}
 	}
 	// 注入审计历史 SQLite 库（默认启用）
 	if hdb := newHistoryDBFromEnv(); hdb != nil {
 		opts = append(opts, brand.WithHistoryDB(hdb))
-		fmt.Fprintf(os.Stderr, "[geo server] 审计历史 SQLite 库已启用：%s\n", hdb.Path())
+		slog.Info("审计历史 SQLite 库已启用", slog.String("path", hdb.Path()))
 	}
 	return brand.New(opts...)
 }
@@ -195,13 +204,13 @@ func BuildBrandEngineFromEnv() *brand.Engine {
 func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
-		fmt.Fprintln(os.Stderr, "[geo server] 审计历史 SQLite 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
+		slog.Info("审计历史 SQLite 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
 		return nil
 	}
 	path := config.Env("GEO_HISTORY_DB_PATH", "")
 	db, err := history.Open(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 审计历史库打开失败（将无历史记录）: %v\n", err)
+		slog.Warn("审计历史库打开失败（将无历史记录）", slog.Any("error", err))
 		return nil
 	}
 	return db
@@ -222,21 +231,21 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 	webhook := config.Env("GEO_SCHEDULER_WEBHOOK", "")
 	configPath := config.Env("GEO_SCHEDULER_CONFIG", "")
 	if configPath == "" {
-		fmt.Fprintln(os.Stderr, "[geo server 警告] 定时审计已启用但未配置 GEO_SCHEDULER_CONFIG，调度器为空。")
+		slog.Warn("定时审计已启用但未配置 GEO_SCHEDULER_CONFIG，调度器为空。")
 		return scheduler.New(be, be.HistoryDB(), nil, webhook)
 	}
 	// 读取配置文件
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 读取调度配置文件失败: %v\n", err)
+		slog.Warn("读取调度配置文件失败", slog.String("path", configPath), slog.Any("error", err))
 		return nil
 	}
 	var configs []scheduler.ScheduleConfig
 	if err := json.Unmarshal(data, &configs); err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 解析调度配置文件失败: %v\n", err)
+		slog.Warn("解析调度配置文件失败", slog.String("path", configPath), slog.Any("error", err))
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "[geo server] 定时审计调度器已加载 %d 个品牌配置\n", len(configs))
+	slog.Info("定时审计调度器已加载品牌配置", slog.Int("count", len(configs)))
 	return scheduler.New(be, be.HistoryDB(), configs, webhook)
 }
 
@@ -255,7 +264,7 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 func newChinaCheckFromEnv() *chinacheck.Client {
 	enabled := config.Env("GEO_CHINACHECK_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
-		fmt.Fprintln(os.Stderr, "[geo server] China-Check MCP 已通过 GEO_CHINACHECK_ENABLED=false 禁用。")
+		slog.Info("China-Check MCP 已通过 GEO_CHINACHECK_ENABLED=false 禁用。")
 		return nil
 	}
 	opts := []chinacheck.Option{}
@@ -283,11 +292,15 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 		cachePath := config.Env("GEO_CHINACHECK_CACHE_PATH", "")
 		ca, err := chinacheck.NewCache(cachePath, cacheOpts...)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[geo server 警告] China-Check 缓存初始化失败（将无缓存运行）: %v\n", err)
+			slog.Warn("China-Check 缓存初始化失败（将无缓存运行）", slog.Any("error", err))
 		} else {
 			st := ca.Stats()
-			fmt.Fprintf(os.Stderr, "[geo server] China-Check MCP 本地缓存已启用：file=%s  count=%d  max=%d  ttl=%dh  size=%d bytes\n",
-				st.File, st.Count, st.MaxItems, st.TTLSeconds/3600, st.FileSizeByte)
+			slog.Info("China-Check MCP 本地缓存已启用",
+				slog.String("file", st.File),
+				slog.Int("count", st.Count),
+				slog.Int("max", st.MaxItems),
+				slog.Int("ttl_h", int(st.TTLSeconds/3600)),
+				slog.Int64("size_bytes", st.FileSizeByte))
 			opts = append(opts, chinacheck.WithCache(ca))
 		}
 	}
@@ -305,31 +318,22 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
-		fmt.Fprintln(os.Stderr, "[geo server] 离线工商库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
+		slog.Info("离线工商库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
 		return nil
 	}
 	path := config.Env("GEO_OFFLINE_DB_PATH", "")
 	db, err := offlinedb.Open(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 离线工商库打开失败（将无离线库运行）: %v\n", err)
+		slog.Warn("离线工商库打开失败（将无离线库运行）", slog.Any("error", err))
 		return nil
 	}
 	return db
 }
 
-// humanBytes 把字节数格式化成 2.3 MB 这种易读格式（server 内部小工具，与 CLI 独立）。
+// humanBytes 兼容别名（已迁移至 util.HumanBytes，保留对外引用以防外部调用）。
+// 精度：util.HumanBytes 使用 2 位小数；此前内部未被外部包使用，不构成 API 变更。
 func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for x := n / unit; x >= unit; x /= unit {
-		div *= unit
-		exp++
-	}
-	units := []string{"KB", "MB", "GB", "TB", "PB"}
-	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
+	return util.HumanBytes(n)
 }
 
 // newLLMManagerFromEnv 从环境变量构建 LLM 管理器（用于品牌智能补全）。
@@ -381,13 +385,13 @@ func (s *Server) ListenAndServe() error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		fmt.Fprintln(os.Stderr, "[geo server] 收到退出信号，开始优雅关闭（最长等待 30s）...")
+		slog.Info("收到退出信号，开始优雅关闭", slog.String("timeout", "30s"))
 	}
 	// 优雅关闭：给在途请求 30s
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(os.Stderr, "[geo server 警告] 优雅关闭失败: %v\n", err)
+		slog.Warn("优雅关闭失败", slog.Any("error", err))
 	}
 	s.Close()
 	return nil
@@ -762,7 +766,7 @@ func (s *Server) handleScore(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"score":      score,
 		"breakdowns": breakdowns,
-		"grade":      scoreToGrade(score),
+		"grade":      util.ScoreToGrade(score),
 	})
 }
 
@@ -916,7 +920,7 @@ func (s *Server) handleCMSCheck(w http.ResponseWriter, r *http.Request) {
 	analysis := s.engine.Analyze(plain)
 	analysis.URL = req.URL
 	score, breakdowns := s.engine.Score(plain)
-	grade := scoreToGrade(score)
+	grade := util.ScoreToGrade(score)
 	suggestions := cmsGenerateSuggestions(analysis, score)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"signals": map[string]interface{}{
@@ -1031,20 +1035,9 @@ func readJSON(r *http.Request, v interface{}) error {
 	return nil
 }
 
-// scoreToGrade 将分数转为等级（参考 geo-optimizer-skill 的 A-F 等级）。
+// scoreToGrade 兼容别名（已迁移至 util.ScoreToGrade）。
 func scoreToGrade(score float64) string {
-	switch {
-	case score >= 90:
-		return "A"
-	case score >= 80:
-		return "B"
-	case score >= 70:
-		return "C"
-	case score >= 60:
-		return "D"
-	default:
-		return "F"
-	}
+	return util.ScoreToGrade(score)
 }
 
 // handleBrandAudit 处理品牌可见度审计请求。

@@ -9,7 +9,13 @@ import { MatrixBubble, type MatrixBubbleDatum } from '@/components/MatrixBubble'
 import { SparklineLine } from '@/components/SparklineLine'
 import { useAppStore } from '@/store/useAppStore'
 import api from '@/services/api'
-import type { VisibilityReport, HistoryListResponse, EngineStats } from '@/types/api'
+import type {
+  VisibilityReport,
+  HistoryListResponse,
+  HistoryStats,
+  EngineStats,
+  HistoryRecord
+} from '@/types/api'
 import './Dashboard.scss'
 
 const Dashboard: React.FC = () => {
@@ -18,6 +24,7 @@ const Dashboard: React.FC = () => {
   const showToast = useAppStore(s => s.showToast)
   const [loading, setLoading] = useState(true)
   const [history, setHistory] = useState<HistoryListResponse | null>(null)
+  const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null)
   const [systemReady, setSystemReady] = useState<{
     ready: boolean
     checks: Record<string, string>
@@ -29,11 +36,13 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [hist, ready] = await Promise.all([
+        const [hist, hstats, ready] = await Promise.all([
           api.historyList(undefined, 5).catch(() => null),
+          api.historyStats().catch(() => null),
           api.ready().catch(() => null)
         ])
         if (hist) setHistory(hist)
+        if (hstats) setHistoryStats(hstats)
         if (ready) setSystemReady({ ready: ready.status === 'ready', checks: ready.checks })
       } finally {
         setLoading(false)
@@ -42,43 +51,85 @@ const Dashboard: React.FC = () => {
     load()
   }, [])
 
-  const avgScore = brands.length > 0
-    ? Math.round(brands.length * 72 + Math.random() * 150) / brands.length
-    : 72
+  // 平均分：优先取自历史统计/最近审计结果；无数据时用占位 null（UI 显示 "—"），绝不使用随机。
+  const avgScore: number | null =
+    lastReport?.score != null
+      ? Math.round(lastReport.score)
+      : history?.records && history.records.length > 0
+        ? Math.round(
+            history.records.reduce((s, r) => s + (r.score ?? 0), 0) / history.records.length
+          )
+        : null
 
-  const trend7d = [65, 68, 66, 70, 73, 71, Math.round(avgScore)]
-  const trend30d = Array.from({ length: 30 }, (_, i) => 60 + Math.round(Math.sin(i / 3) * 8 + Math.random() * 5))
+  const trend7d: number[] | null = history?.records && history.records.length >= 2
+    ? history.records
+        .slice()
+        .sort((a, b) => +new Date(a.generated_at) - +new Date(b.generated_at))
+        .map(r => Math.round(r.score ?? 0))
+        .slice(-7)
+    : null
 
-  const topBrandsData = brands.map((b, i) => ({
-    id: b.name,
-    rank: i + 1,
-    name: b.name,
-    score: Math.round(60 + Math.random() * 35),
-    grade: ['A', 'B', 'B', 'C', 'B'][i % 5],
-    trend: Array.from({ length: 7 }, () => 55 + Math.round(Math.random() * 40))
-  }))
+  // 30 天趋势：无历史趋势 API 时置空（KPI 组件支持 null，显示无趋势占位）。
+  const trend30d: number[] | null = null
+
+  // 品牌榜：仅当 brands + 历史均可用时才取最后一次审计分；否则空数组避免 mock。
+  // 注：未使用 Array.prototype.findLast 以兼容 ES2022 以下 TS lib 配置。
+  const pickLast = (records: HistoryRecord[] | undefined, name: string): HistoryRecord | undefined => {
+    if (!records) return undefined
+    let last: HistoryRecord | undefined
+    for (let i = records.length - 1; i >= 0; i--) {
+      if (records[i].brand_name === name) {
+        last = records[i]
+        break
+      }
+    }
+    return last
+  }
+  const topBrandsData = brands.map((b) => {
+    const last = pickLast(history?.records, b.name)
+    const score = last?.score != null ? Math.round(last.score) : null
+    const grade = score != null
+      ? (score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F')
+      : null
+    return {
+      id: b.name,
+      rank: 0,
+      name: b.name,
+      score,
+      grade,
+      trend: null as number[] | null
+    }
+  }).filter(d => d.score != null)
 
   const cols: TableColumn<typeof topBrandsData[number]>[] = [
-    { key: 'rank', title: t('dashboard.topBrandsRank'), width: 60, align: 'center' },
+    {
+      key: 'rank',
+      title: t('dashboard.topBrandsRank'),
+      width: 60,
+      align: 'center',
+      render: (_r, idx) => <span style={{ color: idx < 3 ? 'var(--primary-500)' : undefined }}>{idx + 1}</span>
+    },
     { key: 'name', title: '品牌', dataIndex: 'name' },
     {
       key: 'score',
       title: t('dashboard.topBrandsScore'),
       render: (r) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <strong style={{ fontSize: 16 }}>{r.score}</strong>
-          <span
-            style={{
-              padding: '2px 8px',
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 600,
-              background: ['A', 'B'].includes(r.grade) ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
-              color: ['A', 'B'].includes(r.grade) ? 'var(--status-success)' : 'var(--status-warning)'
-            }}
-          >
-            {r.grade}
-          </span>
+          <strong style={{ fontSize: 16 }}>{r.score ?? '—'}</strong>
+          {r.grade && (
+            <span
+              style={{
+                padding: '2px 8px',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 600,
+                background: ['A', 'B'].includes(r.grade) ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
+                color: ['A', 'B'].includes(r.grade) ? 'var(--status-success)' : 'var(--status-warning)'
+              }}
+            >
+              {r.grade}
+            </span>
+          )}
         </div>
       ),
       sortable: true
@@ -88,8 +139,12 @@ const Dashboard: React.FC = () => {
       title: t('dashboard.trend7d'),
       width: 120,
       render: (r) => (
-        <div style={{ height: 32 }}>
-          <SparklineLine data={r.trend} height={32} showArea={false} showEndDot={false} showTooltip={false} />
+        <div style={{ height: 32, display: 'flex', alignItems: 'center' }}>
+          {r.trend && r.trend.length > 0 ? (
+            <SparklineLine data={r.trend} height={32} showArea={false} showEndDot={false} showTooltip={false} />
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>—</span>
+          )}
         </div>
       )
     }
@@ -140,32 +195,40 @@ const Dashboard: React.FC = () => {
       <div className="kpi-grid">
         <Kpi
           label={t('dashboard.overviewBvs')}
-          value={lastReport?.score ?? avgScore}
-          suffix="/100"
+          value={(lastReport?.score ?? avgScore) != null ? (lastReport?.score ?? avgScore)! : '—'}
+          suffix={avgScore != null || lastReport?.score != null ? '/100' : ''}
           icon="🎯"
-          trendValue={`+${(avgScore - 65).toFixed(1)}%`}
-          trendDirection="up"
-          sparklineData={trend7d}
+          trendValue={
+            avgScore != null && trend7d != null && trend7d.length >= 2
+              ? `${(avgScore - trend7d[0] >= 0 ? '+' : '')}${(avgScore - trend7d[0]).toFixed(1)}`
+              : undefined
+          }
+          trendDirection={
+            avgScore != null && trend7d != null && trend7d.length >= 2
+              ? (avgScore >= trend7d[0] ? 'up' : 'down')
+              : 'neutral'
+          }
+          sparklineData={trend7d ?? undefined}
           variant="info"
           footer={<span>{t('dashboard.trend7d')}</span>}
         />
         <Kpi
           label={t('dashboard.overviewAuditedBrands')}
-          value={brands.length}
+          value={historyStats?.unique_brands ?? brands.length}
           icon="🏢"
-          trendValue="+1"
-          trendDirection="up"
-          sparklineData={[1, 1, 2, 2, 3, 3, brands.length]}
+          trendValue={brands.length > 0 ? `${brands.length}` : undefined}
+          trendDirection="neutral"
+          sparklineData={brands.length > 0 ? [0, 0, 0, 0, 0, 0, brands.length] : undefined}
           variant="success"
         />
         <Kpi
           label={t('dashboard.overviewContentOptimized')}
-          value={loading ? '...' : Math.round(80 + Math.random() * 120)}
-          suffix="篇"
+          value={historyStats?.total_records ?? (loading ? '...' : '—')}
+          suffix={typeof historyStats?.total_records === 'number' ? '篇' : ''}
           icon="📝"
-          trendValue="+12"
-          trendDirection="up"
-          sparklineData={trend30d.slice(-7)}
+          trendValue={historyStats?.total_records != null ? `${historyStats.total_records}` : undefined}
+          trendDirection="neutral"
+          sparklineData={undefined}
           variant="warning"
         />
         <Kpi

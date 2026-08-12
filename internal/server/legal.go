@@ -35,7 +35,13 @@ func (s *Server) handleLegalBot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	ua := util.MyGEOUserAgent
 	contact := util.MyGEOComplianceEmail
-	fmt.Fprintf(w, `<!doctype html><html lang="zh-CN"><head>
+	// 说明：下面原始字符串中存在大量 CSS "%"字符（如 width:100%、margin:40% 等），
+	// 对 fmt.Fprintf 都是"未知 verb"。直接改用 strings.Builder + fmt.Fprint
+	// 输出字面 HTML，用字符串插值替换少数参数（ua / contact / 年 / 日期）。
+	year := time.Now().Year()
+	updated := time.Now().Format("2006-01-02")
+	var sb strings.Builder
+	sb.WriteString(`<!doctype html><html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MyGEOBot · 爬虫声明（合规信息页）</title>
 <style>
@@ -56,7 +62,9 @@ func (s *Server) handleLegalBot(w http.ResponseWriter, r *http.Request) {
 
 <h2>1. 爬虫身份（User-Agent）</h2>
 <p>所有对外 HTTP 请求统一使用以下 User-Agent 字符串（含信息页 + 联系邮箱，符合 RFC 7231 与行业避风港格式）：</p>
-<pre>%s</pre>
+<pre>`)
+	sb.WriteString(ua)
+	sb.WriteString(`</pre>
 
 <h2>2. 爬虫目的</h2>
 <p>MyGEOBot 仅用于"品牌 AI 可见度审计"（GEO = Generative Engine Optimization），具体包括：</p>
@@ -94,7 +102,11 @@ Disallow: /private/</pre>
 <p>若您是网站权利方并希望 MyGEOBot 停止访问您的站点，可通过以下任一方式：</p>
 <ol>
  <li>在 robots.txt 中为 <code>MyGEOBot</code> 增加 <code>Disallow: /</code>（通常在 24h 内生效）</li>
- <li>发送邮件至 <a href="mailto:%[2]s">%[2]s</a>，请注明域名 + 联系信息 + 权利证明，我们将在 3 个工作日内处理</li>
+ <li>发送邮件至 <a href="mailto:`)
+	sb.WriteString(contact)
+	sb.WriteString(`">`)
+	sb.WriteString(contact)
+	sb.WriteString(`</a>，请注明域名 + 联系信息 + 权利证明，我们将在 3 个工作日内处理</li>
  <li>若存在版权投诉（删除/断链），同样通过以上邮箱联系，我们将在收到合格通知后按避风港流程处理</li>
 </ol>
 
@@ -107,9 +119,18 @@ Disallow: /private/</pre>
 </ul>
 
 <div class="footer">
- © %d MyGEO · 合规联系 <a href="mailto:%[2]s">%[2]s</a> · 本页最后更新：%s
+ © `)
+	sb.WriteString(fmt.Sprintf("%d", year))
+	sb.WriteString(` MyGEO · 合规联系 <a href="mailto:`)
+	sb.WriteString(contact)
+	sb.WriteString(`">`)
+	sb.WriteString(contact)
+	sb.WriteString(`</a> · 本页最后更新：`)
+	sb.WriteString(updated)
+	sb.WriteString(`
 </div>
-</body></html>`, ua, contact, time.Now().Year(), time.Now().Format("2006-01-02"))
+</body></html>`)
+	fmt.Fprint(w, sb.String())
 }
 
 // handleRobotsTxt 返回服务自有 robots.txt：

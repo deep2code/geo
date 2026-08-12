@@ -33,28 +33,84 @@ import type {
   LeaderboardResponse
 } from '@/types/api'
 
-const API_BASE = '/api/v1'
+// API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
+// 部署反向代理、子域拆分或本地 Vite 代理时，可通过 .env 设置：
+//   VITE_GEO_API_BASE=https://geo.example.com/api/v1
+const API_BASE: string = (
+  (import.meta.env?.VITE_GEO_API_BASE as string | undefined) ||
+  '/api/v1'
+).replace(/\/+$/, '')
+
+// 前端鉴权 Token 存储 Key（与后端 GEO_API_KEY 对应 Bearer token）。
+const AUTH_TOKEN_KEY = 'geo_api_token'
+// 前端管理员 Key 存储 Key（与后端 GEO_ADMIN_KEY 对应 X-Admin-Key header）。
+const ADMIN_KEY = 'geo_admin_key'
+
+/**
+ * 统一设置/清除 API Bearer Token（登录/登出时调用）。
+ * 存于 localStorage，页面刷新后仍然有效。
+ */
+export const setApiAuthToken = (token: string | null): void => {
+  if (!token) {
+    localStorage.removeItem(AUTH_TOKEN_KEY)
+    return
+  }
+  localStorage.setItem(AUTH_TOKEN_KEY, token)
+}
+
+/** 当前持有的 API Bearer Token（未设置返回空串）。 */
+export const getApiAuthToken = (): string => localStorage.getItem(AUTH_TOKEN_KEY) ?? ''
+
+/** 统一设置/清除管理员 Key（管理员登录/退出时调用）。 */
+export const setAdminKey = (key: string | null): void => {
+  if (!key) {
+    localStorage.removeItem(ADMIN_KEY)
+    return
+  }
+  localStorage.setItem(ADMIN_KEY, key)
+}
+
+export const getAdminKey = (): string => localStorage.getItem(ADMIN_KEY) ?? ''
 
 export interface RequestOptions extends RequestInit {
   timeout?: number
+  /** 跳过自动注入 Authorization（如公开登录/注册）。 */
+  skipAuth?: boolean
+  /** 跳过自动注入 X-Admin-Key（即便本地已保存）。 */
+  skipAdminKey?: boolean
 }
 
 async function request<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeout = 120000, headers, ...rest } = options
+  const { timeout = 120000, headers, skipAuth, skipAdminKey, ...rest } = options
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
 
+  // 合并默认头 + 注入鉴权 + 注入管理员 Key。
+  // 注意：不直接对 Record<string,string> 做展开，避免 headers 对象（可能带非字符串原型方法）污染类型。
+  const mergedHeaders: Record<string, string> = Object.create(null)
+  mergedHeaders['Content-Type'] = 'application/json'
+  if (headers) {
+    for (const [k, v] of Object.entries(headers as Record<string, string>)) {
+      if (v != null) mergedHeaders[k] = String(v)
+    }
+  }
+  if (!skipAuth) {
+    const tok = getApiAuthToken()
+    if (tok) mergedHeaders['Authorization'] = `Bearer ${tok}`
+  }
+  if (!skipAdminKey) {
+    const ak = getAdminKey()
+    if (ak) mergedHeaders['X-Admin-Key'] = ak
+  }
+
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       ...rest,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(headers || {})
-      },
+      headers: mergedHeaders,
       signal: controller.signal
     })
 
@@ -65,7 +121,10 @@ async function request<T>(
       if (isJson) {
         const errJson = await res.json().catch(() => ({}))
         const msg = (errJson as any).error || `HTTP ${res.status}`
-        throw new Error(msg)
+        const err = new Error(msg) as Error & { code?: string; status?: number }
+        err.code = (errJson as any).code
+        err.status = res.status
+        throw err
       }
       const text = await res.text().catch(() => '')
       throw new Error(text || `HTTP ${res.status}`)
