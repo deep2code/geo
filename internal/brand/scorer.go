@@ -133,9 +133,17 @@ const (
 //   - AI 搜索就绪 10%：正面情感率与低幽灵引用反映 AI 友好度
 //   - 图像优化 5%：无图片数据时取中性默认分
 //
-// 同时保留引擎可见度 6 维（MentionRate 等）用于历史兼容与引擎级分析。
+// 同时保留引擎可见度 6 维（MentionRate 等）用于历史兼容与引擎级分析，
+// 以及 E-E-A-T 四维（对齐 Google 质量评估准则）反映品牌可信度信号。
 // entityCompleteness (0-100) 来自 EntityCompleteness()，为 0 表示无公司信息。
 func (s *Scorer) Score(stats []EngineStats, entityCompleteness float64) (float64, string, string, ScoreBreakdown) {
+	return s.ScoreWithProfile(stats, nil, entityCompleteness)
+}
+
+// ScoreWithProfile 计算品牌可见度评分，支持传入 BrandProfile 以计算 E-E-A-T 维度。
+//
+// profile 为 nil 时 E-E-A-T 维度退化为中性默认分（50），不影响 BVS 7 维计算。
+func (s *Scorer) ScoreWithProfile(stats []EngineStats, profile *BrandProfile, entityCompleteness float64) (float64, string, string, ScoreBreakdown) {
 	if len(stats) == 0 {
 		return 0, "F", "niche", ScoreBreakdown{}
 	}
@@ -220,6 +228,21 @@ func (s *Scorer) Score(stats []EngineStats, entityCompleteness float64) (float64
 		Performance:       round(perfScore),
 		AIReadiness:       round(aiReadyScore),
 		ImageOptimization: round(imageScore),
+	}
+
+	// E-E-A-T 四维评分（对齐 Google 质量评估准则）
+	if profile != nil {
+		eeat := ScoreEEAT(*profile, avgPos, avgGhost, entityCompleteness)
+		breakdown.Experience = round(eeat.Experience)
+		breakdown.Expertise = round(eeat.Expertise)
+		breakdown.Authoritativeness = round(eeat.Authoritativeness)
+		breakdown.Trustworthiness = round(eeat.Trustworthiness)
+	} else {
+		// 无 profile 时取中性默认分
+		breakdown.Experience = 50
+		breakdown.Expertise = 50
+		breakdown.Authoritativeness = 50
+		breakdown.Trustworthiness = 50
 	}
 
 	// BVS = 7 维加权求和

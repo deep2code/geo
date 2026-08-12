@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"my-geo/internal/brand/vertical"
 	"my-geo/internal/models"
 )
 
@@ -38,8 +39,31 @@ func (r *Reporter) Build(profile BrandProfile, results []PromptResult, stats []E
 	report.ContentGaps = r.findContentGaps(results, profile)
 	report.CompetitorSOV = r.calcCompetitorSOV(results, profile)
 	report.NegativeMentions = r.findNegativeMentions(results, profile)
+	report.SeverityIssues = BuildSeverityIssues(breakdown)
+	// 业务类型→策略自动联动：检测行业并生成权重覆盖与运营建议
+	vl := LinkVertical(profile, breakdown, score)
+	if vl.Detected != "" && vl.Detected != "unknown" {
+		report.VerticalLink = &vl
+	}
 	report.Actions = r.generateActions(profile, stats, report.ContentGaps, report.NegativeMentions, breakdown, tier)
+	// 合并行业差异化建议到 Actions
+	if report.VerticalLink != nil && len(report.VerticalLink.Recommendations) > 0 {
+		report.Actions = appendVerticalRecommendations(report.Actions, report.VerticalLink.Recommendations)
+	}
 	return report
+}
+
+// appendVerticalRecommendations 将行业差异化建议转换为 ActionItem 并追加到 actions。
+func appendVerticalRecommendations(actions []ActionItem, recs []vertical.Recommendation) []ActionItem {
+	for _, rec := range recs {
+		actions = append(actions, ActionItem{
+			Priority:   rec.Priority,
+			Category:   rec.Category,
+			Title:      rec.Title,
+			Detail:     rec.Detail,
+		})
+	}
+	return actions
 }
 
 // findContentGaps 识别内容缺口：竞品被提及而品牌未被提及的 prompt。
@@ -135,10 +159,13 @@ func (r *Reporter) findNegativeMentions(results []PromptResult, profile BrandPro
 			continue
 		}
 		snippet := extractSnippet(res.Answer, profile.Name, aliases, 80)
+		category, severity := ClassifyNegative(snippet)
 		negs = append(negs, NegativeMention{
 			Prompt:   res.Prompt,
 			Engine:   res.Engine,
 			Snippet:  snippet,
+			Category: category,
+			Severity: severity,
 		})
 	}
 	return negs

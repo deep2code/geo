@@ -219,8 +219,26 @@ type VisibilityReport struct {
 	NegativeMentions []NegativeMention `json:"negative_mentions,omitempty"`
 	// 运营行动建议（按优先级排序）。
 	Actions []ActionItem `json:"actions"`
+	// 健康问题清单：按严重级别排序（Critical 优先），供报告与 CI gate 使用。
+	SeverityIssues []HealthIssue `json:"severity_issues,omitempty"`
+	// 业务类型联动结果（行业检测、权重覆盖、策略调整、运营建议）。
+	VerticalLink *VerticalLink `json:"vertical_link,omitempty"`
 	// 原始检测结果。
 	Results []PromptResult `json:"results,omitempty"`
+}
+
+// HealthIssue 单个健康问题，关联 BVS 维度得分与严重级别。
+type HealthIssue struct {
+	// Dimension 维度名（内容质量/技术SEO/站内SEO/Schema/页面性能/AI就绪/图像优化/Experience/...）。
+	Dimension string `json:"dimension"`
+	// Score 该维度得分（0-100）。
+	Score float64 `json:"score"`
+	// Severity 严重级别：critical / high / medium / low。
+	Severity Severity `json:"severity"`
+	// Impact 该问题对品牌可见度的影响描述。
+	Impact string `json:"impact,omitempty"`
+	// SuggestedFix 建议的修复方向。
+	SuggestedFix string `json:"suggested_fix,omitempty"`
 }
 
 // Severity 严重级别类型。
@@ -244,6 +262,8 @@ const (
 //     保留用于历史兼容与引擎级分析。
 //   - BVS 加权健康 7 维（ContentQuality/TechnicalSEO/OnPageSEO/Schema/Performance/AIReadiness/ImageOptimization），
 //     参考 Claude SEO 权重体系，各维度 0-100，加权求和得到最终 BVS。
+//   - E-E-A-T 四维（Experience/Expertise/Authoritativeness/Trustworthiness），
+//     对齐 Google 质量评估准则，反映品牌实体在 AI 回答中的可信度信号。
 //
 // 7 维权重：内容质量 23% + 技术 SEO 22% + 站内 SEO 20% + Schema 10% +
 // 页面性能 10% + AI 就绪 10% + 图像优化 5%。
@@ -271,6 +291,16 @@ type ScoreBreakdown struct {
 	AIReadiness float64 `json:"ai_readiness"`
 	// ImageOptimization 图像优化（权重 5%）：无图片数据时取中性默认分。
 	ImageOptimization float64 `json:"image_optimization"`
+
+	// --- E-E-A-T 四维（Google 质量评估准则对齐，各 0-100）---
+	// Experience 经验：公司成立年限、产品历史等反映品牌运营经验的信号。
+	Experience float64 `json:"experience"`
+	// Expertise 专业性：行业匹配度、实体完备度等反映专业深度的信号。
+	Expertise float64 `json:"expertise"`
+	// Authoritativeness 权威性：引用位置、声量份额等反映行业话语权的信号。
+	Authoritativeness float64 `json:"authoritativeness"`
+	// Trustworthiness 可信度：工商核验状态、低幽灵引用等反映信息可信度的信号。
+	Trustworthiness float64 `json:"trustworthiness"`
 }
 
 // CompetitorSOV 竞品声量份额。
@@ -285,6 +315,10 @@ type NegativeMention struct {
 	Prompt string            `json:"prompt"`
 	Engine models.EngineType `json:"engine"`
 	Snippet string           `json:"snippet"` // 负面上下文片段
+	// Category 负面分类（product_issue/service_issue/pricing_issue/competitive_disadvantage/false_info/security_privacy/other）。
+	Category string `json:"category,omitempty"`
+	// Severity 负面严重级别（critical/high/medium/low），基于分类与上下文判定。
+	Severity Severity `json:"severity,omitempty"`
 }
 
 // ActionItem 运营行动建议，指导运营人员下一步工作方向。

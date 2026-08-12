@@ -298,14 +298,28 @@ func (s *Server) handleAdminUsage(w http.ResponseWriter, r *http.Request) {
 			totalAudits = st.Records
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	resp := map[string]interface{}{
 		"total_brands":    totalBrands,
 		"total_audits":    totalAudits,
 		"total_emails":    totalEmails,
 		"active_tenants":  activeTenants,
 		"total_tenants":   len(tenants),
 		"api_calls_today": hashToInt(fmt.Sprintf("%d", time.Now().Unix()/86400), 10000) + 500, // 模拟当日 API 调用量
-	})
+	}
+	// 从 ROI 追踪器获取真实 token 用量与成本
+	if s.brandEngine != nil && s.brandEngine.ROITracker() != nil {
+		roiReport := s.brandEngine.ROITracker().Report("all")
+		resp["token_usage"] = map[string]interface{}{
+			"total_calls":       roiReport.TotalCalls,
+			"total_tokens":      roiReport.TotalTokens,
+			"prompt_tokens":     roiReport.PromptTokens,
+			"completion_tokens": roiReport.CompletionTokens,
+			"total_cost_usd":    roiReport.TotalCost,
+			"by_engine":         roiReport.ByEngine,
+			"by_operation":      roiReport.ByOperation,
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleAdminAnnouncements 公告列表 / 创建公告。

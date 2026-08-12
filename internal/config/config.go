@@ -71,6 +71,21 @@ var AIEnginePresets = map[models.EngineType]models.AIEnginePreset{
 			"statistics":     0.65,
 		},
 	},
+	// ===== xAI Grok =====
+	models.EngineGrok: {
+		Engine:              models.EngineGrok,
+		PreferredStrategies: []models.StrategyType{models.StrategyCiteSources, models.StrategyAuthoritative, models.StrategyStatistics},
+		MaxTokens:           8192,
+		Temperature:         0.5,
+		Weights: map[string]float64{
+			"cite_sources":   0.9,
+			"authoritative":  0.85,
+			"statistics":     0.8,
+			"answer_first":   0.75,
+			"structure":      0.7,
+			"fluency":        0.65,
+		},
+	},
 	// ===== 国内大模型 =====
 	models.EngineQwen: {
 		Engine:              models.EngineQwen,
@@ -316,6 +331,7 @@ var engineEnvKeys = map[models.EngineType]string{
 	models.EnginePerplexity: "GEO_PERPLEXITY_KEY",
 	models.EngineGemini:     "GEO_GEMINI_KEY",
 	models.EngineClaude:     "GEO_CLAUDE_KEY",
+	models.EngineGrok:       "GEO_GROK_KEY",
 	models.EngineQwen:       "GEO_QWEN_KEY",
 	models.EngineGLM:        "GEO_GLM_KEY",
 	models.EngineDeepSeek:   "GEO_DEEPSEEK_KEY",

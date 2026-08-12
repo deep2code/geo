@@ -15,6 +15,7 @@ const (
 	EnginePerplexity EngineType = "perplexity"
 	EngineGemini     EngineType = "gemini"
 	EngineClaude     EngineType = "claude"
+	EngineGrok       EngineType = "grok" // xAI Grok
 )
 
 // 国内主流大模型引擎类型。
@@ -164,11 +165,24 @@ type Citation struct {
 	Position  int     `json:"position"` // 在参考资料中的位置
 }
 
+// TokenUsage 单次 API 调用的 token 用量。
+type TokenUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// IsZero 是否无用量数据（未配置 key 或引擎未返回 usage）。
+func (u TokenUsage) IsZero() bool {
+	return u.PromptTokens == 0 && u.CompletionTokens == 0 && u.TotalTokens == 0
+}
+
 // EngineResponse 生成式引擎的回答。
 type EngineResponse struct {
 	Engine    EngineType `json:"engine"`
 	Answer    string     `json:"answer"`
 	Citations []Citation `json:"citations,omitempty"`
+	Usage     TokenUsage `json:"usage,omitempty"`
 }
 
 // AIEnginePreset AI 引擎预设偏好。

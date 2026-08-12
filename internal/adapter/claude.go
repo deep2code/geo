@@ -51,7 +51,25 @@ type claudeResponse struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
-	Error *apiError `json:"error,omitempty"`
+	Usage *claudeUsage `json:"usage,omitempty"`
+	Error *apiError    `json:"error,omitempty"`
+}
+
+// claudeUsage Anthropic 用量字段（input_tokens / output_tokens）。
+type claudeUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+func (u *claudeUsage) toTokenUsage() models.TokenUsage {
+	if u == nil {
+		return models.TokenUsage{}
+	}
+	return models.TokenUsage{
+		PromptTokens:     u.InputTokens,
+		CompletionTokens: u.OutputTokens,
+		TotalTokens:      u.InputTokens + u.OutputTokens,
+	}
 }
 
 // Query 向 Claude 发起查询。
@@ -100,6 +118,7 @@ func (a *ClaudeAdapter) Query(ctx context.Context, query string) (*models.Engine
 		Engine:    a.Engine(),
 		Answer:    answer,
 		Citations: ExtractCitations(answer, ""),
+		Usage:     resp.Usage.toTokenUsage(),
 	}, nil
 }
 

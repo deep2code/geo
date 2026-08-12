@@ -56,7 +56,26 @@ type geminiResponse struct {
 	Candidates []struct {
 		Content geminiContent `json:"content"`
 	} `json:"candidates"`
-	Error *apiError `json:"error,omitempty"`
+	UsageMetadata *geminiUsage `json:"usageMetadata,omitempty"`
+	Error         *apiError    `json:"error,omitempty"`
+}
+
+// geminiUsage Gemini 用量字段（promptTokenCount / candidatesTokenCount / totalTokenCount）。
+type geminiUsage struct {
+	PromptTokenCount     int `json:"promptTokenCount"`
+	CandidatesTokenCount int `json:"candidatesTokenCount"`
+	TotalTokenCount      int `json:"totalTokenCount"`
+}
+
+func (u *geminiUsage) toTokenUsage() models.TokenUsage {
+	if u == nil {
+		return models.TokenUsage{}
+	}
+	return models.TokenUsage{
+		PromptTokens:     u.PromptTokenCount,
+		CompletionTokens: u.CandidatesTokenCount,
+		TotalTokens:      u.TotalTokenCount,
+	}
 }
 
 // Query 向 Gemini 发起查询。
@@ -100,6 +119,7 @@ func (a *GeminiAdapter) Query(ctx context.Context, query string) (*models.Engine
 		Engine:    a.Engine(),
 		Answer:    answer,
 		Citations: ExtractCitations(answer, ""),
+		Usage:     resp.UsageMetadata.toTokenUsage(),
 	}, nil
 }
 

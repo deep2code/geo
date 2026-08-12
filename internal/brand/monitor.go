@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"my-geo/internal/adapter"
+	"my-geo/internal/brand/roi"
 	"my-geo/internal/models"
 )
 
@@ -17,7 +18,8 @@ import (
 // 设计参考 ai-brand-monitor-mcp 与 oneglanse 的多引擎并行查询。
 type Monitor struct {
 	adapters       map[models.EngineType]adapter.Adapter
-	maxConcurrency int // 并行查询的最大并发数（默认 5）
+	maxConcurrency int              // 并行查询的最大并发数（默认 5）
+	roiTracker     *roi.Tracker     // 可选：token 用量与成本追踪
 }
 
 const defaultMaxConcurrency = 5
@@ -50,6 +52,17 @@ func (m *Monitor) WithMaxConcurrency(n int) *Monitor {
 	m.maxConcurrency = n
 	return m
 }
+
+// WithROITracker 注入 token 用量与成本追踪器。
+//
+// 注入后，每次引擎查询的 token 用量与估算成本会被自动记录。
+func (m *Monitor) WithROITracker(t *roi.Tracker) *Monitor {
+	m.roiTracker = t
+	return m
+}
+
+// ROITracker 返回当前 ROI 追踪器（可能为 nil）。
+func (m *Monitor) ROITracker() *roi.Tracker { return m.roiTracker }
 
 // NewMonitorFromConfigs 从配置批量创建适配器。
 //
@@ -145,6 +158,11 @@ func (m *Monitor) queryOne(ctx context.Context, profile BrandProfile, prompt str
 	}
 	pr.Answer = resp.Answer
 	pr.Citations = resp.Citations
+
+	// 记录 token 用量与成本（若已注入 ROI 追踪器）
+	if m.roiTracker != nil {
+		m.roiTracker.RecordFromResponse(engine, "query", resp)
+	}
 
 	// 收集品牌所有匹配别名（含关联公司名称/别名，扩大匹配范围）
 	brandNames := append([]string{}, profile.Aliases...)

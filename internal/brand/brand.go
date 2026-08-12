@@ -28,6 +28,7 @@ import (
 	"my-geo/internal/brand/knowledge"
 	"my-geo/internal/brand/market"
 	"my-geo/internal/brand/offlinedb"
+	"my-geo/internal/brand/roi"
 	"my-geo/internal/llm"
 	"my-geo/internal/models"
 )
@@ -43,6 +44,7 @@ type Engine struct {
 	offlineDB  offlinedb.DB            // 可选：1978-2019 离线工商注册库（接口，多后端）
 	historyDB  history.DB              // 可选：审计历史时间序列库（接口，多后端）
 	crawler    *crawler.WebsiteCrawler // 可选：官网爬虫（默认自动初始化，无需外部配置）
+	roiTracker *roi.Tracker            // token 用量与成本追踪（默认自动初始化）
 	// configuredEngines 记录哪些引擎已配置真实 API Key。
 	configuredEngines map[models.EngineType]bool
 }
@@ -115,6 +117,9 @@ func WithCrawler(c *crawler.WebsiteCrawler) Option {
 // Crawler 返回当前官网爬虫实例（可能为 nil）。
 func (e *Engine) Crawler() *crawler.WebsiteCrawler { return e.crawler }
 
+// ROITracker 返回 token 用量与成本追踪器（默认已初始化，不会为 nil）。
+func (e *Engine) ROITracker() *roi.Tracker { return e.roiTracker }
+
 // New 创建品牌可见度评估引擎。
 //
 // 默认自动加载内嵌的 SinoFacts 知识库（CC BY 4.0），
@@ -128,10 +133,13 @@ func New(opts ...Option) *Engine {
 		reporter:          NewReporter(),
 		configuredEngines: map[models.EngineType]bool{},
 		crawler:           crawler.New(),
+		roiTracker:        roi.NewTracker(),
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
+	// 将 ROI 追踪器注入 Monitor，自动记录每次引擎查询的 token 用量
+	e.monitor = e.monitor.WithROITracker(e.roiTracker)
 	if e.kb == nil {
 		if kb, err := knowledge.Load(); err == nil {
 			e.kb = kb
@@ -247,7 +255,7 @@ func (e *Engine) Audit(ctx context.Context, profile BrandProfile) (*VisibilityRe
 	// 2. 评分：聚合统计并计算 BVS（公司信息完备度纳入实体识别维度）
 	stats := e.scorer.Aggregate(results, profile, e.configuredEngines)
 	entCompleteness := EntityCompleteness(profile)
-	score, grade, tier, breakdown := e.scorer.Score(stats, entCompleteness)
+	score, grade, tier, breakdown := e.scorer.ScoreWithProfile(stats, &profile, entCompleteness)
 
 	// 3. 报告：生成运营行动建议
 	report := e.reporter.Build(profile, results, stats, score, grade, tier, breakdown)

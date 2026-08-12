@@ -269,6 +269,8 @@ func NewAdapter(engine models.EngineType, cfg Config) (Adapter, error) {
 		return NewGeminiAdapter(cfg), nil
 	case models.EngineClaude:
 		return NewClaudeAdapter(cfg), nil
+	case models.EngineGrok:
+		return NewGrokAdapter(cfg), nil
 	// 国内大模型
 	case models.EngineQwen:
 		return NewQwenAdapter(cfg), nil

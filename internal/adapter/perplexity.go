@@ -40,8 +40,9 @@ type perplexityResponse struct {
 	Choices []struct {
 		Message chatMessage `json:"message"`
 	} `json:"choices"`
-	Citations []string  `json:"citations,omitempty"`
-	Error     *apiError `json:"error,omitempty"`
+	Citations []string      `json:"citations,omitempty"`
+	Usage     *usagePayload `json:"usage,omitempty"`
+	Error     *apiError     `json:"error,omitempty"`
 }
 
 // Query 向 Perplexity 发起查询。
@@ -91,6 +92,7 @@ func (a *PerplexityAdapter) Query(ctx context.Context, query string) (*models.En
 		Engine:    a.Engine(),
 		Answer:    answer,
 		Citations: citations,
+		Usage:     resp.Usage.toTokenUsage(),
 	}, nil
 }
 

@@ -65,6 +65,7 @@ func (a *openAICompatibleAdapter) queryOpenAICompatible(ctx context.Context, que
 		Engine:    a.engine,
 		Answer:    answer,
 		Citations: ExtractCitations(answer, ""),
+		Usage:     resp.Usage.toTokenUsage(),
 	}, nil
 }
 

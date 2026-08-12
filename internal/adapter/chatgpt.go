@@ -52,7 +52,27 @@ type chatCompletionResponse struct {
 	Choices []struct {
 		Message chatMessage `json:"message"`
 	} `json:"choices"`
-	Error *apiError `json:"error,omitempty"`
+	Usage *usagePayload `json:"usage,omitempty"`
+	Error *apiError     `json:"error,omitempty"`
+}
+
+// usagePayload OpenAI 兼容协议的 token 用量字段。
+type usagePayload struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
+// toTokenUsage 将 usagePayload 转为 models.TokenUsage。
+func (u *usagePayload) toTokenUsage() models.TokenUsage {
+	if u == nil {
+		return models.TokenUsage{}
+	}
+	return models.TokenUsage{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		TotalTokens:      u.TotalTokens,
+	}
 }
 
 // apiError 各引擎通用的错误结构。
@@ -101,6 +121,7 @@ func (a *ChatGPTAdapter) Query(ctx context.Context, query string) (*models.Engin
 		Engine:    a.Engine(),
 		Answer:    answer,
 		Citations: ExtractCitations(answer, ""),
+		Usage:     resp.Usage.toTokenUsage(),
 	}, nil
 }
 
