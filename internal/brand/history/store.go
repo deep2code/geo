@@ -74,10 +74,21 @@ type Store interface {
 	Brands(ctx context.Context) ([]string, error)
 	// Stats 返回历史库统计信息。
 	Stats(ctx context.Context) (Stats, error)
+	// DailyCounts 按天聚合计数（过去 days 天，含今天），返回按日期升序的桶。
+	// 日期格式 YYYY-MM-DD（本地时区）。没有记录的日期仍然返回 count=0/avg_score=-1，
+	// 方便前端直接画趋势线，避免 gap。
+	DailyCounts(ctx context.Context, days int) ([]DailyBucket, error)
 	// Clear 清空所有历史记录。
 	Clear(ctx context.Context) error
 	// DeleteOlderThan 删除 N 天之前的记录，返回删除条数。
 	DeleteOlderThan(ctx context.Context, days int) (int64, error)
+}
+
+// DailyBucket 单天聚合计数（Dashboard 30 天趋势用）。
+type DailyBucket struct {
+	Date     string  `json:"date"`      // YYYY-MM-DD，本地时区
+	Count    int64   `json:"count"`     // 当天审计记录条数
+	AvgScore float64 `json:"avg_score"` // 当日平均分，-1 表示当天无记录
 }
 
 // --- 兼容函数（保持对外 API 不变）---

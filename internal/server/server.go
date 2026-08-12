@@ -449,6 +449,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brand/history/list", s.handleHistoryList)
 	s.mux.HandleFunc("/api/v1/brand/history/get", s.handleHistoryGet)
 	s.mux.HandleFunc("/api/v1/brand/history/stats", s.handleHistoryStats)
+	s.mux.HandleFunc("/api/v1/brand/history/stats/daily", s.handleHistoryStatsDaily)
 	s.mux.HandleFunc("/api/v1/brand/history/brands", s.handleHistoryBrands)
 	s.mux.HandleFunc("/api/v1/brand/history/clear", s.handleHistoryClear)
 	// 定时审计调度器接口
@@ -2131,6 +2132,54 @@ func (s *Server) handleHistoryStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// handleHistoryStatsDaily 返回过去 N 天的按天聚合计数（给 Dashboard 30 天趋势）。
+// GET /api/v1/brand/history/stats/daily?days=30
+func (s *Server) handleHistoryStatsDaily(w http.ResponseWriter, r *http.Request) {
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		return
+	}
+	days := 30
+	if v := strings.TrimSpace(r.URL.Query().Get("days")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 365 {
+			days = n
+		}
+	}
+	out, err := s.brandEngine.HistoryDB().DailyCounts(r.Context(), days)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	// 兼容字段：为前端 chart 直接可绑，再返回一个聚合 summary。
+	var (
+		totalRecords int64
+		sumScore     float64
+		scoreDays    int
+	)
+	for i := range out {
+		totalRecords += out[i].Count
+		if out[i].AvgScore >= 0 {
+			sumScore += out[i].AvgScore
+			scoreDays++
+		}
+	}
+	var avgScore *float64
+	if scoreDays > 0 {
+		v := sumScore / float64(scoreDays)
+		avgScore = &v
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"days":    days,
+		"records": out,
+		"summary": map[string]interface{}{
+			"total_records":     totalRecords,
+			"score_days":        scoreDays,
+			"avg_score_daily":   avgScore,
+			"daily_avg_records": float64(totalRecords) / float64(days),
+		},
+	})
 }
 
 // handleHistoryBrands 列出所有有审计记录的品牌。

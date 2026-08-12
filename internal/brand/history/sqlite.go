@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -257,6 +258,75 @@ func (d *sqliteStore) Clear(ctx context.Context) error {
 	}
 	_, _ = d.db.ExecContext(ctx, `VACUUM`)
 	return nil
+}
+
+func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, error) {
+	if days <= 0 {
+		days = 30
+	}
+	now := TimeNow()
+	loc := now.Location()
+
+	// 构造从"今天 - (days-1)"到"今天"的日期桶，全填 0。
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -(days - 1))
+	out := make([]DailyBucket, 0, days)
+	keyMap := make(map[string]int, days) // date -> index
+	for i := 0; i < days; i++ {
+		t := start.AddDate(0, 0, i)
+		date := t.Format("2006-01-02")
+		out = append(out, DailyBucket{Date: date, Count: 0, AvgScore: -1})
+		keyMap[date] = i
+	}
+
+	if d == nil || d.db == nil {
+		return out, nil
+	}
+
+	cutoffStart := start.Unix()
+	// SQL 层按 unix 秒过滤，避免 SQLite DATE() 跨时区偏移。
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT generated_at, score FROM audit_history
+		WHERE generated_at >= ? AND generated_at < ?
+	`, cutoffStart, now.AddDate(0, 0, 1).Unix())
+	if err != nil {
+		return nil, fmt.Errorf("history/sqlite: DailyCounts 查询失败: %w", err)
+	}
+	defer rows.Close()
+
+	type agg struct {
+		sum   float64
+		count int64
+	}
+	buckets := make(map[string]*agg, days)
+
+	for rows.Next() {
+		var ga int64
+		var score float64
+		if err := rows.Scan(&ga, &score); err != nil {
+			return nil, fmt.Errorf("history/sqlite: DailyCounts 扫描失败: %w", err)
+		}
+		date := time.Unix(ga, 0).In(loc).Format("2006-01-02")
+		b, ok := buckets[date]
+		if !ok {
+			b = &agg{}
+			buckets[date] = b
+		}
+		b.count++
+		b.sum += score
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("history/sqlite: DailyCounts 行迭代失败: %w", err)
+	}
+
+	for date, a := range buckets {
+		if i, ok := keyMap[date]; ok {
+			out[i].Count = a.count
+			if a.count > 0 {
+				out[i].AvgScore = a.sum / float64(a.count)
+			}
+		}
+	}
+	return out, nil
 }
 
 func (d *sqliteStore) DeleteOlderThan(ctx context.Context, days int) (int64, error) {

@@ -363,6 +363,23 @@ export interface HistoryStats {
   date_range: { from: string; to: string } | null
 }
 
+export interface HistoryDailyBucket {
+  date: string // YYYY-MM-DD，本地时区
+  count: number // 当天审计记录条数
+  avg_score: number // 当日平均分；-1 表示当天无记录
+}
+
+export interface HistoryDailyResponse {
+  days: number
+  records: HistoryDailyBucket[]
+  summary: {
+    total_records: number
+    score_days: number
+    avg_score_daily: number | null
+    daily_avg_records: number
+  }
+}
+
 export interface DiscoverKeyword {
   keyword: string
   search_volume: number

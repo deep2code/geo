@@ -18,6 +18,7 @@ import type {
   SchedulerStatus,
   HistoryListResponse,
   HistoryStats,
+  HistoryDailyResponse,
   DriftReport,
   ReadinessReport,
   CrawlabilityReport,
@@ -45,6 +46,25 @@ const API_BASE: string = (
 const AUTH_TOKEN_KEY = 'geo_api_token'
 // 前端管理员 Key 存储 Key（与后端 GEO_ADMIN_KEY 对应 X-Admin-Key header）。
 const ADMIN_KEY = 'geo_admin_key'
+
+/** 401/403 全局拦截回调。UI 层（App/AppRoutes）注册统一跳转逻辑。 */
+type AuthErrorHandler = (info: { status: 401 | 403; path: string }) => void
+const authErrorHandlers = new Set<AuthErrorHandler>()
+export const onAuthError = (fn: AuthErrorHandler): (() => void) => {
+  authErrorHandlers.add(fn)
+  return () => {
+    authErrorHandlers.delete(fn)
+  }
+}
+function emitAuthError(status: 401 | 403, path: string): void {
+  for (const fn of Array.from(authErrorHandlers)) {
+    try {
+      fn({ status, path })
+    } catch {
+      /* noop */
+    }
+  }
+}
 
 /**
  * 统一设置/清除 API Bearer Token（登录/登出时调用）。
@@ -78,13 +98,15 @@ export interface RequestOptions extends RequestInit {
   skipAuth?: boolean
   /** 跳过自动注入 X-Admin-Key（即便本地已保存）。 */
   skipAdminKey?: boolean
+  /** 跳过 401/403 自动跳转（给登录校验接口用）。 */
+  skipAuthRedirect?: boolean
 }
 
 async function request<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeout = 120000, headers, skipAuth, skipAdminKey, ...rest } = options
+  const { timeout = 120000, headers, skipAuth, skipAdminKey, skipAuthRedirect, ...rest } = options
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
@@ -114,6 +136,11 @@ async function request<T>(
       signal: controller.signal
     })
 
+    // 401/403 拦截：除非显式跳过，否则触发全局跳转（但仍抛错让业务 catch）。
+    if ((res.status === 401 || res.status === 403) && !skipAuthRedirect) {
+      emitAuthError(res.status, path)
+    }
+
     const contentType = res.headers.get('content-type') || ''
     const isJson = contentType.includes('application/json')
 
@@ -127,7 +154,9 @@ async function request<T>(
         throw err
       }
       const text = await res.text().catch(() => '')
-      throw new Error(text || `HTTP ${res.status}`)
+      const err = new Error(text || `HTTP ${res.status}`) as Error & { status?: number }
+      err.status = res.status
+      throw err
     }
 
     if (res.status === 204) return undefined as unknown as T
@@ -222,8 +251,25 @@ export const api = {
   },
   historyStats: () =>
     request<HistoryStats>('/brand/history/stats', { method: 'GET' }),
+  // Dashboard 30 天趋势：按天聚合的审计次数/每日平均分。
+  historyStatsDaily: (days = 30) =>
+    request<HistoryDailyResponse>(
+      `/brand/history/stats/daily?days=${encodeURIComponent(String(days))}`,
+      { method: 'GET' }
+    ),
   historyBrands: () =>
     request<{ brands: string[] }>('/brand/history/brands', { method: 'GET' }),
+
+  // 管理员登录（其实是 Key 校验，避免假 Key 保存后全站 403 跳转死循环）。
+  // 注意：这里显式用传入的 adminKey 临时注入 Header，并跳过自动重定向，
+  // 以便 UI 层展示"管理员 Key 错误"的提示。
+  adminVerify: (adminKey: string) =>
+    request<SchedulerStatus>('/brand/scheduler/status', {
+      method: 'GET',
+      skipAdminKey: true,
+      skipAuthRedirect: true,
+      headers: { 'X-Admin-Key': adminKey }
+    }),
 
   driftAudit: (brand: string, from_time?: string, to_time?: string) =>
     request<DriftReport>('/brand/drift', {

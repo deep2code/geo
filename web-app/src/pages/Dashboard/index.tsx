@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { Card } from '@/components/Card'
@@ -13,6 +13,7 @@ import type {
   VisibilityReport,
   HistoryListResponse,
   HistoryStats,
+  HistoryDailyResponse,
   EngineStats,
   HistoryRecord
 } from '@/types/api'
@@ -25,6 +26,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [history, setHistory] = useState<HistoryListResponse | null>(null)
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null)
+  const [historyDaily, setHistoryDaily] = useState<HistoryDailyResponse | null>(null)
   const [systemReady, setSystemReady] = useState<{
     ready: boolean
     checks: Record<string, string>
@@ -36,13 +38,15 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [hist, hstats, ready] = await Promise.all([
+        const [hist, hstats, hdaily, ready] = await Promise.all([
           api.historyList(undefined, 5).catch(() => null),
           api.historyStats().catch(() => null),
+          api.historyStatsDaily(30).catch(() => null),
           api.ready().catch(() => null)
         ])
         if (hist) setHistory(hist)
         if (hstats) setHistoryStats(hstats)
+        if (hdaily) setHistoryDaily(hdaily)
         if (ready) setSystemReady({ ready: ready.status === 'ready', checks: ready.checks })
       } finally {
         setLoading(false)
@@ -59,7 +63,9 @@ const Dashboard: React.FC = () => {
         ? Math.round(
             history.records.reduce((s, r) => s + (r.score ?? 0), 0) / history.records.length
           )
-        : null
+        : historyDaily?.summary?.avg_score_daily != null
+          ? Math.round(historyDaily.summary.avg_score_daily)
+          : null
 
   const trend7d: number[] | null = history?.records && history.records.length >= 2
     ? history.records
@@ -69,8 +75,19 @@ const Dashboard: React.FC = () => {
         .slice(-7)
     : null
 
-  // 30 天趋势：无历史趋势 API 时置空（KPI 组件支持 null，显示无趋势占位）。
-  const trend30d: number[] | null = null
+  // 30 天趋势：取自历史库按天聚合 count；后端已按日期升序、无记录日期补 0。
+  const trend30d: number[] | null = useMemo(() => {
+    const recs = historyDaily?.records
+    if (!recs || recs.length === 0) return null
+    return recs.map(r => Number(r.count) || 0)
+  }, [historyDaily])
+
+  // 每日平均分趋势（给内容优化篇数 KPI 的 sparkline 用；没有分数的天用上一天/整体均值兜底不强制，这里无数据即 0）。
+  const trend30dScore: number[] | null = useMemo(() => {
+    const recs = historyDaily?.records
+    if (!recs || recs.length === 0) return null
+    return recs.map(r => (r.avg_score != null && r.avg_score >= 0 ? Math.round(r.avg_score) : 0))
+  }, [historyDaily])
 
   // 品牌榜：仅当 brands + 历史均可用时才取最后一次审计分；否则空数组避免 mock。
   // 注：未使用 Array.prototype.findLast 以兼容 ES2022 以下 TS lib 配置。
@@ -223,13 +240,25 @@ const Dashboard: React.FC = () => {
         />
         <Kpi
           label={t('dashboard.overviewContentOptimized')}
-          value={historyStats?.total_records ?? (loading ? '...' : '—')}
-          suffix={typeof historyStats?.total_records === 'number' ? '篇' : ''}
+          value={historyStats?.total_records ?? historyDaily?.summary?.total_records ?? (loading ? '...' : '—')}
+          suffix={typeof (historyStats?.total_records ?? historyDaily?.summary?.total_records) === 'number' ? '篇' : ''}
           icon="📝"
-          trendValue={historyStats?.total_records != null ? `${historyStats.total_records}` : undefined}
+          trendValue={
+            (historyStats?.total_records ?? historyDaily?.summary?.total_records) != null
+              ? `${historyStats?.total_records ?? historyDaily?.summary?.total_records}`
+              : undefined
+          }
           trendDirection="neutral"
-          sparklineData={undefined}
+          sparklineData={trend30d ?? undefined}
           variant="warning"
+          footer={
+            <span style={{ color: 'var(--text-tertiary)' }}>
+              过去 30 天
+              {historyDaily?.summary?.daily_avg_records != null
+                ? ` · 日均 ${historyDaily.summary.daily_avg_records.toFixed(1)} 篇`
+                : ''}
+            </span>
+          }
         />
         <Kpi
           label="系统就绪"
