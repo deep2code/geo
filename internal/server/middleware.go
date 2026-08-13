@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"my-geo/internal/auth"
 	"my-geo/internal/util"
 )
 
@@ -177,8 +178,19 @@ func (s *statusRecorder) WriteHeader(code int) {
 
 // withMiddleware 应用完整中间件链（顺序：外层先，然后层层嵌套向内）：
 // recovery → requestLogger → withRequestID → rateLimitGlobal → waf →
-// cors(+CSRF) → auth → aiGeneratedHeaders → handler
+// cors(+CSRF) → auth(JWT+legacy API Key) → aiGeneratedHeaders → handler
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
+	cfg := auth.MiddlewareConfig{
+		Svc:          s.authSvc,
+		LegacyAPIKey: apiKey, // GEO_API_KEY 作为账号体系未启用时的回退
+		PublicPaths: map[string]bool{
+			"/":             true,
+			"/legal/bot":    true,
+			"/robots.txt":   true,
+			"/index.html":   true,
+			"/favicon.ico":  true,
+		},
+	}
 	return s.recovery(
 		s.requestLogger(
 			s.withRequestID(
@@ -186,7 +198,7 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 					s.withWAF(
 						s.withCSRF(
 							s.withCORS(
-								s.withAuth(
+								auth.WithAuthN(cfg)(
 									s.withAIGeneratedHeaders(h),
 								),
 							),

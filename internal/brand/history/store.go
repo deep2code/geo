@@ -15,15 +15,22 @@ import (
 	"time"
 )
 
+// authCompatCtxKey 与 internal/auth 包中的 ctxKeyWorkspace 值保持一致，
+// 以便 history 包不 import auth 也能读同一 key（避免 history ↔ brand ↔ server ↔ auth 循环依赖）。
+type authCompatCtxKey string
+
+const authCompatWorkspaceKey authCompatCtxKey = "auth.workspace"
+
 // Record 一次审计快照的标量字段（用于趋势图表）。
-// 字段与原实现保持完全一致，调用方无需改动。
+// WorkspaceID 为空时表示全局共享（向后兼容、未启用账号体系时的行为）。
 type Record struct {
-	ID        int64   `json:"id"`
-	BrandName string  `json:"brand_name"`
-	Generated int64   `json:"generated_at"` // unix 秒
-	Score     float64 `json:"score"`
-	Grade     string  `json:"grade"`
-	Tier      string  `json:"tier"`
+	ID          int64   `json:"id"`
+	WorkspaceID string  `json:"workspace_id,omitempty"` // 工作区 ID（多租户隔离）
+	BrandName   string  `json:"brand_name"`
+	Generated   int64   `json:"generated_at"` // unix 秒
+	Score       float64 `json:"score"`
+	Grade       string  `json:"grade"`
+	Tier        string  `json:"tier"`
 
 	EntityCompleteness float64 `json:"entity_completeness_score"`
 
@@ -107,3 +114,26 @@ func MarshalReport(v interface{}) (string, error) {
 
 // TimeNow 便于测试替换。
 var TimeNow = time.Now
+
+// historyCtxKey 用于在 history 包内部手动注入 workspace_id（不依赖 auth 包时）。
+type historyCtxKey string
+
+const historyCtxKeyWorkspace historyCtxKey = "history.ws"
+
+// WithWorkspace 手动在 context 中设置 workspace_id（多租户隔离使用）。
+// 未启用账号体系时无需调用。
+func WithWorkspace(ctx context.Context, workspaceID string) context.Context {
+	return context.WithValue(ctx, historyCtxKeyWorkspace, workspaceID)
+}
+
+// WorkspaceFromContext 取出当前 workspace_id（多租户过滤使用）。
+// 优先级：手动通过 WithWorkspace 设置 > auth 中间件注入；都为空时返回 ""（全局共享）。
+func WorkspaceFromContext(ctx context.Context) string {
+	if wid, ok := ctx.Value(historyCtxKeyWorkspace).(string); ok && wid != "" {
+		return wid
+	}
+	if wid, ok := ctx.Value(authCompatWorkspaceKey).(string); ok && wid != "" {
+		return wid
+	}
+	return ""
+}

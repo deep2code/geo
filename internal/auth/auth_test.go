@@ -1,0 +1,358 @@
+package auth
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func openTestStore(t *testing.T) *Store {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test_auth.db")
+	os.Setenv("GEO_AUTH_DB_PATH", path)
+	s, err := OpenStore()
+	if err != nil {
+		t.Fatalf("OpenStore failed: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+func TestHasUsers_Empty(t *testing.T) {
+	s := openTestStore(t)
+	has, err := s.HasUsers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Error("empty DB should have no users")
+	}
+}
+
+func TestCreateUserAndLoginFlow(t *testing.T) {
+	s := openTestStore(t)
+	u, ws, err := s.CreateUser("admin@geo.ai", "StrongPass1!", "Admin", "")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if u.Email != "admin@geo.ai" {
+		t.Errorf("unexpected email: %s", u.Email)
+	}
+	if ws.Name != "Admin's Workspace" {
+		t.Errorf("expected default workspace name, got %q", ws.Name)
+	}
+	if ws.OwnerID != u.ID {
+		t.Errorf("workspace owner should match user id")
+	}
+
+	// 密码校验
+	_, ok, err := s.VerifyPassword("admin@geo.ai", "wrongpass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("wrong password should not verify")
+	}
+	_, ok, err = s.VerifyPassword("admin@geo.ai", "StrongPass1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("correct password should verify")
+	}
+
+	// HasUsers
+	has, _ := s.HasUsers()
+	if !has {
+		t.Error("HasUsers should be true after create")
+	}
+
+	// 列出工作区
+	wss, err := s.ListWorkspacesWithRole(u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wss) != 1 || wss[0].Role != RoleOwner {
+		t.Errorf("expected 1 owner workspace, got %#v", wss)
+	}
+	// 工作区内角色
+	r, _ := s.GetUserRoleInWorkspace(u.ID, ws.ID)
+	if r != RoleOwner {
+		t.Errorf("expected owner role, got %s", r)
+	}
+}
+
+func TestCreateUser_ShortPassword(t *testing.T) {
+	s := openTestStore(t)
+	_, _, err := s.CreateUser("a@b.com", "short", "", "")
+	if err == nil {
+		t.Error("short password should be rejected")
+	}
+}
+
+func TestCreateUser_DuplicateEmail(t *testing.T) {
+	s := openTestStore(t)
+	_, _, err := s.CreateUser("a@b.com", "StrongPass1!", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = s.CreateUser("A@b.com", "StrongPass2!", "", "")
+	if err == nil {
+		t.Error("duplicate email (case-insensitive) should be rejected")
+	}
+}
+
+func TestUpdatePassword(t *testing.T) {
+	s := openTestStore(t)
+	u, _, err := s.CreateUser("pw@geo.ai", "StrongPass1!", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdatePassword(u.ID, "NewStrong2!"); err != nil {
+		t.Fatal(err)
+	}
+	_, ok, _ := s.VerifyPassword("pw@geo.ai", "StrongPass1!")
+	if ok {
+		t.Error("old password should no longer work")
+	}
+	_, ok2, _ := s.VerifyPassword("pw@geo.ai", "NewStrong2!")
+	if !ok2 {
+		t.Error("new password should work")
+	}
+}
+
+func TestJWT_SignAndParse(t *testing.T) {
+	// 用固定密钥（覆盖 getJWTSecret 的默认行为）
+	t.Setenv("GEO_JWT_SECRET", "test-secret-xyz-00000000000000000000000000000000")
+	// 重置一次性初始化（jwtSecretOnce sync.Once）——由于已被其他测试触发，这里直接验证：
+	// 先确保 jwtSecret() 非空
+	secret := jwtSecret()
+	if len(secret) == 0 {
+		t.Fatal("jwtSecret should not be empty")
+	}
+	c := jwtClaims{
+		Sub:         "u_123",
+		Email:       "t@geo.ai",
+		WorkspaceID: "ws_1",
+		Role:        RoleAdmin,
+		JTI:         "abc",
+		Iat:         time.Now().Unix(),
+		Exp:         time.Now().Add(time.Hour).Unix(),
+		Type:        "access",
+	}
+	tok, err := signJWT(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseJWT(tok)
+	if err != nil {
+		t.Fatalf("parseJWT: %v", err)
+	}
+	if parsed.Sub != c.Sub || parsed.Role != c.Role || parsed.WorkspaceID != c.WorkspaceID {
+		t.Errorf("claims mismatch: %+v vs %+v", parsed, c)
+	}
+}
+
+func TestJWT_Expired(t *testing.T) {
+	t.Setenv("GEO_JWT_SECRET", "test-secret-xyz-00000000000000000000000000000000")
+	// jwtSecret once 已初始化；取现有密钥签发过期 token
+	c := jwtClaims{
+		Sub:  "u_x",
+		JTI:  "abc",
+		Iat:  time.Now().Add(-3 * time.Hour).Unix(),
+		Exp:  time.Now().Add(-2 * time.Hour).Unix(),
+		Type: "access",
+	}
+	tok, _ := signJWT(c)
+	if _, err := parseJWT(tok); err == nil {
+		t.Error("expired JWT should fail parse")
+	}
+}
+
+func TestJWT_BadSignature(t *testing.T) {
+	t.Setenv("GEO_JWT_SECRET", "test-secret-xyz-00000000000000000000000000000000")
+	c := jwtClaims{Sub: "u1", Exp: time.Now().Add(time.Hour).Unix(), Type: "access"}
+	tok, _ := signJWT(c)
+	// 破坏最后一个字符
+	bad := tok[:len(tok)-1] + "A"
+	if _, err := parseJWT(bad); err == nil {
+		t.Error("tampered JWT should fail parse")
+	}
+}
+
+func TestPasswordHash_Verify(t *testing.T) {
+	h, err := hashPassword("MyGoodPassword123!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verifyPassword("MyGoodPassword123!", h) {
+		t.Error("correct password should verify")
+	}
+	if verifyPassword("WrongPass", h) {
+		t.Error("wrong password should not verify")
+	}
+}
+
+func TestRefreshToken_SaveAndRevoke(t *testing.T) {
+	s := openTestStore(t)
+	u, _, _ := s.CreateUser("rt@geo.ai", "StrongPass1!", "", "")
+	jti := "jti_test_" + u.ID
+	exp := time.Now().Add(time.Hour)
+	if err := s.SaveRefreshToken(jti, u.ID, "ws_1", exp); err != nil {
+		t.Fatal(err)
+	}
+	active, err := s.IsRefreshTokenActive(jti, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !active {
+		t.Error("new refresh token should be active")
+	}
+	// 错用户查
+	active, _ = s.IsRefreshTokenActive(jti, "some_other")
+	if active {
+		t.Error("wrong user should not see active token")
+	}
+	// 吊销
+	if err := s.RevokeRefreshToken(jti, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	active, _ = s.IsRefreshTokenActive(jti, u.ID)
+	if active {
+		t.Error("revoked token should not be active")
+	}
+}
+
+func TestAuditLog_AppendAndQuery(t *testing.T) {
+	s := openTestStore(t)
+	for i := 0; i < 5; i++ {
+		_ = s.AppendAuditLog(&AdminAuditLog{
+			ActorID: "u1", Actor: "a@geo.ai", Action: "user.login", Target: "a@geo.ai",
+			IP: "1.2.3.4", UserAgent: "test",
+		})
+	}
+	_ = s.AppendAuditLog(&AdminAuditLog{
+		ActorID: "u2", Actor: "b@geo.ai", Action: "workspace.create", Target: "ws_x",
+		IP: "1.2.3.5",
+	})
+	logs, err := s.QueryAuditLog("", 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 6 {
+		t.Errorf("expected 6 logs, got %d", len(logs))
+	}
+	loginLogs, _ := s.QueryAuditLog("user.login", 100, 0)
+	if len(loginLogs) != 5 {
+		t.Errorf("expected 5 login logs, got %d", len(loginLogs))
+	}
+	// 时间倒序
+	if len(logs) > 1 && logs[0].Timestamp.Before(logs[1].Timestamp) {
+		t.Error("logs should be ordered by timestamp DESC")
+	}
+}
+
+func TestRolePermissions(t *testing.T) {
+	if !HasRolePermission(RoleOwner, PermDeleteWorkspace) {
+		t.Error("Owner should have delete workspace")
+	}
+	if HasRolePermission(RoleAdmin, PermDeleteWorkspace) {
+		t.Error("Admin should NOT have delete workspace")
+	}
+	if !HasRolePermission(RoleViewer, PermViewReport) {
+		t.Error("Viewer should have view report")
+	}
+	if HasRolePermission(RoleViewer, PermWriteAudit) {
+		t.Error("Viewer should NOT have write audit")
+	}
+	if !HasRolePermission(RoleMember, PermWriteAudit) {
+		t.Error("Member should have write audit")
+	}
+	if !RoleGte(RoleAdmin, RoleMember) {
+		t.Error("Admin >= Member should be true")
+	}
+	if RoleGte(RoleViewer, RoleAdmin) {
+		t.Error("Viewer >= Admin should be false")
+	}
+}
+
+func TestService_LoginRefreshLogout(t *testing.T) {
+	svc := &Service{store: openTestStore(t), enabled: true}
+	t.Setenv("GEO_JWT_SECRET", "test-svc-login-secret-0000000000000000000000")
+	_ = jwtSecret() // 初始化密钥（即使已有其他密钥，也不会影响流程）
+
+	_, _, err := svc.store.CreateUser("svc@geo.ai", "StrongPass1!", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, u, wss, err := svc.Login("svc@geo.ai", "StrongPass1!", "", "127.0.0.1", "tester")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if pair.AccessToken == "" || pair.RefreshToken == "" {
+		t.Fatal("expected tokens")
+	}
+	if u == nil || len(wss) == 0 {
+		t.Fatal("expected user + workspaces")
+	}
+	if u.LastLoginAt.IsZero() {
+		t.Error("Login should update LastLoginAt")
+	}
+	// 刷新
+	pair2, u2, err := svc.Refresh(pair.RefreshToken, "127.0.0.1", "tester")
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if pair2.AccessToken == "" || u2 == nil {
+		t.Fatal("refresh should issue new tokens + user")
+	}
+	// 原 refresh token 已被吊销（一次性）
+	_, _, err = svc.Refresh(pair.RefreshToken, "127.0.0.1", "tester")
+	if err == nil {
+		t.Error("old refresh token should be revoked after refresh")
+	}
+	// 登出（吊销新的 refresh token）
+	if err := svc.Logout(pair2.RefreshToken, u2.ID); err != nil {
+		t.Errorf("Logout: %v", err)
+	}
+	_, _, err = svc.Refresh(pair2.RefreshToken, "127.0.0.1", "tester")
+	if err == nil {
+		t.Error("refresh after logout should fail")
+	}
+}
+
+func TestService_Disabled_NewService(t *testing.T) {
+	t.Setenv("GEO_AUTH_ENABLED", "false")
+	svc, err := NewService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.Enabled() {
+		t.Error("should be disabled when env is false")
+	}
+}
+
+func TestContextHelpers(t *testing.T) {
+	u := &User{ID: "u_1", Email: "a@b.com"}
+	ctx := context.WithValue(context.Background(), ctxKeyUser, u)
+	ctx = context.WithValue(ctx, ctxKeyWorkspace, "ws_x")
+	ctx = context.WithValue(ctx, ctxKeyRole, RoleAdmin)
+	if got := UserFromContext(ctx); got == nil || got.ID != "u_1" {
+		t.Error("UserFromContext failed")
+	}
+	if WorkspaceIDFromContext(ctx) != "ws_x" {
+		t.Error("WorkspaceIDFromContext failed")
+	}
+	if RoleFromContext(ctx) != RoleAdmin {
+		t.Error("RoleFromContext failed")
+	}
+	if err := RequirePermission(ctx, PermManageMember); err != nil {
+		t.Errorf("Admin should have PermManageMember: %v", err)
+	}
+	if err := RequirePermission(ctx, PermDeleteWorkspace); err == nil {
+		t.Error("Admin should NOT have PermDeleteWorkspace")
+	}
+}

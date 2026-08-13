@@ -69,6 +69,9 @@ type Company struct {
 
 // BrandProfile 品牌画像，作为可见度评估的输入。
 type BrandProfile struct {
+	// WorkspaceID 多租户隔离键（工作区 ID）。
+	// 由账号体系中间件从 JWT 注入；未启用账号体系时为空（全局共享）。
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// 品牌名称（必须），用于 AI 回答中的提及检测。
 	Name string `json:"name"`
 	// 品牌别名/简称，任一匹配即视为被提及。

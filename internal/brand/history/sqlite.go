@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,6 +16,7 @@ import (
 const sqlSchemaSQLite = `
 CREATE TABLE IF NOT EXISTS audit_history (
 	id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+	workspace_id          TEXT,
 	brand_name            TEXT    NOT NULL,
 	generated_at          INTEGER NOT NULL,
 	score                 REAL    NOT NULL,
@@ -33,9 +35,13 @@ CREATE TABLE IF NOT EXISTS audit_history (
 	action_count          INTEGER NOT NULL DEFAULT 0,
 	report_json           TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_history_ws_brand_time ON audit_history(workspace_id, brand_name, generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_ws_time ON audit_history(workspace_id, generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_brand_time ON audit_history(brand_name, generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_time ON audit_history(generated_at DESC);
 `
+
+const sqlMigrationWorkspaceID = `ALTER TABLE audit_history ADD COLUMN workspace_id TEXT;`
 
 // sqliteStore SQLite 实现的审计历史存储（零依赖默认后端）。
 type sqliteStore struct {
@@ -69,7 +75,39 @@ func Open(path string) (Store, error) {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: SQLite schema 初始化失败: %w", err)
 	}
+	// 迁移：老库可能缺少 workspace_id 列
+	if hasCol, err := columnExists(sqldb, "audit_history", "workspace_id"); err != nil {
+		sqldb.Close()
+		return nil, fmt.Errorf("history: 检查列失败: %w", err)
+	} else if !hasCol {
+		if _, err := sqldb.Exec(sqlMigrationWorkspaceID); err != nil && !strings.Contains(err.Error(), "duplicate") {
+			sqldb.Close()
+			return nil, fmt.Errorf("history: 迁移 workspace_id 失败: %w", err)
+		}
+	}
 	return &sqliteStore{path: path, db: sqldb}, nil
+}
+
+// columnExists 判断 SQLite 表中是否存在指定列。
+func columnExists(db *sql.DB, table string, column string) (bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // Close 关闭底层数据库。
@@ -88,6 +126,14 @@ func (d *sqliteStore) Path() string {
 	return d.path
 }
 
+// wsScope 构造 workspace_id 过滤子句；wid 为空时不过滤（兼容旧行为）。
+func wsScope(wid string) (string, interface{}) {
+	if wid == "" {
+		return "", nil
+	}
+	return " AND workspace_id = ?", wid
+}
+
 // Save 写入一条审计快照。
 func (d *sqliteStore) Save(ctx context.Context, r Record) (int64, error) {
 	if d == nil || d.db == nil {
@@ -96,14 +142,18 @@ func (d *sqliteStore) Save(ctx context.Context, r Record) (int64, error) {
 	if r.Generated == 0 {
 		r.Generated = TimeNow().Unix()
 	}
+	// 若调用方未显式给 Record.WorkspaceID，则自动继承 context 中的 workspace（兼容旧代码）。
+	if r.WorkspaceID == "" {
+		r.WorkspaceID = WorkspaceFromContext(ctx)
+	}
 	res, err := d.db.ExecContext(ctx, `INSERT INTO audit_history(
-		brand_name, generated_at, score, grade, tier,
+		workspace_id, brand_name, generated_at, score, grade, tier,
 		entity_completeness, mention_rate, citation_rate, share_of_voice,
 		citation_position, sentiment, entity_recognition,
 		content_gaps_count, competitor_count, negative_count, action_count,
 		report_json
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		r.BrandName, r.Generated, r.Score, r.Grade, r.Tier,
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		sqlNullStr(r.WorkspaceID), r.BrandName, r.Generated, r.Score, r.Grade, r.Tier,
 		r.EntityCompleteness, r.MentionRate, r.CitationRate, r.ShareOfVoice,
 		r.CitationPosition, r.Sentiment, r.EntityRecognition,
 		r.ContentGaps, r.CompetitorCount, r.NegativeCount, r.ActionCount,
@@ -123,14 +173,22 @@ func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := d.db.QueryContext(ctx, `SELECT
-		id, brand_name, generated_at, score, grade, tier,
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
+	q := `SELECT
+		id, COALESCE(workspace_id,''), brand_name, generated_at, score, grade, tier,
 		entity_completeness, mention_rate, citation_rate, share_of_voice,
 		citation_position, sentiment, entity_recognition,
 		content_gaps_count, competitor_count, negative_count, action_count
-		FROM audit_history WHERE brand_name = ?
+		FROM audit_history WHERE brand_name = ?` + wsClause + `
 		ORDER BY generated_at DESC
-		LIMIT ?`, brandName, limit)
+		LIMIT ?`
+	args := []interface{}{brandName}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	args = append(args, limit)
+	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("history/sqlite: List 失败: %w", err)
 	}
@@ -139,7 +197,7 @@ func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]
 	var out []Record
 	for rows.Next() {
 		var r Record
-		if err := rows.Scan(&r.ID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
+		if err := rows.Scan(&r.ID, &r.WorkspaceID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
 			&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
 			&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 			&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount); err != nil {
@@ -154,18 +212,25 @@ func (d *sqliteStore) Latest(ctx context.Context, brandName string) (*Record, er
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
-	var r Record
-	var reportJSON sql.NullString
-	err := d.db.QueryRowContext(ctx, `SELECT
-		id, brand_name, generated_at, score, grade, tier,
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
+	q := `SELECT
+		id, COALESCE(workspace_id,''), brand_name, generated_at, score, grade, tier,
 		entity_completeness, mention_rate, citation_rate, share_of_voice,
 		citation_position, sentiment, entity_recognition,
 		content_gaps_count, competitor_count, negative_count, action_count,
 		report_json
-		FROM audit_history WHERE brand_name = ?
+		FROM audit_history WHERE brand_name = ?` + wsClause + `
 		ORDER BY generated_at DESC
-		LIMIT 1`, brandName).Scan(
-		&r.ID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
+		LIMIT 1`
+	args := []interface{}{brandName}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	var r Record
+	var reportJSON sql.NullString
+	err := d.db.QueryRowContext(ctx, q, args...).Scan(
+		&r.ID, &r.WorkspaceID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
 		&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
 		&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
@@ -187,13 +252,13 @@ func (d *sqliteStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 	var r Record
 	var reportJSON sql.NullString
 	err := d.db.QueryRowContext(ctx, `SELECT
-		id, brand_name, generated_at, score, grade, tier,
+		id, COALESCE(workspace_id,''), brand_name, generated_at, score, grade, tier,
 		entity_completeness, mention_rate, citation_rate, share_of_voice,
 		citation_position, sentiment, entity_recognition,
 		content_gaps_count, competitor_count, negative_count, action_count,
 		report_json
 		FROM audit_history WHERE id = ?`, id).Scan(
-		&r.ID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
+		&r.ID, &r.WorkspaceID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
 		&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
 		&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
@@ -209,7 +274,14 @@ func (d *sqliteStore) Brands(ctx context.Context) ([]string, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
-	rows, err := d.db.QueryContext(ctx, `SELECT DISTINCT brand_name FROM audit_history ORDER BY brand_name`)
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
+	q := `SELECT DISTINCT brand_name FROM audit_history WHERE 1=1` + wsClause + ` ORDER BY brand_name`
+	var args []interface{}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("history/sqlite: Brands 失败: %w", err)
 	}
@@ -233,10 +305,17 @@ func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
 	s.Path = d.path
 	s.Backend = "sqlite"
 	var oldest, newest sql.NullInt64
-	err := d.db.QueryRowContext(ctx, `SELECT
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
+	q := `SELECT
 		COUNT(*), COUNT(DISTINCT brand_name),
 		MIN(generated_at), MAX(generated_at)
-		FROM audit_history`).Scan(&s.Records, &s.Brands, &oldest, &newest)
+		FROM audit_history WHERE 1=1` + wsClause
+	var args []interface{}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	err := d.db.QueryRowContext(ctx, q, args...).Scan(&s.Records, &s.Brands, &oldest, &newest)
 	if err != nil && err != sql.ErrNoRows {
 		return s, fmt.Errorf("history/sqlite: Stats 失败: %w", err)
 	}
@@ -252,11 +331,17 @@ func (d *sqliteStore) Clear(ctx context.Context) error {
 	if d == nil || d.db == nil {
 		return nil
 	}
-	_, err := d.db.ExecContext(ctx, `DELETE FROM audit_history`)
-	if err != nil {
+	wid := WorkspaceFromContext(ctx)
+	if wid == "" {
+		if _, err := d.db.ExecContext(ctx, `DELETE FROM audit_history`); err != nil {
+			return fmt.Errorf("history/sqlite: Clear 失败: %w", err)
+		}
+		_, _ = d.db.ExecContext(ctx, `VACUUM`)
+		return nil
+	}
+	if _, err := d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE workspace_id = ?`, wid); err != nil {
 		return fmt.Errorf("history/sqlite: Clear 失败: %w", err)
 	}
-	_, _ = d.db.ExecContext(ctx, `VACUUM`)
 	return nil
 }
 
@@ -282,12 +367,18 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 		return out, nil
 	}
 
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
 	cutoffStart := start.Unix()
 	// SQL 层按 unix 秒过滤，避免 SQLite DATE() 跨时区偏移。
-	rows, err := d.db.QueryContext(ctx, `
+	q := `
 		SELECT generated_at, score FROM audit_history
-		WHERE generated_at >= ? AND generated_at < ?
-	`, cutoffStart, now.AddDate(0, 0, 1).Unix())
+		WHERE generated_at >= ? AND generated_at < ?` + wsClause
+	args := []interface{}{cutoffStart, now.AddDate(0, 0, 1).Unix()}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("history/sqlite: DailyCounts 查询失败: %w", err)
 	}
@@ -334,12 +425,28 @@ func (d *sqliteStore) DeleteOlderThan(ctx context.Context, days int) (int64, err
 		return 0, nil
 	}
 	cutoff := TimeNow().AddDate(0, 0, -days).Unix()
-	res, err := d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE generated_at < ?`, cutoff)
+	wid := WorkspaceFromContext(ctx)
+	var (
+		res sql.Result
+		err error
+	)
+	if wid == "" {
+		res, err = d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE generated_at < ?`, cutoff)
+	} else {
+		res, err = d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE generated_at < ? AND workspace_id = ?`, cutoff, wid)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("history/sqlite: DeleteOlderThan 失败: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
+}
+
+func sqlNullStr(s string) interface{} {
+	if s == "" {
+		return sql.NullString{String: "", Valid: false}
+	}
+	return s
 }
 
 // 编译期接口符合性断言（保证 sqliteStore 完整实现 Store）。

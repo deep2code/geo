@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"my-geo/internal/adapter"
+	"my-geo/internal/auth"
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/chinacheck"
 	"my-geo/internal/brand/crawlability"
@@ -78,6 +79,8 @@ type Server struct {
 	brandEngine *brand.Engine
 	scheduler   *scheduler.Scheduler
 	mailSender  *mail.Sender // SMTP 邮件发送器（未配置时为 nil）
+	authSvc     *auth.Service // 账号体系（未启用时为 nil；但 Service.Enabled() 才为 false）
+	authH       auth.HandlerSet
 	whitelabel  Whitelabel
 	addr        string
 	mux         *http.ServeMux
@@ -111,12 +114,21 @@ func New(engine *geo.Engine, addr string) *Server {
 		slog.Warn("未配置 GEO_ADMIN_KEY，管理员接口（/api/admin/*）默认全部拒绝访问。" +
 			"如需启用请：export GEO_ADMIN_KEY=$(openssl rand -hex 16)")
 	}
+	// 初始化账号体系（GEO_AUTH_ENABLED=true 时启用，缺省降级为 legacy API Key）
+	var authSvc *auth.Service
+	if as, err := auth.NewService(); err != nil {
+		slog.Warn("账号体系初始化失败（将不启用 JWT/工作区/RBAC）", slog.Any("error", err))
+	} else {
+		authSvc = as
+	}
 	s := &Server{
 		engine:      engine,
 		brandEngine: be,
 		whitelabel:  loadWhitelabelFromEnv(),
 		addr:        addr,
 		mux:         http.NewServeMux(),
+		authSvc:     authSvc,
+		authH:       auth.NewHandlerSet(authSvc),
 	}
 	// 初始化邮件发送器（未配置 SMTP 时为 nil，邮件接口返回未启用提示）
 	if ms, err := mail.NewSender(); err != nil {
@@ -406,6 +418,9 @@ func (s *Server) Close() {
 	if s.brandEngine != nil {
 		s.brandEngine.Close()
 	}
+	if s.authSvc != nil {
+		_ = s.authSvc.Close()
+	}
 }
 
 // Handler 返回 HTTP Handler（便于测试）。
@@ -523,6 +538,18 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/legal/data-export", s.handleLegalDataExport)
 	s.mux.HandleFunc("/api/v1/legal/data-delete", s.handleLegalDataDelete)
 	s.mux.HandleFunc("/api/v1/meta/compliance", s.handleMetaCompliance)
+	// ── 账号体系 #1-4：注册 / 登录 / 刷新 / 登出 / 工作区切换 / 成员管理 / 审计日志 ──
+	s.mux.HandleFunc("/api/v1/auth/register", s.authH.Register)
+	s.mux.HandleFunc("/api/v1/auth/login", s.authH.Login)
+	s.mux.HandleFunc("/api/v1/auth/refresh", s.authH.Refresh)
+	s.mux.HandleFunc("/api/v1/auth/logout", s.authH.Logout)
+	s.mux.HandleFunc("/api/v1/auth/me", s.authH.Me)
+	s.mux.HandleFunc("/api/v1/auth/change-password", s.authH.ChangePassword)
+	s.mux.HandleFunc("/api/v1/auth/workspace/switch", s.authH.SwitchWorkspace)
+	s.mux.HandleFunc("/api/v1/auth/workspace/members/add", s.authH.AddMember)
+	s.mux.HandleFunc("/api/v1/auth/workspace/members/change-role", s.authH.ChangeRole)
+	s.mux.HandleFunc("/api/v1/auth/workspace/members/remove", s.authH.RemoveMember)
+	s.mux.HandleFunc("/api/v1/auth/admin/audit", s.authH.AdminAuditLog)
 	// Web SPA 前端（必须放在最后，catch-all 非 API 路径）
 	s.mux.HandleFunc("/", s.handleWebSPA)
 }
