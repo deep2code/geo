@@ -228,7 +228,7 @@ graph TB
 
     subgraph 工商数据["📦 离线工商数据库"]
         C1["1000万+ 注册数据"]
-        C2["FTS5 模糊全文检索"]
+        C2["FULLTEXT(ngram) 中文全文检索"]
         C3["China-Check 实时核验"]
         C4["按功能模块化存储"]
     end
@@ -731,14 +731,14 @@ flowchart LR
     subgraph INGEST["📥 数据导入阶段（一次性）"]
         direction TB
         SRC["🌐 种子数据源<br/>guichong/-/tree/json<br/>31省×42年 JSON"]
-        SRC --> INIT["geo brand-db init<br/>建表+FTS5索引"]
+        SRC --> INIT["geo brand-db init<br/>建表 + FULLTEXT(ngram) 索引"]
         INIT --> IMP["geo brand-db import-file<br/>3种格式自动识别<br/>2000条/批事务插入"]
         IMP --> READY["✅ 1000万+数据就绪"]
     end
 
     subgraph USAGE["🔎 日常查询阶段"]
         direction TB
-        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand-db search<br/>FTS5 MATCH 模糊"]
+        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand-db search<br/>MATCH AGAINST IN BOOLEAN MODE"]
         SEARCH --> AUTO["🌐 Web 下拉补全<br/>+来源Tag徽章"]
         AUTO --> DISCOVER["✨ geo discover<br/>关键词→公司→GEO报告"]
     end
@@ -754,7 +754,7 @@ flowchart LR
 ```mermaid
 graph TB
     P1["① 🔴 实时核验<br/>China-Check MCP<br/>国家公示系统最新<br/>优先级最高"]
-    P1 --> P2["② 🟢 离线工商库<br/>1000万+ FTS5<br/>1978-2019 历史"]
+    P1 --> P2["② 🟢 离线工商库<br/>千万级 FULLTEXT(ngram)<br/>1978-2019 历史"]
     P2 --> P3["③ 🔵 SinoFacts 知识库<br/>383家中国软件企业<br/>高置信度画像"]
     P3 --> P4["④ 🟡 联网搜索<br/>（可选需代理）"]
     P4 --> P5["⑤ 🟣 LLM 自身知识<br/>仅兜底用"]
@@ -1009,15 +1009,19 @@ geo mcp-server
 
 ### Q: 数据库需要额外安装吗？
 
-不需要。默认全部使用零依赖后端：
-- 离线工商库：纯 Go SQLite（`modernc.org/sqlite`）
-- 审计历史库：纯 Go SQLite
-- China-Check 缓存：JSONL 文件
+需要准备一个 **MySQL 8.0+ 实例**（本地 Docker / 云 RDS / 自建均可），单实例即可承载全部模块：
+- 离线工商库（千万级行 + FULLTEXT ngram 中文检索）
+- 审计历史库（时序写入 + JSON 快照）
+- 账号/会话库（用户、工作区、刷新令牌）
+- China-Check 查询缓存（KV 表 + TTL + expire_at 索引）
 
-生产环境可选切换：
-- `GEO_OFFLINE_DB_TYPE=duckdb` — DuckDB（列式，千万级更快）
-- `GEO_HISTORY_DB_TYPE=mysql` — MySQL（生产高并发）
-- `GEO_CHINACHECK_CACHE_TYPE=redis` — Redis（分布式缓存）
+通过环境变量分别配置 DSN：
+- `GEO_OFFLINE_MYSQL_DSN`
+- `GEO_HISTORY_MYSQL_DSN`
+- `GEO_AUTH_MYSQL_DSN`
+- `GEO_CHINACHECK_MYSQL_DSN`（或切换为 Redis：`GEO_CHINACHECK_REDIS_DSN`，分布式场景推荐）
+
+> 首次启动会自动建表 / 建索引，无需手动迁移。
 
 ### Q: GEO 优化后多久能看到效果？
 

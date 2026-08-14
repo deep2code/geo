@@ -6,120 +6,122 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/go-sql-driver/mysql"
 )
 
-const sqlSchemaSQLite = `
+const sqlSchemaMySQL = `
 CREATE TABLE IF NOT EXISTS audit_history (
-	id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-	workspace_id          TEXT,
-	brand_name            TEXT    NOT NULL,
-	generated_at          INTEGER NOT NULL,
-	score                 REAL    NOT NULL,
-	grade                 TEXT    NOT NULL,
-	tier                  TEXT    NOT NULL,
-	entity_completeness   REAL    NOT NULL DEFAULT 0,
-	mention_rate          REAL    NOT NULL DEFAULT 0,
-	citation_rate         REAL    NOT NULL DEFAULT 0,
-	share_of_voice        REAL    NOT NULL DEFAULT 0,
-	citation_position     REAL    NOT NULL DEFAULT 0,
-	sentiment             REAL    NOT NULL DEFAULT 0,
-	entity_recognition    REAL    NOT NULL DEFAULT 0,
-	content_gaps_count    INTEGER NOT NULL DEFAULT 0,
-	competitor_count      INTEGER NOT NULL DEFAULT 0,
-	negative_count        INTEGER NOT NULL DEFAULT 0,
-	action_count          INTEGER NOT NULL DEFAULT 0,
-	report_json           TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_history_ws_brand_time ON audit_history(workspace_id, brand_name, generated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_history_ws_time ON audit_history(workspace_id, generated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_history_brand_time ON audit_history(brand_name, generated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_history_time ON audit_history(generated_at DESC);
+	id                    BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+	workspace_id          VARCHAR(255),
+	brand_name            VARCHAR(255) NOT NULL,
+	generated_at          BIGINT       NOT NULL,
+	score                 DOUBLE       NOT NULL,
+	grade                 VARCHAR(255) NOT NULL,
+	tier                  VARCHAR(255) NOT NULL,
+	entity_completeness   DOUBLE       NOT NULL DEFAULT 0,
+	mention_rate          DOUBLE       NOT NULL DEFAULT 0,
+	citation_rate         DOUBLE       NOT NULL DEFAULT 0,
+	share_of_voice        DOUBLE       NOT NULL DEFAULT 0,
+	citation_position     DOUBLE       NOT NULL DEFAULT 0,
+	sentiment             DOUBLE       NOT NULL DEFAULT 0,
+	entity_recognition    DOUBLE       NOT NULL DEFAULT 0,
+	content_gaps_count    INT          NOT NULL DEFAULT 0,
+	competitor_count      INT          NOT NULL DEFAULT 0,
+	negative_count        INT          NOT NULL DEFAULT 0,
+	action_count          INT          NOT NULL DEFAULT 0,
+	report_json           MEDIUMTEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX idx_history_ws_brand_time ON audit_history(workspace_id, brand_name, generated_at);
+CREATE INDEX idx_history_ws_time ON audit_history(workspace_id, generated_at);
+CREATE INDEX idx_history_brand_time ON audit_history(brand_name, generated_at);
+CREATE INDEX idx_history_time ON audit_history(generated_at);
 `
 
-const sqlMigrationWorkspaceID = `ALTER TABLE audit_history ADD COLUMN workspace_id TEXT;`
-
-// sqliteStore SQLite 实现的审计历史存储（零依赖默认后端）。
-type sqliteStore struct {
+// mysqlStore MySQL 实现的审计历史存储。
+type mysqlStore struct {
 	path string
 	db   *sql.DB
 }
 
-// Open 打开/创建 SQLite 历史数据库并完成 schema 初始化。
-// 保持与原实现完全一致的签名：path 为空时使用默认路径 ~/.local/share/geo/geo_brand_history.db。
+// Open 打开/创建 MySQL 历史数据库并完成 schema 初始化。
+// path 语义：非空时 path 即为 DSN；空时走 GEO_HISTORY_MYSQL_DSN 环境变量或默认 DSN。
 //
 // 返回值类型：兼容别名 DB（= Store）。上游代码无需任何修改。
 func Open(path string) (Store, error) {
-	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("history: 获取用户目录失败: %w", err)
+	var dsn string
+	if path != "" {
+		dsn = path
+	} else {
+		if envDSN := os.Getenv("GEO_HISTORY_MYSQL_DSN"); envDSN != "" {
+			dsn = envDSN
+		} else {
+			dsn = "geo_history:geo_history_pass@tcp(127.0.0.1:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci&tls=false"
 		}
-		path = filepath.Join(home, ".local", "share", "geo", "geo_brand_history.db")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, fmt.Errorf("history: 创建数据目录失败: %w", err)
-	}
-	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=mmap_size(1073741824)&_pragma=cache_size(-262144)&_pragma=foreign_keys(off)"
-	sqldb, err := sql.Open("sqlite", dsn)
+	sqldb, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("history: 打开 SQLite 失败: %w", err)
+		return nil, fmt.Errorf("history: 打开 MySQL 失败: %w", err)
 	}
-	sqldb.SetMaxOpenConns(4)
-	sqldb.SetMaxIdleConns(4)
-	if _, err := sqldb.Exec(sqlSchemaSQLite); err != nil {
+	sqldb.SetMaxOpenConns(128)
+	sqldb.SetMaxIdleConns(32)
+	sqldb.SetConnMaxLifetime(30 * time.Minute)
+	if _, err := sqldb.Exec("SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
 		sqldb.Close()
-		return nil, fmt.Errorf("history: SQLite schema 初始化失败: %w", err)
+		return nil, fmt.Errorf("history: MySQL 初始化会话失败: %w", err)
 	}
-	// 迁移：老库可能缺少 workspace_id 列
-	if hasCol, err := columnExists(sqldb, "audit_history", "workspace_id"); err != nil {
-		sqldb.Close()
-		return nil, fmt.Errorf("history: 检查列失败: %w", err)
-	} else if !hasCol {
-		if _, err := sqldb.Exec(sqlMigrationWorkspaceID); err != nil && !strings.Contains(err.Error(), "duplicate") {
+	stmts := strings.Split(sqlSchemaMySQL, ";")
+	for _, stmt := range stmts {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if err := runDDL(sqldb, stmt); err != nil {
 			sqldb.Close()
-			return nil, fmt.Errorf("history: 迁移 workspace_id 失败: %w", err)
+			return nil, fmt.Errorf("history: MySQL schema 初始化失败: %w", err)
 		}
 	}
-	return &sqliteStore{path: path, db: sqldb}, nil
+	return &mysqlStore{path: dsn, db: sqldb}, nil
 }
 
-// columnExists 判断 SQLite 表中是否存在指定列。
+// runDDL 执行一条 DDL；索引重复等"已存在"错误静默处理。
+func runDDL(db *sql.DB, ddl string) error {
+	_, err := db.Exec(ddl)
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "duplicate key name") || strings.Contains(msg, "already exists") {
+		return nil
+	}
+	return err
+}
+
+// columnExists 判断 MySQL 表中是否存在指定列。
 func columnExists(db *sql.DB, table string, column string) (bool, error) {
-	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	var cnt int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?`,
+		table, column,
+	).Scan(&cnt)
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notNull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
-			return false, err
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	return false, rows.Err()
+	return cnt > 0, nil
 }
 
 // Close 关闭底层数据库。
-func (d *sqliteStore) Close() error {
+func (d *mysqlStore) Close() error {
 	if d == nil || d.db == nil {
 		return nil
 	}
 	return d.db.Close()
 }
 
-// Path 返回 SQLite 文件路径。
-func (d *sqliteStore) Path() string {
+// Path 返回当前 DSN 字符串（作为 MySQL 后端的 Path 表示）。
+func (d *mysqlStore) Path() string {
 	if d == nil {
 		return ""
 	}
@@ -135,7 +137,7 @@ func wsScope(wid string) (string, interface{}) {
 }
 
 // Save 写入一条审计快照。
-func (d *sqliteStore) Save(ctx context.Context, r Record) (int64, error) {
+func (d *mysqlStore) Save(ctx context.Context, r Record) (int64, error) {
 	if d == nil || d.db == nil {
 		return 0, nil
 	}
@@ -160,13 +162,13 @@ func (d *sqliteStore) Save(ctx context.Context, r Record) (int64, error) {
 		r.ReportJSON,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("history/sqlite: 写入失败: %w", err)
+		return 0, fmt.Errorf("history/mysql: 写入失败: %w", err)
 	}
 	id, _ := res.LastInsertId()
 	return id, nil
 }
 
-func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]Record, error) {
+func (d *mysqlStore) List(ctx context.Context, brandName string, limit int) ([]Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -190,7 +192,7 @@ func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]
 	args = append(args, limit)
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("history/sqlite: List 失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: List 失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -201,14 +203,14 @@ func (d *sqliteStore) List(ctx context.Context, brandName string, limit int) ([]
 			&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
 			&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
 			&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount); err != nil {
-			return nil, fmt.Errorf("history/sqlite: 扫描行失败: %w", err)
+			return nil, fmt.Errorf("history/mysql: 扫描行失败: %w", err)
 		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
-func (d *sqliteStore) Latest(ctx context.Context, brandName string) (*Record, error) {
+func (d *mysqlStore) Latest(ctx context.Context, brandName string) (*Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -239,13 +241,13 @@ func (d *sqliteStore) Latest(ctx context.Context, brandName string) (*Record, er
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("history/sqlite: Latest 失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: Latest 失败: %w", err)
 	}
 	r.ReportJSON = reportJSON.String
 	return &r, nil
 }
 
-func (d *sqliteStore) GetByID(ctx context.Context, id int64) (*Record, error) {
+func (d *mysqlStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -264,13 +266,13 @@ func (d *sqliteStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
 		&reportJSON)
 	if err != nil {
-		return nil, fmt.Errorf("history/sqlite: GetByID 失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: GetByID 失败: %w", err)
 	}
 	r.ReportJSON = reportJSON.String
 	return &r, nil
 }
 
-func (d *sqliteStore) Brands(ctx context.Context) ([]string, error) {
+func (d *mysqlStore) Brands(ctx context.Context) ([]string, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -283,7 +285,7 @@ func (d *sqliteStore) Brands(ctx context.Context) ([]string, error) {
 	}
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("history/sqlite: Brands 失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: Brands 失败: %w", err)
 	}
 	defer rows.Close()
 	var out []string
@@ -297,13 +299,13 @@ func (d *sqliteStore) Brands(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
+func (d *mysqlStore) Stats(ctx context.Context) (Stats, error) {
 	if d == nil || d.db == nil {
-		return Stats{Backend: "sqlite"}, nil
+		return Stats{Backend: "mysql"}, nil
 	}
 	var s Stats
 	s.Path = d.path
-	s.Backend = "sqlite"
+	s.Backend = "mysql"
 	var oldest, newest sql.NullInt64
 	wid := WorkspaceFromContext(ctx)
 	wsClause, wsArg := wsScope(wid)
@@ -317,35 +319,31 @@ func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
 	}
 	err := d.db.QueryRowContext(ctx, q, args...).Scan(&s.Records, &s.Brands, &oldest, &newest)
 	if err != nil && err != sql.ErrNoRows {
-		return s, fmt.Errorf("history/sqlite: Stats 失败: %w", err)
+		return s, fmt.Errorf("history/mysql: Stats 失败: %w", err)
 	}
 	s.OldestAt = oldest.Int64
 	s.NewestAt = newest.Int64
-	if fi, err := os.Stat(d.path); err == nil {
-		s.FileSize = fi.Size()
-	}
 	return s, nil
 }
 
-func (d *sqliteStore) Clear(ctx context.Context) error {
+func (d *mysqlStore) Clear(ctx context.Context) error {
 	if d == nil || d.db == nil {
 		return nil
 	}
 	wid := WorkspaceFromContext(ctx)
 	if wid == "" {
 		if _, err := d.db.ExecContext(ctx, `DELETE FROM audit_history`); err != nil {
-			return fmt.Errorf("history/sqlite: Clear 失败: %w", err)
+			return fmt.Errorf("history/mysql: Clear 失败: %w", err)
 		}
-		_, _ = d.db.ExecContext(ctx, `VACUUM`)
 		return nil
 	}
 	if _, err := d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE workspace_id = ?`, wid); err != nil {
-		return fmt.Errorf("history/sqlite: Clear 失败: %w", err)
+		return fmt.Errorf("history/mysql: Clear 失败: %w", err)
 	}
 	return nil
 }
 
-func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, error) {
+func (d *mysqlStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, error) {
 	if days <= 0 {
 		days = 30
 	}
@@ -370,7 +368,6 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 	wid := WorkspaceFromContext(ctx)
 	wsClause, wsArg := wsScope(wid)
 	cutoffStart := start.Unix()
-	// SQL 层按 unix 秒过滤，避免 SQLite DATE() 跨时区偏移。
 	q := `
 		SELECT generated_at, score FROM audit_history
 		WHERE generated_at >= ? AND generated_at < ?` + wsClause
@@ -380,7 +377,7 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 	}
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("history/sqlite: DailyCounts 查询失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: DailyCounts 查询失败: %w", err)
 	}
 	defer rows.Close()
 
@@ -394,7 +391,7 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 		var ga int64
 		var score float64
 		if err := rows.Scan(&ga, &score); err != nil {
-			return nil, fmt.Errorf("history/sqlite: DailyCounts 扫描失败: %w", err)
+			return nil, fmt.Errorf("history/mysql: DailyCounts 扫描失败: %w", err)
 		}
 		date := time.Unix(ga, 0).In(loc).Format("2006-01-02")
 		b, ok := buckets[date]
@@ -406,7 +403,7 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 		b.sum += score
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("history/sqlite: DailyCounts 行迭代失败: %w", err)
+		return nil, fmt.Errorf("history/mysql: DailyCounts 行迭代失败: %w", err)
 	}
 
 	for date, a := range buckets {
@@ -420,7 +417,7 @@ func (d *sqliteStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket,
 	return out, nil
 }
 
-func (d *sqliteStore) DeleteOlderThan(ctx context.Context, days int) (int64, error) {
+func (d *mysqlStore) DeleteOlderThan(ctx context.Context, days int) (int64, error) {
 	if d == nil || d.db == nil {
 		return 0, nil
 	}
@@ -436,7 +433,7 @@ func (d *sqliteStore) DeleteOlderThan(ctx context.Context, days int) (int64, err
 		res, err = d.db.ExecContext(ctx, `DELETE FROM audit_history WHERE generated_at < ? AND workspace_id = ?`, cutoff, wid)
 	}
 	if err != nil {
-		return 0, fmt.Errorf("history/sqlite: DeleteOlderThan 失败: %w", err)
+		return 0, fmt.Errorf("history/mysql: DeleteOlderThan 失败: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	return n, nil
@@ -449,5 +446,5 @@ func sqlNullStr(s string) interface{} {
 	return s
 }
 
-// 编译期接口符合性断言（保证 sqliteStore 完整实现 Store）。
-var _ Store = (*sqliteStore)(nil)
+// 编译期接口符合性断言（保证 mysqlStore 完整实现 Store）。
+var _ Store = (*mysqlStore)(nil)

@@ -90,7 +90,7 @@ func WithChinaCheck(cc *chinacheck.Client) Option {
 	return func(e *Engine) { e.chinaCheck = cc }
 }
 
-// WithOfflineDB 注入离线工商注册存储（多后端，默认 SQLite；1978-2019 种子数据）。
+// WithOfflineDB 注入离线工商注册存储（默认后端 MySQL（FULLTEXT ngram）；1978-2019 种子数据）。
 // 未注入时 Autocomplete / 知识库联想跳过离线库。
 func WithOfflineDB(db offlinedb.DB) Option {
 	return func(e *Engine) { e.offlineDB = db }
@@ -99,7 +99,7 @@ func WithOfflineDB(db offlinedb.DB) Option {
 // OfflineDB 返回离线工商存储接口（可能为 nil）。
 func (e *Engine) OfflineDB() offlinedb.DB { return e.offlineDB }
 
-// WithHistoryDB 注入审计历史时间序列存储（多后端，默认 SQLite）。
+// WithHistoryDB 注入审计历史时间序列存储（默认后端 MySQL）。
 // 未注入时 Audit 结果不持久化（仅内存返回）。
 func WithHistoryDB(db history.DB) Option {
 	return func(e *Engine) { e.historyDB = db }
@@ -374,7 +374,7 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 		}
 	}
 
-	// 步骤 1b：离线工商注册库（1978-2019，1000万+ 条 SQLite + FTS5 索引）
+	// 步骤 1b：离线工商注册库（1978-2019，1000万+ 条 MySQL + FULLTEXT ngram 索引）
 	//  - 若知识库已给出 Company 但缺硬字段（信用代码/法人/成立日期等），用离线库补全
 	//  - 若知识库完全没命中，离线库也能直接给出公司信息（LLM / 后续步骤的 ground truth）
 	var odbContext string
@@ -383,7 +383,7 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 		if res, err := e.offlineDB.Search(ctx, offlinedb.SearchOptions{Query: brandName, TopN: 5}); err == nil && len(res) > 0 {
 			odbCompanies = res
 			var b strings.Builder
-			fmt.Fprintf(&b, "离线工商注册库（guichong/- JSON 分支，1978-2019 官方公开历史数据，SQLite）命中 %d 条：\n", len(res))
+			fmt.Fprintf(&b, "离线工商注册库（guichong/- JSON 分支，1978-2019 官方公开历史数据，MySQL）命中 %d 条：\n", len(res))
 			for i, r := range res {
 				fmt.Fprintf(&b, "  [%d] [匹配度%.0f%%] %s（信用代码 %s，法人 %s，成立 %s，省 %s 市 %s，资本 %s）\n",
 					i+1, r.Score, r.Name, r.Code, r.LegalRepresentative, r.RegistrationDay,
@@ -588,7 +588,7 @@ func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *Autocompl
 `, gsxtContext)
 	}
 	if odbContext != "" {
-		prompt += fmt.Sprintf(`【离线工商库 · 次高可信】来自 guichong/- 仓库（国家工商公示系统 1978-2019 年的公开历史数据），已导入本地 SQLite 并建立 FTS5 全文索引。
+		prompt += fmt.Sprintf(`【离线工商库 · 次高可信】来自 guichong/- 仓库（国家工商公示系统 1978-2019 年的公开历史数据），已导入 MySQL 并建立 FULLTEXT(ngram) 全文索引。
 可信度：高于 LLM 自身知识与一般联网信息；低于上方【工商核验】实时数据（若实时数据与离线历史冲突，以实时为准）。
 注意离线数据截止到 2019 年，登记状态/资本/经营范围可能有变化，但公司全称/信用代码/法人/成立日期/省份通常不变。
 ---

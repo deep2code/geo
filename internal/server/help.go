@@ -91,7 +91,7 @@ func init() {
 			Title:    "常见问题",
 			Category: "faq",
 			Order:    8,
-			Content:  "Q: 审计需要多长时间？\nA: 单次审计通常 1-3 分钟，取决于引擎数量与提示词数量。\n\nQ: 数据存储在哪里？\nA: 审计历史存储在本地 SQLite 数据库，路径可通过环境变量配置。\n\nQ: 支持哪些 AI 引擎？\nA: 支持 GLM、通义千问、Doubao、文心一言、DeepSeek 等主流中文 AI 引擎。\n\nQ: 如何获取 API 访问权限？\nA: 专业版及以上方案支持 API 访问，联系客服获取 API Key。",
+			Content:  "Q: 审计需要多长时间？\nA: 单次审计通常 1-3 分钟，取决于引擎数量与提示词数量。\n\nQ: 数据存储在哪里？\nA: 审计历史存储在 MySQL 数据库，DSN 可通过 GEO_HISTORY_MYSQL_DSN 等环境变量配置。\n\nQ: 支持哪些 AI 引擎？\nA: 支持 GLM、通义千问、Doubao、文心一言、DeepSeek 等主流中文 AI 引擎。\n\nQ: 如何获取 API 访问权限？\nA: 专业版及以上方案支持 API 访问，联系客服获取 API Key。",
 		},
 	}
 }

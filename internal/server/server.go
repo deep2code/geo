@@ -53,6 +53,7 @@ import (
 	"my-geo/internal/brand/topsource"
 	"my-geo/internal/brand/vertical"
 	"my-geo/internal/config"
+	"my-geo/internal/dbprovider"
 	"my-geo/internal/llm"
 	"my-geo/internal/mail"
 	"my-geo/internal/models"
@@ -155,7 +156,7 @@ func New(engine *geo.Engine, addr string) *Server {
 // 若适配器创建全部失败或为 0 个，返回 nil 并打印启动警告。
 // China-Check MCP（工商核验）默认启用（免鉴权、免费），可通过
 // GEO_CHINACHECK_ENABLED=false 显式关闭，或 GEO_CHINACHECK_URL 指定自定义端点。
-// 离线工商 SQLite 库默认启用（~/.local/share/geo/geo_offline_companies.db），即便空库也会打开以便后续写入。
+// 离线工商 MySQL 库默认启用，即便空库也会打开以便后续写入。
 func newBrandEngineFromEnv() *brand.Engine {
 	adapters, errs := config.BrandAdaptersFromEnv()
 	for eng, e := range errs {
@@ -177,24 +178,23 @@ func newBrandEngineFromEnv() *brand.Engine {
 		opts = append(opts, brand.WithChinaCheck(cc))
 		slog.Info("China-Check MCP 工商核验已启用（GSXT/SAMR 官方数据，免鉴权免费）。")
 	}
-	// 注入离线工商 SQLite 库（默认启用，空库也打开）
+	// 注入离线工商 MySQL 库（默认启用，空库也打开）
 	if odb := newOfflineDBFromEnv(); odb != nil {
 		opts = append(opts, brand.WithOfflineDB(odb))
 		st, err := odb.Stats(context.Background())
 		if err != nil {
 			slog.Warn("离线工商库打开成功但统计失败", slog.Any("error", err))
 		} else {
-			slog.Info("离线工商 SQLite 库已启用",
-				slog.String("path", st.Path),
+			slog.Info("离线工商 MySQL 库已启用",
+				slog.String("dsn", st.Path),
 				slog.Int64("count", st.Count),
-				slog.Int64("size_bytes", st.FileSize),
 				slog.String("seed_source", "guichong/- 仓库 json 分支"))
 		}
 	}
-	// 注入审计历史 SQLite 库（默认启用）
+	// 注入审计历史 MySQL 库（默认启用）
 	if hdb := newHistoryDBFromEnv(); hdb != nil {
 		opts = append(opts, brand.WithHistoryDB(hdb))
-		slog.Info("审计历史 SQLite 库已启用", slog.String("path", hdb.Path()))
+		slog.Info("审计历史 MySQL 库已启用", slog.String("dsn", hdb.Path()))
 	}
 	return brand.New(opts...)
 }
@@ -207,22 +207,23 @@ func BuildBrandEngineFromEnv() *brand.Engine {
 	return newBrandEngineFromEnv()
 }
 
-// newHistoryDBFromEnv 打开/创建审计历史 SQLite 库。
+// newHistoryDBFromEnv 连接审计历史 MySQL 库。
 //
 // 环境变量：
 //
-//	GEO_HISTORY_DB_ENABLED=true/false   总开关（默认 true）
-//	GEO_HISTORY_DB_PATH=/path/to.db     自定义库文件路径
+//	GEO_HISTORY_DB_ENABLED=true/false     总开关（默认 true）
+//	GEO_HISTORY_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo_history?...  DSN（优先）
+//	GEO_HISTORY_DB_PATH=...                兼容旧变量：若形如 user:pass@tcp(...) 则作为 DSN
 func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
-		slog.Info("审计历史 SQLite 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
+		slog.Info("审计历史 MySQL 库已通过 GEO_HISTORY_DB_ENABLED=false 禁用。")
 		return nil
 	}
-	path := config.Env("GEO_HISTORY_DB_PATH", "")
-	db, err := history.Open(path)
+	dsn := dbprovider.PathFor(dbprovider.ModuleAuditHistory)
+	db, err := history.Open(dsn)
 	if err != nil {
-		slog.Warn("审计历史库打开失败（将无历史记录）", slog.Any("error", err))
+		slog.Warn("审计历史 MySQL 库打开失败（将无历史记录）", slog.Any("error", err))
 		return nil
 	}
 	return db
@@ -261,18 +262,19 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 	return scheduler.New(be, be.HistoryDB(), configs, webhook)
 }
 
-// newChinaCheckFromEnv 从环境变量构建 China-Check MCP 客户端（默认启用 + 默认启用本地持久化缓存）。
-// 未显式关闭时默认创建并连接官方公共端点，缓存文件位于 ~/.cache/geo/geo_chinacheck_cache.jsonl。
+// newChinaCheckFromEnv 从环境变量构建 China-Check MCP 客户端（默认启用 + 默认启用 MySQL 缓存）。
 //
 // 环境变量：
 //
-//	GEO_CHINACHECK_ENABLED=true/false        总开关（默认 true）
-//	GEO_CHINACHECK_URL=https://...           自定义 MCP endpoint
-//	GEO_CHINACHECK_LANG=zh/en/ja/...         enum 字段翻译语言（默认 zh）
-//	GEO_CHINACHECK_CACHE_ENABLED=true/false  缓存开关（默认 true）
-//	GEO_CHINACHECK_CACHE_PATH=/var/xx.jsonl  自定义缓存文件路径
-//	GEO_CHINACHECK_CACHE_MAX_ITEMS=20000     最大缓存条目（默认 10000）
-//	GEO_CHINACHECK_CACHE_TTL_HOURS=720       单条目 TTL 小时（默认 720=30 天）
+//	GEO_CHINACHECK_ENABLED=true/false            总开关（默认 true）
+//	GEO_CHINACHECK_URL=https://...               自定义 MCP endpoint
+//	GEO_CHINACHECK_LANG=zh/en/ja/...             enum 字段翻译语言（默认 zh）
+//	GEO_CHINACHECK_CACHE_ENABLED=true/false      缓存开关（默认 true）
+//	GEO_CHINACHECK_MYSQL_DSN=user:pass@tcp(...)/geo_cache?...  MySQL 缓存 DSN（优先）
+//	GEO_CHINACHECK_CACHE_PATH=...                兼容旧变量（若含 @tcp(...) 则视为 DSN）
+//	GEO_CHINACHECK_CACHE_MAX_ITEMS=20000         最大缓存条目（默认 10000）
+//	GEO_CHINACHECK_CACHE_TTL_HOURS=720           单条目 TTL 小时（默认 720=30 天）
+//	GEO_CHINACHECK_CACHE_TYPE=mysql/redis        后端类型（默认 mysql）
 func newChinaCheckFromEnv() *chinacheck.Client {
 	enabled := config.Env("GEO_CHINACHECK_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -287,7 +289,7 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 		opts = append(opts, chinacheck.WithLanguage(lang))
 	}
 
-	// ---------- 缓存层（默认启用）----------
+	// ---------- 缓存层（默认启用 MySQL K/V）----------
 	cacheEnabled := config.Env("GEO_CHINACHECK_CACHE_ENABLED", "true")
 	if !(strings.EqualFold(cacheEnabled, "false") || strings.EqualFold(cacheEnabled, "0") || strings.EqualFold(cacheEnabled, "off")) {
 		cacheOpts := []chinacheck.CacheOption{}
@@ -301,18 +303,18 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 				cacheOpts = append(cacheOpts, chinacheck.WithTTL(time.Duration(h)*time.Hour))
 			}
 		}
-		cachePath := config.Env("GEO_CHINACHECK_CACHE_PATH", "")
-		ca, err := chinacheck.NewCache(cachePath, cacheOpts...)
+		cacheDSN := dbprovider.PathFor(dbprovider.ModuleChinaCheckCache)
+		ca, err := chinacheck.NewCache(cacheDSN, cacheOpts...)
 		if err != nil {
-			slog.Warn("China-Check 缓存初始化失败（将无缓存运行）", slog.Any("error", err))
+			slog.Warn("China-Check MySQL 缓存初始化失败（将无缓存运行）", slog.Any("error", err))
 		} else {
 			st := ca.Stats()
-			slog.Info("China-Check MCP 本地缓存已启用",
-				slog.String("file", st.File),
+			slog.Info("China-Check MCP 缓存已启用（MySQL）",
+				slog.String("backend", st.Backend),
+				slog.String("dsn", st.File),
 				slog.Int("count", st.Count),
 				slog.Int("max", st.MaxItems),
-				slog.Int("ttl_h", int(st.TTLSeconds/3600)),
-				slog.Int64("size_bytes", st.FileSizeByte))
+				slog.Int("ttl_h", int(st.TTLSeconds/3600)))
 			opts = append(opts, chinacheck.WithCache(ca))
 		}
 	}
@@ -320,23 +322,23 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 	return chinacheck.New(opts...)
 }
 
-// newOfflineDBFromEnv 打开/创建离线工商库（多后端，默认 SQLite）。
+// newOfflineDBFromEnv 连接离线工商 MySQL 库。
 //
 // 环境变量：
 //
-//	GEO_OFFLINE_DB_ENABLED=true/false   总开关（默认 true）
-//	GEO_OFFLINE_DB_PATH=/path/to.db     自定义库文件路径
-//	GEO_OFFLINE_DB_TYPE=sqlite/duckdb   后端类型（默认 sqlite）
+//	GEO_OFFLINE_DB_ENABLED=true/false         总开关（默认 true）
+//	GEO_OFFLINE_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo_offline?...  DSN（优先）
+//	GEO_OFFLINE_DB_PATH=...                   兼容旧变量（形如 user:pass@tcp(...) 视为 DSN）
 func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
 		slog.Info("离线工商库已通过 GEO_OFFLINE_DB_ENABLED=false 禁用。")
 		return nil
 	}
-	path := config.Env("GEO_OFFLINE_DB_PATH", "")
-	db, err := offlinedb.Open(path)
+	dsn := dbprovider.PathFor(dbprovider.ModuleOfflineCompanies)
+	db, err := offlinedb.Open(dsn)
 	if err != nil {
-		slog.Warn("离线工商库打开失败（将无离线库运行）", slog.Any("error", err))
+		slog.Warn("离线工商 MySQL 库打开失败（将无离线库运行）", slog.Any("error", err))
 		return nil
 	}
 	return db
@@ -455,7 +457,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brand/chinacheck/search", s.handleChinaCheckSearch)
 	s.mux.HandleFunc("/api/v1/brand/chinacheck/snapshot", s.handleChinaCheckSnapshot)
 	s.mux.HandleFunc("/api/v1/brand/chinacheck/cache", s.handleChinaCheckCache)
-	// 离线工商 SQLite 库调试接口
+	// 离线工商 MySQL 库调试接口
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/stats", s.handleOfflineDBStats)
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/search", s.handleOfflineDBSearch)
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/clear", s.handleOfflineDBClear)
@@ -1623,7 +1625,7 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 			Score:         r.Score,
 		})
 	}
-	// 追加：离线工商 SQLite 库匹配（用剩余配额）
+	// 追加：离线工商 MySQL 库匹配（用剩余配额）
 	odbQuota := limit
 	if odb := s.brandEngine.OfflineDB(); odb != nil && odbQuota > 0 {
 		odbRes, err := odb.Search(r.Context(), offlinedb.SearchOptions{Query: q, TopN: odbQuota})
@@ -1823,7 +1825,7 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// ---------- 离线工商 SQLite 库调试接口 ----------
+// ---------- 离线工商 MySQL 库调试接口 ----------
 
 // handleOfflineDBStats  GET /api/v1/brand/offlinedb/stats
 func (s *Server) handleOfflineDBStats(w http.ResponseWriter, r *http.Request) {
@@ -1890,11 +1892,11 @@ func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
 		"count":    len(res),
 		"took_ms":  time.Since(start).Milliseconds(),
 		"result":   res,
-		"source":   "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ SQLite + FTS5",
+		"source":   "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MySQL + FULLTEXT(ngram)",
 	})
 }
 
-// handleOfflineDBClear POST /api/v1/brand/offlinedb/clear 清空库（VACUUM 回收空间）
+// handleOfflineDBClear POST /api/v1/brand/offlinedb/clear 清空库（清空表）
 func (s *Server) handleOfflineDBClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅 POST"})

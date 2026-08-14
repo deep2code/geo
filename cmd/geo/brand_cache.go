@@ -26,7 +26,7 @@ func newBrandCacheCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "brand-cache",
 		Short: "China-Check MCP 工商核验本地缓存管理（预热/统计/清空）",
-		Long: `管理 China-Check MCP 的本地持久化缓存（默认 ~/.cache/geo/geo_chinacheck_cache.jsonl）。
+		Long: `管理 China-Check MCP 的 MySQL 持久化缓存（默认使用 GEO_CHINACHECK_MYSQL_DSN 环境变量连接）。
 
 常用场景：
   1. 第一次部署，批量预热自己关心的 Top 1000 品牌：
@@ -221,7 +221,7 @@ func newBrandCacheImportCmd() *cobra.Command {
 	cmd.Flags().Int("limit", 5, "每条查询返回的搜索结果数上限（默认 5；snapshot 仅对 Top1 拉取）")
 	cmd.Flags().String("timeout", "45s", "单条查询总超时，如 30s / 2m / 1h")
 	cmd.Flags().Bool("dry", false, "dry run：只打印清单，不实际打网络请求")
-	cmd.Flags().String("cache-path", "", "自定义缓存文件路径（默认 ~/.cache/geo/geo_chinacheck_cache.jsonl）")
+	cmd.Flags().String("cache-path", "", "自定义 MySQL DSN（空值=使用 env GEO_CHINACHECK_MYSQL_DSN；若传入旧路径形如 @tcp(...) 也视为 DSN）")
 	cmd.Flags().String("url", "", "自定义 China-Check MCP endpoint（默认官方公共端点）")
 	cmd.Flags().String("lang", "zh", "enum/标签字段语言（zh/en/ja/ko 等）")
 	return cmd

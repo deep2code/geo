@@ -6,7 +6,7 @@
 //   - 写入：仅导入时批量 INSERT，日常查询为只读
 //
 // 后端：
-//   - SQLite（默认零依赖）—— 纯 Go modernc.org/sqlite + FTS5，千万级 <50ms/次 Top20
+//   - MySQL（默认）—— InnoDB + FULLTEXT(ngram)，千万级 Top20 ≈ 50-100ms
 //   - DuckDB（生产推荐，需 libduckdb）—— 列式存储 + 并行执行，1000 万级全表聚合更快
 package offlinedb
 
@@ -17,13 +17,13 @@ import (
 // OfflineStore 离线工商库抽象接口。
 //
 // 上游（brand.Engine / CLI / server handler）仅依赖此接口，
-// 便于切换不同后端实现（SQLite/DuckDB/MySQL 等）。
+// 便于切换不同后端实现（MySQL/Redis 等）。
 type OfflineStore interface {
 	// Close 关闭存储（关闭后其它方法行为未定义）。
 	Close() error
 	// Path 返回实际文件路径或 DSN 描述串（用于日志/统计）。
 	Path() string
-	// Backend 返回后端类型标识（如 "sqlite" / "duckdb"），用于统计接口返回。
+	// Backend 返回后端类型标识（如 "mysql" / "redis"），用于统计接口返回。
 	Backend() string
 
 	// Stats 统计记录数、文件大小、省分布 Top10。
@@ -45,6 +45,5 @@ type OfflineStore interface {
 
 // --- 兼容别名：保持对外 API 不变 ---
 
-// DB 为与旧调用方完全兼容保留的别名。历史上它是具体的 *sqliteDB 结构体，
-// 现在它等价于 OfflineStore 接口，可承载任何后端实现。
+// DB 为与旧调用方完全兼容保留的别名，当前等价于 OfflineStore 接口。
 type DB = OfflineStore

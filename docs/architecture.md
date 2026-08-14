@@ -76,10 +76,10 @@ graph TB
         DSP["DeepSeek 等 7 个"]
     end
 
-    subgraph 数据存储["💾 按功能选型数据层"]
-        OFFDB["📦 离线工商库<br/>SQLite / DuckDB<br/>1000万+ FTS5"]
-        HISDB["📜 审计历史库<br/>SQLite / MySQL<br/>时序+JSON快照"]
-        CACHE["⚡ China-Check 缓存<br/>JSONL / Redis<br/>K/V + TTL"]
+    subgraph 数据存储["💾 统一 MySQL 数据层"]
+        OFFDB["📦 离线工商库<br/>MySQL 8.0<br/>千万级 FULLTEXT(ngram)"]
+        HISDB["📜 审计历史库<br/>MySQL 8.0<br/>时序 + JSON快照"]
+        CACHE["⚡ CC / Auth 缓存<br/>MySQL KV 表 / Redis<br/>K/V + TTL"]
         KB["📚 SinoFacts 知识库<br/>JSONL 只读 (CC BY 4.0)"]
         VEC["📐 向量检索<br/>TF-IDF + Embedding"]
     end
@@ -392,7 +392,7 @@ flowchart LR
     INPUT(["🧾 用户输入<br/>前缀关键词"]) --> Q["📋 Query 标准化<br/>trim / lower / 同义归一"]
 
     Q --> P1["① China-Check 实时<br/>SAMR 工商实时核验<br/>优先级最高"]
-    Q --> P2["② 离线工商库<br/>FTS5 MATCH 模糊检索<br/>TopN=8"]
+    Q --> P2["② 离线工商库<br/>FULLTEXT(ngram) 模糊检索<br/>TopN=8"]
     Q --> P3["③ SinoFacts 知识库<br/>JSONL 前缀/包含匹配"]
     Q --> P4["④ LLM 联想补全<br/>（仅当其余为空+有Key）"]
 
@@ -445,7 +445,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    START([👤 输入关键词<br/>「短视频」「云计算」…]) --> DS["🔎 双重搜索<br/>📦 工商库 FTS5 + 📚 知识库"]
+    START([👤 输入关键词<br/>「短视频」「云计算」…]) --> DS["🔎 双重搜索<br/>📦 工商库 FULLTEXT(ngram) + 📚 知识库"]
     DS --> N{"匹配数量?"}
     N -- "0" --> EMPTY["❌ 无结果<br/>提示导入数据"]
     N -- "1" --> AUTO["✅ 自动选中"]
@@ -513,18 +513,16 @@ graph TB
         IC["CacheStore<br/>Get/Set/Clear/Compact"]
     end
 
-    subgraph 后端实现层["🔧 后端实现层"]
+    subgraph 后端实现层["🔧 后端实现层（统一 MySQL）"]
         subgraph 离线工商 ["OfflineCompanies"]
-            OSQL["sqliteStore<br/>✅ 默认零依赖"]
-            ODUC["duckStore<br/>🚀 列式高性能"]
+            OMY["mysqlStore<br/>🛢 默认/生产唯一实现"]
         end
         subgraph 审计历史 ["AuditHistory"]
-            HSQL["sqliteStore<br/>✅ 默认零依赖"]
-            HMY["mysqlStore<br/>🚀 生产推荐"]
+            HMY["mysqlStore<br/>🛢 默认/生产唯一实现"]
         end
         subgraph ChinaCheck ["查询缓存"]
-            CJ["jsonlStore<br/>✅ 默认零依赖"]
-            CRED["redisStore<br/>🚀 分布式"]
+            CMY["mysqlCacheStore<br/>🛢 默认实现"]
+            CRED["redisStore<br/>🚀 可选分布式"]
         end
     end
 
@@ -546,17 +544,15 @@ flowchart TD
     Q1 -->|"时序追加+JSON+中等"| Q3{"💼 生产高并发?"}
     Q1 -->|"K/V + TTL + 高频读"| Q4{"🌐 需要分布式?"}
 
-    Q2 -->|"❌ 否"| OFFA["✅ SQLite + FTS5<br/>纯 Go 零依赖<br/>Top20<50ms"]
-    Q2 -->|"✅ 是"| OFFB["🚀 DuckDB<br/>列式并行，更快"]
+    Q2 --> OFFA["🛢 MySQL 8.0 FULLTEXT(ngram)<br/>千万级企业中文全文<br/>Top20<50ms"]
 
-    Q3 -->|"❌ 否"| HISA["✅ SQLite<br/>单机足够"]
-    Q3 -->|"✅ 是"| HISB["🚀 MySQL<br/>生产推荐"]
+    Q3 --> HISB["🛢 MySQL 8.0<br/>复合时序索引<br/>生产推荐"]
 
-    Q4 -->|"❌ 否"| CAA["✅ JSONL 文件<br/>本地零依赖"]
+    Q4 -->|"❌ 否"| CAA["🛢 MySQL KV 表<br/>expire_at 索引 + TTL"]
     Q4 -->|"✅ 是"| CAB["🚀 Redis<br/>高并发推荐"]
 
     style OFFA fill:#bbf7d0,stroke:#16a34a
-    style HISA fill:#bbf7d0,stroke:#16a34a
+    style HISB fill:#bbf7d0,stroke:#16a34a
     style CAA fill:#bbf7d0,stroke:#16a34a
 ```
 
@@ -691,8 +687,8 @@ flowchart TB
 
     ARR & OBJ & JSONL --> MAP["🗺 mapRec<br/>字段映射(中/英key兼容)"]
     MAP --> TX["⚡ 事务批量 INSERT<br/>2000条/批"]
-    TX --> DUP["🎯 INSERT OR IGNORE<br/>信用代码去重"]
-    DUP --> FTS["🔎 FTS5 触发器<br/>自动同步全文索引"]
+    TX --> DUP["🎯 INSERT IGNORE / ON DUPLICATE KEY UPDATE<br/>信用代码去重"]
+    DUP --> FTS["🔎 FULLTEXT(ngram) 索引<br/>MATCH AGAINST 中文检索"]
 
     style FORMAT fill:#fef9c3,stroke:#a16207
     style TX fill:#bbf7d0,stroke:#16a34a
@@ -827,30 +823,28 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph 单机["🟢 单机部署（推荐个人）"]
+    subgraph 最小化["🟢 最小化（本地 MySQL）"]
         direction LR
-        BIN["📦 geo 二进制<br/>含 SPA 前端 + 降级缓存"]
-        BIN --> SQL["💿 SQLite 文件<br/>~/.local/share/geo/"]
-        BIN --> JL["⚡ JSONL 缓存<br/>~/.cache/geo/"]
+        BIN["📦 geo 二进制<br/>含 SPA 前端"]
+        BIN --> MY8["🐬 MySQL 8.0<br/>离线库/历史库/账号/缓存"]
     end
 
-    subgraph Docker["🔵 Docker 部署（推荐团队）"]
-        DC["⚙️ docker-compose"]
+    subgraph Docker["🔵 Docker Compose 部署（推荐团队）"]
+        DC["⚙️ docker-compose（已含 MySQL 服务）"]
         DC --> C["🐳 Alpine 容器<br/>非root用户"]
-        C --> V["💾 Volume 挂载<br/>持久化数据"]
-        V --> SQL2["💿 SQLite + JSONL"]
+        DC --> MY["🐬 MySQL 8.0 容器<br/>数据 Volume 持久化"]
+        C --> MY
     end
 
     subgraph 生产["🟠 生产部署（大规模）"]
         direction LR
-        BIN2["🛠 geo 二进制 / K8s Pods"]
-        BIN2 --"GEO_HISTORY_DB_TYPE=mysql"--> MYSQL["🐬 MySQL 集群<br/>审计历史"]
-        BIN2 --"GEO_CHINACHECK_CACHE_TYPE=redis"--> REDIS["🔴 Redis 哨兵<br/>缓存层"]
-        BIN2 --"GEO_OFFLINE_DB_TYPE=duckdb"--> DUCK["🦆 DuckDB 挂载 SSD<br/>千万级数据"]
+        BIN2["🛠 geo 二进制 / K8s Pods（多副本）"]
+        BIN2 --"GEO_*_MYSQL_DSN"--> MYC["🐬 MySQL 集群（主从）<br/>离线/历史/账号/缓存"]
+        BIN2 --"可选 GEO_CHINACHECK_REDIS_DSN"--> REDIS["🔴 Redis 哨兵<br/>缓存加速"]
         BIN2 --"GEO_SCHEDULER_WEBHOOK"--> WEB["📨 Webhook<br/>告警到飞书/钉钉"]
     end
 
-    style 单机 fill:#bbf7d0,stroke:#16a34a
+    style 最小化 fill:#bbf7d0,stroke:#16a34a
     style Docker fill:#bfdbfe,stroke:#2563eb
     style 生产 fill:#fed7aa,stroke:#ea580c
 ```
@@ -858,7 +852,7 @@ graph TB
 ### 硬件要求与部署规格
 
 > **设计原则**：MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），
-> 所有计算集中在**爬虫 HTML 解析 + 评分加权 + JSONL/SQLite 写入**，
+> 所有计算集中在**爬虫 HTML 解析 + 评分加权 + MySQL 写入**，
 > 因此**不需要 GPU**，按场景用 CPU/内存/SSD 三要素即可选型。
 >
 > OS 支持：生产推荐 **Linux x86_64 / arm64**（Ubuntu 22.04+、Debian 12+、RHEL 9+、AlmaLinux 9+）；
@@ -869,7 +863,7 @@ graph TB
 
 | 场景 | 形态 | 最低规格 | 推荐规格 | 磁盘 | 并发能力 | 典型用户 |
 |------|------|----------|----------|------|----------|----------|
-| 🟢 试用 / 个人 | 单机二进制 | 1 vCPU · 1 GB RAM | 2 vCPU · 2 GB RAM | 10 GB SSD（OS + 数据）<br/>含 SQLite/JSONL 缓存 | 1-2 并发审计<br/>QPS ≤ 5 | 个人开发者、单品牌试用、Demo 演示 |
+| 🟢 试用 / 个人 | 单机二进制 + 本地 MySQL | 2 vCPU · 4 GB RAM | 4 vCPU · 8 GB RAM | 20-50 GB SSD（OS + MySQL 数据目录）<br/>含离线工商库/历史库/账号/KV 缓存 | 1-2 并发审计<br/>QPS ≤ 5 | 个人开发者、单品牌试用、Demo 演示 |
 | 🔵 小团队 | Docker Compose | 2 vCPU · 4 GB RAM | 4 vCPU · 8 GB RAM | 50-100 GB SSD（建议 nvme）<br/>挂载 `/data/geo` 持久化 Volume | 5-10 并发审计<br/>调度器常开<br/>QPS ≤ 50 | 10-20 人市场/SEO 团队、单租户部门部署 |
 | 🟠 大规模生产 | K8s / 多副本 | 详见下方 Pod 规格 | 详见下方 Pod 规格 | 数据层独立存储 | 横向扩容<br/>QPS ≥ 500 | 多租户 SaaS / 平台化 / 日审计任务 ≥ 500 品牌 |
 
@@ -923,9 +917,10 @@ graph LR
     end
 
     subgraph DBs["🟢 数据库 ×3 模块"]
-        OT["GEO_OFFLINE_DB_TYPE<br/>sqlite/duckdb"]
-        HT["GEO_HISTORY_DB_TYPE<br/>sqlite/mysql"]
-        CT["GEO_CHINACHECK_CACHE_TYPE<br/>jsonl/redis"]
+        OT["GEO_OFFLINE_MYSQL_DSN<br/>离线工商库 MySQL DSN"]
+        HT["GEO_HISTORY_MYSQL_DSN<br/>审计历史库 MySQL DSN"]
+        AT["GEO_AUTH_MYSQL_DSN<br/>账号/会话 MySQL DSN"]
+        CT["GEO_CHINACHECK_MYSQL_DSN<br/>缓存 MySQL DSN<br/>（可选切 Redis DSN）"]
     end
 
     subgraph 调度["🔴 定时调度"]

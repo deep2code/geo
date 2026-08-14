@@ -37,7 +37,7 @@ COPY . .
 # 从上一阶段拷贝前端构建产物到预期位置（server.go 中 //go:embed web/dist/*）
 COPY --from=web-builder /web/dist ./web/dist
 
-# 静态编译（modernc.org/sqlite 纯 Go，CGO 可安全禁用）
+# 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用）
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
@@ -71,7 +71,8 @@ RUN setcap cap_net_bind_service=+ep /app/geo && \
 # 切换非 root 用户
 USER geo
 
-# 数据持久化目录（需 runtime 挂载 volume）：GEO_HISTORY_DB_PATH / GEO_OFFLINE_DB_PATH 默认在下面
+# 数据持久化：所有模块使用外部 MySQL 8.0+（GEO_*_MYSQL_DSN），本地不存数据文件
+# 保留 /data 挂载点以便临时文件/日志
 ENV GEO_DATA_DIR=/data/geo
 VOLUME /data/geo
 

@@ -46,7 +46,7 @@ func newDiscoverCmd() *cobra.Command {
 	cmd.Flags().StringArray("engines", nil, "目标 AI 引擎（如 glm,deepseek,chatgpt）")
 	cmd.Flags().Bool("direct", false, "直接使用关键词作为公司名搜索（跳过选择）")
 	cmd.Flags().StringP("output", "o", "", "报告输出 JSON 文件路径（不设则打印摘要）")
-	cmd.Flags().String("db", "", "离线工商库路径（默认 ~/.local/share/geo/geo_offline_companies.db）")
+	cmd.Flags().String("db", "", "离线工商 MySQL DSN（默认使用 GEO_OFFLINE_MYSQL_DSN 环境变量）")
 	return cmd
 }
 

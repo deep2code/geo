@@ -6,8 +6,7 @@
 //   - 规模：中小（< 百万行 / 年）
 //
 // 后端：
-//   - SQLite（默认，零依赖） — Store 接口的 sqliteStore 实现（同文件，保持原 Open 函数兼容）
-//   - MySQL（生产推荐，需要独立服务）— 编译 tag "geo_mysql" 启用
+//   - MySQL（默认 / 生产推荐）— Store 接口的 mysqlStore 实现
 package history
 
 import (
@@ -57,12 +56,12 @@ type Stats struct {
 	FileSize  int64  `json:"file_size_bytes,omitempty"` // 文件型后端填充，服务型留空
 	OldestAt  int64  `json:"oldest_at,omitempty"`
 	NewestAt  int64  `json:"newest_at,omitempty"`
-	Backend   string `json:"backend,omitempty"` // 实际使用的后端类型（sqlite / mysql 等）
+	Backend   string `json:"backend,omitempty"` // 实际使用的后端类型（当前仅 mysql）
 }
 
 // Store 审计历史存储抽象接口。
 //
-// 所有返回值与调用语义与原 sqliteStore 保持完全一致，上游（brand.Engine、
+// 所有返回值与调用语义与 Store 接口保持完全一致，上游（brand.Engine、
 // scheduler、server handler）无需改动。
 type Store interface {
 	// Close 关闭存储。关闭后其它方法行为未定义。
@@ -100,8 +99,7 @@ type DailyBucket struct {
 
 // --- 兼容函数（保持对外 API 不变）---
 
-// DB 为与旧调用方完全兼容保留的别名。历史上它是具体的 *sqliteDB，
-// 现在它等价于 Store 接口，可承载任何后端实现。
+// DB 为与旧调用方完全兼容保留的别名，当前等价于 Store 接口。
 type DB = Store
 
 // --- 辅助 ---

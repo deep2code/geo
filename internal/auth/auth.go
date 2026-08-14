@@ -8,8 +8,8 @@
 //   - Admin 操作审计日志（登录/登出/改密码/改角色/删用户/删品牌 留痕）
 //
 // 设计要点：
-//   - 数据库：使用 modernc.org/sqlite（与 history 包一致，零 CGO），
-//     环境变量 GEO_AUTH_DB_PATH 自定义路径。
+//   - 数据库：使用 github.com/go-sql-driver/mysql（MySQL 8.0+），
+//     环境变量 GEO_AUTH_MYSQL_DSN 自定义连接串。
 //   - 向后兼容：未配置 GEO_AUTH_ENABLED=true 时，鉴权中间件降级为原
 //     GEO_API_KEY / GEO_ADMIN_KEY 机制，老部署无需迁移即可启动。
 //   - 首用户注册引导：DB 无用户时允许首用户注册并自动设为 Owner
@@ -32,12 +32,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/go-sql-driver/mysql"
 
 	"my-geo/internal/config"
 	"my-geo/internal/util"
@@ -453,103 +452,174 @@ func RequirePermission(ctx context.Context, p Permission) error {
 }
 
 // ============================================================
-// 6. SQLite Store
+// 6. MySQL Store
 // ============================================================
 
 const authSchema = `
 CREATE TABLE IF NOT EXISTS users (
-    id            TEXT PRIMARY KEY,
-    email         TEXT    NOT NULL UNIQUE,
-    password_hash TEXT    NOT NULL,
-    display_name  TEXT    NOT NULL DEFAULT '',
-    created_at    INTEGER NOT NULL,
-    last_login_at INTEGER NOT NULL DEFAULT 0,
-    verified      INTEGER NOT NULL DEFAULT 0
-);
+    id            VARCHAR(64) PRIMARY KEY,
+    email         VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    display_name  VARCHAR(255) NOT NULL DEFAULT '',
+    created_at    BIGINT NOT NULL,
+    last_login_at BIGINT NOT NULL DEFAULT 0,
+    verified      TINYINT(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS workspaces (
-    id         TEXT PRIMARY KEY,
-    name       TEXT    NOT NULL,
-    created_at INTEGER NOT NULL,
-    owner_id   TEXT    NOT NULL,
-    plan       TEXT    NOT NULL DEFAULT 'free'
-);
+    id         VARCHAR(64) PRIMARY KEY,
+    name       VARCHAR(255) NOT NULL,
+    created_at BIGINT NOT NULL,
+    owner_id   VARCHAR(64) NOT NULL,
+    plan       VARCHAR(255) NOT NULL DEFAULT 'free'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS memberships (
-    user_id      TEXT    NOT NULL,
-    workspace_id TEXT    NOT NULL,
-    role         TEXT    NOT NULL,
-    joined_at    INTEGER NOT NULL,
+    user_id      VARCHAR(64) NOT NULL,
+    workspace_id VARCHAR(64) NOT NULL,
+    role         VARCHAR(255) NOT NULL,
+    joined_at    BIGINT NOT NULL,
     PRIMARY KEY (user_id, workspace_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
-CREATE INDEX IF NOT EXISTS idx_memberships_ws ON memberships(workspace_id);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX idx_memberships_user ON memberships(user_id);
+CREATE INDEX idx_memberships_ws ON memberships(workspace_id);
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
-    jti          TEXT PRIMARY KEY,
-    user_id      TEXT    NOT NULL,
-    workspace_id TEXT,
-    expires_at   INTEGER NOT NULL,
-    created_at   INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
+    jti          VARCHAR(64) PRIMARY KEY,
+    user_id      VARCHAR(64) NOT NULL,
+    workspace_id VARCHAR(64),
+    expires_at   BIGINT NOT NULL,
+    created_at   BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX idx_refresh_user ON refresh_tokens(user_id);
 
 CREATE TABLE IF NOT EXISTS admin_audit_log (
-    id         TEXT PRIMARY KEY,
-    timestamp  INTEGER NOT NULL,
-    actor_id   TEXT,
-    actor      TEXT,
-    action     TEXT    NOT NULL,
-    target     TEXT,
+    id           VARCHAR(64) PRIMARY KEY,
+    timestamp    BIGINT NOT NULL,
+    actor_id     VARCHAR(64),
+    actor        VARCHAR(255),
+    action       VARCHAR(255) NOT NULL,
+    target       VARCHAR(255),
     details_json TEXT,
-    ip         TEXT,
-    user_agent TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_audit_time ON admin_audit_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_action ON admin_audit_log(action);
+    ip           VARCHAR(255),
+    user_agent   TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE INDEX idx_audit_time ON admin_audit_log(timestamp DESC);
+CREATE INDEX idx_audit_action ON admin_audit_log(action);
 `
 
-// Store 账号/权限持久化（SQLite 实现）。
-type Store struct {
-	mu   sync.RWMutex
-	path string
-	db   *sql.DB
+// runDDL 执行 DDL 语句；对重复索引名/已存在错误静默跳过。
+func runDDL(db *sql.DB, ddl string) error {
+	_, err := db.Exec(ddl)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "Duplicate key name") ||
+			strings.Contains(msg, "already exists") ||
+			strings.Contains(msg, "Duplicate column name") {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
-// defaultAuthDBPath 默认路径。
-func defaultAuthDBPath() string {
-	if p := config.Env("GEO_AUTH_DB_PATH", ""); p != "" {
-		return p
+// Store 账号/权限持久化（MySQL 实现）。
+type Store struct {
+	mu  sync.RWMutex
+	dsn string
+	db  *sql.DB
+}
+
+// defaultAuthDSN 默认 MySQL 连接串。
+func defaultAuthDSN() string {
+	if d := config.Env("GEO_AUTH_MYSQL_DSN", ""); d != "" {
+		return d
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
-	return filepath.Join(home, ".local", "share", "geo", "geo_auth.db")
+	return "geo_auth:geo_auth_pass@tcp(127.0.0.1:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local"
 }
 
 // OpenStore 打开/创建账号数据库。
 func OpenStore() (*Store, error) {
-	path := defaultAuthDBPath()
-	_ = os.MkdirAll(filepath.Dir(path), 0o755)
-	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=journal_mode(wal)")
+	dsn := defaultAuthDSN()
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open auth db: %w", err)
 	}
-	if _, err := db.Exec(authSchema); err != nil {
+	db.SetMaxOpenConns(64)
+	db.SetMaxIdleConns(16)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	if _, err := db.Exec("SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("init auth schema: %w", err)
+		return nil, fmt.Errorf("set mysql session: %w", err)
 	}
-	return &Store{path: path, db: db}, nil
+
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS users (
+			id            VARCHAR(64) PRIMARY KEY,
+			email         VARCHAR(255) NOT NULL UNIQUE,
+			password_hash VARCHAR(255) NOT NULL,
+			display_name  VARCHAR(255) NOT NULL DEFAULT '',
+			created_at    BIGINT NOT NULL,
+			last_login_at BIGINT NOT NULL DEFAULT 0,
+			verified      TINYINT(1) NOT NULL DEFAULT 0
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE TABLE IF NOT EXISTS workspaces (
+			id         VARCHAR(64) PRIMARY KEY,
+			name       VARCHAR(255) NOT NULL,
+			created_at BIGINT NOT NULL,
+			owner_id   VARCHAR(64) NOT NULL,
+			plan       VARCHAR(255) NOT NULL DEFAULT 'free'
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE TABLE IF NOT EXISTS memberships (
+			user_id      VARCHAR(64) NOT NULL,
+			workspace_id VARCHAR(64) NOT NULL,
+			role         VARCHAR(255) NOT NULL,
+			joined_at    BIGINT NOT NULL,
+			PRIMARY KEY (user_id, workspace_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE INDEX idx_memberships_user ON memberships(user_id)`,
+		`CREATE INDEX idx_memberships_ws ON memberships(workspace_id)`,
+		`CREATE TABLE IF NOT EXISTS refresh_tokens (
+			jti          VARCHAR(64) PRIMARY KEY,
+			user_id      VARCHAR(64) NOT NULL,
+			workspace_id VARCHAR(64),
+			expires_at   BIGINT NOT NULL,
+			created_at   BIGINT NOT NULL
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE INDEX idx_refresh_user ON refresh_tokens(user_id)`,
+		`CREATE TABLE IF NOT EXISTS admin_audit_log (
+			id           VARCHAR(64) PRIMARY KEY,
+			timestamp    BIGINT NOT NULL,
+			actor_id     VARCHAR(64),
+			actor        VARCHAR(255),
+			action       VARCHAR(255) NOT NULL,
+			target       VARCHAR(255),
+			details_json TEXT,
+			ip           VARCHAR(255),
+			user_agent   TEXT
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+		`CREATE INDEX idx_audit_time ON admin_audit_log(timestamp DESC)`,
+		`CREATE INDEX idx_audit_action ON admin_audit_log(action)`,
+	}
+	for _, s := range stmts {
+		if err := runDDL(db, s); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("init auth schema: %w", err)
+		}
+	}
+	return &Store{dsn: dsn, db: db}, nil
 }
 
 // Close 关闭数据库。
 func (s *Store) Close() error { return s.db.Close() }
 
-// Path 返回数据库路径。
-func (s *Store) Path() string { return s.path }
+// Path 返回数据库 DSN（保持与外部 server.go slog 的兼容性）。
+func (s *Store) Path() string { return s.dsn }
 
 // HasUsers 是否存在用户（用于首用户注册引导）。
 func (s *Store) HasUsers() (bool, error) {
@@ -763,7 +833,8 @@ func (s *Store) SaveRefreshToken(jti, userID, workspaceID string, expires time.T
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO refresh_tokens(jti,user_id,workspace_id,expires_at,created_at) VALUES(?,?,?,?,?)`,
+		`INSERT INTO refresh_tokens(jti,user_id,workspace_id,expires_at,created_at) VALUES(?,?,?,?,?)
+		 ON DUPLICATE KEY UPDATE user_id=VALUES(user_id), workspace_id=VALUES(workspace_id), expires_at=VALUES(expires_at), created_at=VALUES(created_at)`,
 		jti, userID, workspaceID, expires.Unix(), time.Now().Unix(),
 	)
 	return err

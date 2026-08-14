@@ -2,23 +2,75 @@ package auth
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
+
+// testRootDSN 返回用于 CREATE DATABASE / DROP DATABASE 的 root 级 MySQL DSN。
+// 从 GEO_TEST_MYSQL_ROOT_DSN 取，缺省用 "root:@tcp(127.0.0.1:3306)/?parseTime=true&charset=utf8mb4&loc=Local&multiStatements=true"。
+// 环境变量不存在或连通性失败 → t.Skip("需要可连接的 MySQL 测试实例，跳过")。
+func testRootDSN(t *testing.T) string {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("GEO_TEST_MYSQL_ROOT_DSN"))
+	if dsn == "" {
+		dsn = "root:@tcp(127.0.0.1:3306)/?parseTime=true&charset=utf8mb4&loc=Local&multiStatements=true&tls=false"
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Skipf("跳过 auth 测试：无法打开测试 MySQL root DSN (%v)", err)
+	}
+	defer db.Close()
+	if err := db.Ping(); err != nil {
+		t.Skipf("跳过 auth 测试：测试 MySQL 不可用 (GEO_TEST_MYSQL_ROOT_DSN ping err=%v)", err)
+	}
+	return dsn
+}
 
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "test_auth.db")
-	os.Setenv("GEO_AUTH_DB_PATH", path)
+	rootDSN := testRootDSN(t)
+	dbName := fmt.Sprintf("geo_auth_test_%d_%s", os.Getpid(), strings.ToLower(time.Now().Format("150405000000")))
+	root, err := sql.Open("mysql", rootDSN)
+	if err != nil {
+		t.Fatalf("打开 root 连接: %v", err)
+	}
+	defer root.Close()
+	if _, err := root.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci", dbName)); err != nil {
+		t.Fatalf("CREATE DATABASE: %v", err)
+	}
+	// 把 user:pass@tcp(host)/?xxx 改造成 user:pass@tcp(host)/dbname?xxx
+	dsn := injectDB(rootDSN, dbName)
+	t.Setenv("GEO_AUTH_MYSQL_DSN", dsn)
 	s, err := OpenStore()
 	if err != nil {
+		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
 		t.Fatalf("OpenStore failed: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() {
+		s.Close()
+		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
+	})
 	return s
+}
+
+// injectDB 在 DSN 路径部分插入数据库名。
+func injectDB(dsn, db string) string {
+	// user:pass@tcp(host:port)/dbname?k=v → 替换 / 和 ? 之间的部分
+	idx := strings.LastIndex(dsn, "/")
+	if idx < 0 {
+		return dsn + db
+	}
+	rest := dsn[idx+1:]
+	if q := strings.Index(rest, "?"); q >= 0 {
+		return dsn[:idx+1] + db + "?" + rest[q+1:]
+	}
+	return dsn[:idx+1] + db
 }
 
 func TestHasUsers_Empty(t *testing.T) {

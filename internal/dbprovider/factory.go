@@ -8,100 +8,95 @@ import (
 	"my-geo/internal/config"
 )
 
-// ===== 模块到环境变量 + 默认后端的映射（单一事实来源）=====
-
-// ModuleKind 功能模块枚举（与上述选型表一一对应）。
+// ModuleKind 功能模块枚举（与 MySQL DSN 环境变量一一映射）。
 type ModuleKind string
 
 const (
-	// ModuleOfflineCompanies 离线工商库（千万级行 + 全文检索）。
-	ModuleOfflineCompanies ModuleKind = "offline_companies"
-	// ModuleAuditHistory 审计历史时序库。
-	ModuleAuditHistory ModuleKind = "audit_history"
-	// ModuleChinaCheckCache China-Check 查询缓存（K/V + TTL）。
-	ModuleChinaCheckCache ModuleKind = "chinacheck_cache"
+	ModuleOfflineCompanies  ModuleKind = "offline_companies"
+	ModuleAuditHistory      ModuleKind = "audit_history"
+	ModuleChinaCheckCache   ModuleKind = "chinacheck_cache"
 )
 
-// moduleConfig 各模块的默认后端 + 环境变量名映射。
+// moduleConfig：各模块的 DSN 环境变量。
+// 所有模块默认后端 = TypeMySQL。
 var moduleConfig = map[ModuleKind]struct {
-	// typeEnv 后端类型环境变量。
-	typeEnv string
-	// pathEnv 路径/DSN 环境变量。
-	pathEnv string
-	// defaultType 未设置时的零依赖默认后端。
+	typeEnv string // *_DB_TYPE / *_CACHE_TYPE（保留兼容，值必须为 mysql 或 redis）
+	dsnEnv  string // *_MYSQL_DSN（优先）
+	oldPathEnv string // 兼容 *_DB_PATH / *_CACHE_PATH（若值形如 user:pass@tcp(...) 视为 DSN 直接用）
 	defaultType Type
 }{
 	ModuleOfflineCompanies: {
 		typeEnv:     "GEO_OFFLINE_DB_TYPE",
-		pathEnv:     "GEO_OFFLINE_DB_PATH",
-		defaultType: TypeSQLite,
+		dsnEnv:      "GEO_OFFLINE_MYSQL_DSN",
+		oldPathEnv:  "GEO_OFFLINE_DB_PATH",
+		defaultType: TypeMySQL,
 	},
 	ModuleAuditHistory: {
 		typeEnv:     "GEO_HISTORY_DB_TYPE",
-		pathEnv:     "GEO_HISTORY_DB_PATH",
-		defaultType: TypeSQLite,
+		dsnEnv:      "GEO_HISTORY_MYSQL_DSN",
+		oldPathEnv:  "GEO_HISTORY_DB_PATH",
+		defaultType: TypeMySQL,
 	},
 	ModuleChinaCheckCache: {
 		typeEnv:     "GEO_CHINACHECK_CACHE_TYPE",
-		pathEnv:     "GEO_CHINACHECK_CACHE_PATH",
-		defaultType: TypeJSONL,
+		dsnEnv:      "GEO_CHINACHECK_MYSQL_DSN",
+		oldPathEnv:  "GEO_CHINACHECK_CACHE_PATH",
+		defaultType: TypeMySQL,
 	},
 }
 
-// ===== 解析辅助 =====
-
-// ParseType 按模块枚举读取环境变量，解析出期望的后端类型。
-// 环境变量为空或未知值 → 返回默认零依赖后端（不报错）。
-//
-// 可选后端值：
-//   - OfflineCompanies: sqlite / duckdb
-//   - AuditHistory:     sqlite / mysql
-//   - ChinaCheckCache:  jsonl / redis
+// ParseType 按模块解析后端类型。
+// 目前可选项：
+//   - OfflineCompanies/AuditHistory: 仅 mysql（其他值告警并回退 mysql）
+//   - ChinaCheckCache: mysql / redis
 func ParseType(mod ModuleKind) Type {
 	cfg, ok := moduleConfig[mod]
 	if !ok {
-		return TypeSQLite // 未知模块兜底
+		return TypeMySQL
 	}
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv(cfg.typeEnv)))
 	switch mod {
-	case ModuleOfflineCompanies:
+	case ModuleOfflineCompanies, ModuleAuditHistory:
 		switch raw {
-		case "", string(TypeSQLite):
-			return TypeSQLite
-		case string(TypeDuckDB):
-			return TypeDuckDB
-		}
-	case ModuleAuditHistory:
-		switch raw {
-		case "", string(TypeSQLite):
-			return TypeSQLite
-		case string(TypeMySQL):
+		case "", string(TypeMySQL):
 			return TypeMySQL
 		}
 	case ModuleChinaCheckCache:
 		switch raw {
-		case "", string(TypeJSONL):
-			return TypeJSONL
+		case "", string(TypeMySQL):
+			return TypeMySQL
 		case string(TypeRedis):
 			return TypeRedis
 		}
 	}
-	// 未知值 → 回退默认
-	fmt.Fprintf(os.Stderr, "[dbprovider 警告] %s 的 %s=%q 未识别，使用默认 %s\n",
-		mod, cfg.typeEnv, raw, cfg.defaultType)
-	return cfg.defaultType
+	fmt.Fprintf(os.Stderr, "[dbprovider 警告] %s=%q 未识别或不再支持，已回退到 mysql。\n",
+		cfg.typeEnv, raw)
+	return TypeMySQL
 }
 
-// PathFor 读取模块对应的路径/DSN 环境变量，返回空串表示用各模块默认路径。
-func PathFor(mod ModuleKind) string {
+// DSNFor 返回模块对应的 MySQL DSN（优先 *_MYSQL_DSN，其次旧 *_PATH 变量）。
+// 两者都为空时，由具体实现模块使用内置默认 DSN。
+func DSNFor(mod ModuleKind) string {
 	cfg, ok := moduleConfig[mod]
 	if !ok {
 		return ""
 	}
-	return config.Env(cfg.pathEnv, "")
+	if d := strings.TrimSpace(config.Env(cfg.dsnEnv, "")); d != "" {
+		return d
+	}
+	// 兼容：旧 PATH env 若形如 "xxx@tcp(...)"，视为直接 DSN
+	if p := strings.TrimSpace(config.Env(cfg.oldPathEnv, "")); p != "" {
+		if strings.Contains(p, "@tcp(") || strings.Contains(p, "mysql:") {
+			return p
+		}
+	}
+	return ""
 }
 
-// EnabledFor 读取对应模块的 *_ENABLED 开关；未设置默认 true。
+// PathFor 别名，等价 DSNFor（保持对 server.go 旧调用签名的兼容）。
+func PathFor(mod ModuleKind) string { return DSNFor(mod) }
+
+// EnabledFor *_ENABLED 开关；默认 true。
 func EnabledFor(mod ModuleKind) bool {
 	suffix := ""
 	switch mod {
@@ -116,25 +111,22 @@ func EnabledFor(mod ModuleKind) bool {
 	return !(strings.EqualFold(v, "false") || strings.EqualFold(v, "0") || strings.EqualFold(v, "off"))
 }
 
-// Resolve 综合解析模块后端类型：先按环境变量，再判断是否需要外部依赖，
-// 再返回"实际使用类型 + 是否回退了"。调用方可用实际类型创建实例、用回退标志打印告警。
+// Resolve 返回实际后端类型 + 是否发生回退。
 func Resolve(mod ModuleKind) (actual Type, fellBack bool) {
-	want := ParseType(mod)
-	if want.RequiresExternal() {
-		// 外部依赖暂时假设不可用（编译 tag 或运行时探测由具体实现负责），
-		// 这里先告知调用方"请求了外部后端，但可能需要降级"。
-		// 具体是否真的降级，由构造器自行检测后决定并可再次调用 Fallback()。
-		return want, false
-	}
-	return want, false
+	return ParseType(mod), false
 }
 
-// Describe 返回用于日志打印的模块后端描述。
+// Describe 返回日志描述。
 func Describe(mod ModuleKind) string {
 	t := ParseType(mod)
-	p := PathFor(mod)
+	p := DSNFor(mod)
 	if p == "" {
 		p = "<default>"
+	} else {
+		// 脱敏密码
+		if idx := strings.Index(p, ":"); idx > 0 && idx < strings.Index(p, "@") {
+			p = p[:strings.Index(p, ":")] + ":***" + p[strings.Index(p, "@"):]
+		}
 	}
-	return fmt.Sprintf("module=%s backend=%s path=%s", mod, t, p)
+	return fmt.Sprintf("module=%s backend=%s dsn=%s", mod, t, p)
 }

@@ -21,7 +21,7 @@ import (
 	"my-geo/internal/brand/offlinedb"
 )
 
-// newBrandDBCmd 创建 brand-db 子命令：离线工商 SQLite 数据库管理。
+// newBrandDBCmd 创建 brand-db 子命令：离线工商 MySQL 数据库管理。
 //
 // 数据来源：https://github.com/guichong/-/tree/json （1978-2019 年 31 省 1000万+ 条）
 //
@@ -34,8 +34,8 @@ import (
 func newBrandDBCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "brand-db",
-		Short: "离线工商注册信息 SQLite 数据库管理（1978-2019，1000万+ 种子数据）",
-		Long: `离线工商注册信息数据库管理（纯 Go SQLite，零依赖，数据文件 ~/.local/share/geo/geo_offline_companies.db）。
+		Short: "离线工商注册信息 MySQL 数据库管理（1978-2019，1000万+ 种子数据）",
+		Long: `离线工商注册信息数据库管理（MySQL 8.0+；使用 FULLTEXT ngram 中文分词；DSN 用 GEO_OFFLINE_MYSQL_DSN 设置）。
 
 数据源：https://github.com/guichong/-/tree/json
   10 字段：企业名称 / 统一社会信用代码 / 注册日期 / 企业类型 / 法人代表 / 注册资金 / 经营范围 / 省份 / 地市 / 注册地址
@@ -70,7 +70,7 @@ func newBrandDBCmd() *cobra.Command {
 	} else if v := strings.TrimSpace(os.Getenv("GEO_OFFLINE_DB")); v != "" {
 		defaultDB = v
 	}
-	cmd.PersistentFlags().StringP("db", "b", defaultDB, `SQLite 数据库文件路径（空值=默认 ~/.local/share/geo/geo_offline_companies.db；也可设环境变量 GEO_OFFLINE_DB_PATH）`)
+	cmd.PersistentFlags().StringP("db", "b", defaultDB, `MySQL DSN（空值=使用 env GEO_OFFLINE_MYSQL_DSN；也可设 GEO_OFFLINE_DB_PATH=DSN 兼容旧变量）`)
 	return cmd
 }
 
@@ -196,7 +196,7 @@ func newBrandDBSearchCmd() *cobra.Command {
 func newBrandDBClearCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "clear",
-		Short: "清空所有记录并 VACUUM 回收磁盘空间",
+		Short: "清空所有公司记录",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			db, err := openOfflineDB(cmd)
 			if err != nil {

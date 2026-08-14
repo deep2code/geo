@@ -2,11 +2,45 @@ package offlinedb
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
+
+func offlineTestRootDSN(t *testing.T) string {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("GEO_TEST_MYSQL_ROOT_DSN"))
+	if dsn == "" {
+		dsn = "root:@tcp(127.0.0.1:3306)/?parseTime=true&charset=utf8mb4&loc=Local&multiStatements=true&tls=false"
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Skipf("跳过 offlinedb 测试：无法打开 MySQL (%v)", err)
+	}
+	defer db.Close()
+	if err := db.Ping(); err != nil {
+		t.Skipf("跳过 offlinedb 测试：MySQL 不可用 (ping err=%v)", err)
+	}
+	return dsn
+}
+
+func injectDSNDB(dsn, db string) string {
+	idx := strings.LastIndex(dsn, "/")
+	if idx < 0 {
+		return dsn + db
+	}
+	rest := dsn[idx+1:]
+	if q := strings.Index(rest, "?"); q >= 0 {
+		return dsn[:idx+1] + db + "?" + rest[q+1:]
+	}
+	return dsn[:idx+1] + db
+}
 
 // smokeSampleJSON 模拟 guichong/- json 分支格式（字段名和原始一致）。
 const smokeSampleJSON = `
@@ -52,21 +86,29 @@ const smokeSampleJSON = `
 
 func openTestDB(t *testing.T) (DB, func()) {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "geo-offlinedb-test")
+	rootDSN := offlineTestRootDSN(t)
+	dbName := fmt.Sprintf("geo_offline_test_%d_%s", os.Getpid(), strings.ToLower(time.Now().Format("150405000000")))
+	root, err := sql.Open("mysql", rootDSN)
 	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
+		t.Fatalf("打开 root 连接: %v", err)
 	}
-	path := filepath.Join(dir, "test.db")
-	db, err := Open(path)
+	if _, err := root.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci", dbName)); err != nil {
+		root.Close()
+		t.Fatalf("CREATE DATABASE: %v", err)
+	}
+	dsn := injectDSNDB(rootDSN, dbName)
+	odb, err := Open(dsn)
 	if err != nil {
-		os.RemoveAll(dir)
+		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
+		root.Close()
 		t.Fatalf("Open: %v", err)
 	}
 	cleanup := func() {
-		db.Close()
-		os.RemoveAll(dir)
+		odb.Close()
+		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
+		root.Close()
 	}
-	return db, cleanup
+	return odb, cleanup
 }
 
 func writeTempFile(t *testing.T, name, content string) string {
@@ -119,7 +161,7 @@ func TestImportJSONFile_Search(t *testing.T) {
 		t.Fatalf("Search 腾讯: %v", err)
 	}
 	if len(out) == 0 {
-		t.Fatal("Search 腾讯 未命中任何记录，FTS5 全文索引可能未生效")
+		t.Fatal("Search 腾讯 未命中任何记录，FULLTEXT(ngram) 全文索引可能未生效")
 	}
 	hit := out[0]
 	if !strings.Contains(hit.Name, "腾讯") {

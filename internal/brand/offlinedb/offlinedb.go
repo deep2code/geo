@@ -1,7 +1,7 @@
-// Package offlinedb 中国大陆工商注册信息离线 SQLite 数据库。
+// Package offlinedb 中国大陆工商注册信息离线 MySQL 数据库。
 //
 // 数据源：https://github.com/guichong/-/tree/json (1978-2019，1000万+ 条，10 字段)
-// 存储：SQLite（modernc.org/sqlite，纯 Go、无 CGO、零外部依赖），配合 FTS5 全文索引，
+// 存储：MySQL + FULLTEXT(ngram 中文分词) 全文索引，
 //
 //	1000 万条数据下，按品牌/公司名模糊搜索 Top 20 命中 < 50ms。
 package offlinedb
@@ -11,7 +11,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,147 +19,146 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
 
-	_ "modernc.org/sqlite"
+	_ "github.com/go-sql-driver/mysql"
 )
 
-// 表和索引 SQL。FTS5 索引（companies_fts）只对"搜索相关字段"建，避免无用膨胀。
+const defaultMySQLDSN = "geo_offline:geo_offline_pass@tcp(127.0.0.1:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci&tls=false&multiStatements=true"
+
 const (
-	sqlSchema = `
+	sqlCompaniesTable = `
 CREATE TABLE IF NOT EXISTS companies (
-	id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-	name                TEXT NOT NULL,
-	code                TEXT,
-	registration_day    TEXT,
-	character           TEXT,
-	legal_representative TEXT,
-	capital             TEXT,
-	business_scope      TEXT,
-	province            TEXT,
-	city                TEXT,
-	address             TEXT,
-	imported_at         INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code ON companies(code);
-CREATE INDEX IF NOT EXISTS idx_companies_province ON companies(province);
-CREATE INDEX IF NOT EXISTS idx_companies_city ON companies(city);
+	id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+	name                VARCHAR(255) NOT NULL,
+	code                VARCHAR(32),
+	established_date    VARCHAR(32),
+	industry            VARCHAR(255),
+	legal_rep           VARCHAR(255),
+	registered_capital  VARCHAR(128),
+	business_scope      MEDIUMTEXT,
+	province            VARCHAR(255),
+	city                VARCHAR(255),
+	district            VARCHAR(255),
+	address             VARCHAR(255),
+	status              VARCHAR(64),
+	created_at          BIGINT NOT NULL,
+	updated_at          BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
 
-CREATE VIRTUAL TABLE IF NOT EXISTS companies_fts USING fts5(
-	name, legal_representative, province, city, address, business_scope,
-	content='companies', content_rowid='id',
-	tokenize = 'unicode61 remove_diacritics 2'
-);
-
--- 触发器：companies 写入/删除时同步更新 FTS 索引
-CREATE TRIGGER IF NOT EXISTS companies_ai AFTER INSERT ON companies BEGIN
-  INSERT INTO companies_fts(rowid, name, legal_representative, province, city, address, business_scope)
-  VALUES (new.id, new.name, new.legal_representative, new.province, new.city, new.address, new.business_scope);
-END;
-CREATE TRIGGER IF NOT EXISTS companies_ad AFTER DELETE ON companies BEGIN
-  INSERT INTO companies_fts(companies_fts, rowid, name, legal_representative, province, city, address, business_scope)
-  VALUES ('delete', old.id, old.name, old.legal_representative, old.province, old.city, old.address, old.business_scope);
-END;
-CREATE TRIGGER IF NOT EXISTS companies_au AFTER UPDATE ON companies BEGIN
-  INSERT INTO companies_fts(companies_fts, rowid, name, legal_representative, province, city, address, business_scope)
-  VALUES ('delete', old.id, old.name, old.legal_representative, old.province, old.city, old.address, old.business_scope);
-  INSERT INTO companies_fts(rowid, name, legal_representative, province, city, address, business_scope)
-  VALUES (new.id, new.name, new.legal_representative, new.province, new.city, new.address, new.business_scope);
-END;
-`
+	sqlIdxCode     = `CREATE UNIQUE INDEX idx_companies_code ON companies(code)`
+	sqlIdxProvince = `CREATE INDEX idx_companies_province ON companies(province)`
+	sqlIdxCity     = `CREATE INDEX idx_companies_city ON companies(city)`
+	sqlFtNameScope = `CREATE FULLTEXT INDEX ft_companies_name_scope ON companies(name, business_scope, legal_rep, address) WITH PARSER ngram`
 )
 
 // Company 数据库中的一条工商注册记录。
 type Company struct {
-	ID                  int64  `json:"id"`
-	Name                string `json:"name"`
-	Code                string `json:"code,omitempty"`
-	RegistrationDay     string `json:"registration_day,omitempty"`
-	Character           string `json:"character,omitempty"`
-	LegalRepresentative string `json:"legal_representative,omitempty"`
-	Capital             string `json:"capital,omitempty"`
-	BusinessScope       string `json:"business_scope,omitempty"`
-	Province            string `json:"province,omitempty"`
-	City                string `json:"city,omitempty"`
-	Address             string `json:"address,omitempty"`
-	ImportedAt          int64  `json:"imported_at,omitempty"`
-	// 搜索评分（仅 Search 返回时填）
-	Score float64 `json:"score,omitempty"`
+	ID                  int64   `json:"id"`
+	Name                string  `json:"name"`
+	Code                string  `json:"code,omitempty"`
+	RegistrationDay     string  `json:"registration_day,omitempty"`
+	Character           string  `json:"character,omitempty"`
+	LegalRepresentative string  `json:"legal_representative,omitempty"`
+	Capital             string  `json:"capital,omitempty"`
+	BusinessScope       string  `json:"business_scope,omitempty"`
+	Province            string  `json:"province,omitempty"`
+	City                string  `json:"city,omitempty"`
+	Address             string  `json:"address,omitempty"`
+	ImportedAt          int64   `json:"imported_at,omitempty"`
+	Score               float64 `json:"score,omitempty"`
 }
 
 // Stats 数据库统计。
 type Stats struct {
-	Path      string            `json:"path"`
-	Backend   string            `json:"backend"` // 实际后端：sqlite / duckdb 等
-	Count     int64             `json:"count"`
-	FileSize  int64             `json:"file_size_bytes"`
-	SchemaAt  string            `json:"schema_created_at"`
-	Provinces map[string]int64  `json:"provinces,omitempty"` // 按省 Top10 统计
+	Path      string           `json:"path"`
+	Backend   string           `json:"backend"`
+	Count     int64            `json:"count"`
+	FileSize  int64            `json:"file_size_bytes"`
+	SchemaAt  string           `json:"schema_created_at"`
+	Provinces map[string]int64 `json:"provinces,omitempty"`
 }
 
-// sqliteStore SQLite 实现的 OfflineStore（零依赖默认后端）。
-type sqliteStore struct {
+// mysqlStore MySQL 实现的 OfflineStore。
+type mysqlStore struct {
 	path string
 	db   *sql.DB
 }
 
-// Open 打开/创建 SQLite 离线工商数据库并完成 schema 初始化。
-// 保持原签名兼容：path 为空用默认 ~/.local/share/geo/geo_offline_companies.db。
-// 返回 OfflineStore 接口（通过 DB 别名），调用方无需修改。
+func runDDL(ctx context.Context, db *sql.DB, ddl string) error {
+	_, err := db.ExecContext(ctx, ddl)
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "duplicate key name") ||
+		strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate column name") ||
+		strings.Contains(msg, "exists") && strings.Contains(msg, "index") {
+		return nil
+	}
+	return err
+}
+
+// Open 打开/创建 MySQL 离线工商数据库并完成 schema 初始化。
+// 保持原签名兼容：path 若非空视为 MySQL DSN（兼容）；否则读 env GEO_OFFLINE_MYSQL_DSN，缺省为内置默认。
 func Open(path string) (OfflineStore, error) {
-	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("获取用户主目录失败: %w", err)
+	dsn := path
+	if dsn == "" {
+		dsn = os.Getenv("GEO_OFFLINE_MYSQL_DSN")
+		if dsn == "" {
+			dsn = defaultMySQLDSN
 		}
-		dir := filepath.Join(home, ".local", "share", "geo")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("创建数据目录失败: %w", err)
-		}
-		path = filepath.Join(dir, "geo_offline_companies.db")
 	}
-	// DSN 配置：journal_mode=WAL（高并发读写性能）、synchronous=NORMAL（速度+安全平衡）、mmap_size=1GB
-	dsn := fmt.Sprintf(
-		"file:%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=mmap_size(%d)&_pragma=cache_size(-262144)&_pragma=foreign_keys(off)",
-		path, 1<<30,
-	)
-	sqldb, err := sql.Open("sqlite", dsn)
+	sqldb, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("打开 SQLite 失败: %w", err)
+		return nil, fmt.Errorf("打开 MySQL 失败: %w", err)
 	}
-	// WAL 模式支持多读单写，modernc.org/sqlite 是纯 Go 实现无 CGO 文件锁限制，
-	// 适当调高连接数以支撑并发审计（多 prompt × 多引擎场景）。
-	sqldb.SetMaxOpenConns(16)
-	sqldb.SetMaxIdleConns(8)
-	sqldb.SetConnMaxIdleTime(5 * time.Minute)
-	// schema 初始化（一次性事务）
-	if _, err := sqldb.Exec(sqlSchema); err != nil {
+	sqldb.SetMaxOpenConns(64)
+	sqldb.SetMaxIdleConns(16)
+	sqldb.SetConnMaxLifetime(30 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if _, err := sqldb.ExecContext(ctx, `SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON`); err != nil {
 		_ = sqldb.Close()
-		return nil, fmt.Errorf("初始化 schema 失败: %w", err)
+		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)
 	}
-	return &sqliteStore{path: path, db: sqldb}, nil
+
+	for _, ddl := range []string{
+		sqlCompaniesTable,
+		sqlIdxCode,
+		sqlIdxProvince,
+		sqlIdxCity,
+		sqlFtNameScope,
+	} {
+		if err := runDDL(ctx, sqldb, ddl); err != nil {
+			_ = sqldb.Close()
+			return nil, fmt.Errorf("初始化 schema 失败: %w", err)
+		}
+	}
+
+	return &mysqlStore{path: dsn, db: sqldb}, nil
 }
 
 // Close 关闭数据库。
-func (d *sqliteStore) Close() error { return d.db.Close() }
+func (d *mysqlStore) Close() error { return d.db.Close() }
 
-// Path 返回实际数据库文件路径。
-func (d *sqliteStore) Path() string { return d.path }
+// Path 返回实际数据库 DSN。
+func (d *mysqlStore) Path() string { return d.path }
 
 // Backend 返回后端类型标识。
-func (d *sqliteStore) Backend() string { return "sqlite" }
+func (d *mysqlStore) Backend() string { return "mysql" }
 
 // ---------- 统计 ----------
 
 // Stats 统计数据库体量与省分布。
-func (d *sqliteStore) Stats(ctx context.Context) (Stats, error) {
-	st := Stats{Path: d.path, Backend: "sqlite"}
-	if info, err := os.Stat(d.path); err == nil {
-		st.FileSize = info.Size()
-	}
+func (d *mysqlStore) Stats(ctx context.Context) (Stats, error) {
+	st := Stats{Path: d.path, Backend: "mysql", FileSize: 0}
 	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM companies`).Scan(&st.Count); err != nil {
 		return st, err
 	}
-	// 按省 Top10
 	rows, err := d.db.QueryContext(ctx, `
 SELECT COALESCE(NULLIF(province,''),'未知'), COUNT(*) AS c
 FROM companies GROUP BY 1 ORDER BY c DESC LIMIT 10`)
@@ -184,14 +182,14 @@ FROM companies GROUP BY 1 ORDER BY c DESC LIMIT 10`)
 
 // SearchOptions 搜索选项。
 type SearchOptions struct {
-	Query    string // 必填：搜索词（公司名/品牌/法人/省份+城市 等）
-	TopN     int    // 返回条数，默认 20
-	Province string // 可选：只在某省内搜
-	City     string // 可选：只在某市内搜
+	Query    string
+	TopN     int
+	Province string
+	City     string
 }
 
-// Search 按查询词模糊搜索，返回 TopN 匹配结果（按 FTS bm25 评分排序，不支持 FTS 时降级 LIKE）。
-func (d *sqliteStore) Search(ctx context.Context, opt SearchOptions) ([]Company, error) {
+// Search 按查询词模糊搜索，返回 TopN 匹配结果（MySQL 布尔全文检索优先，不足补 LIKE 兜底）。
+func (d *mysqlStore) Search(ctx context.Context, opt SearchOptions) ([]Company, error) {
 	q := strings.TrimSpace(opt.Query)
 	if q == "" {
 		return nil, fmt.Errorf("query 不能为空")
@@ -200,9 +198,8 @@ func (d *sqliteStore) Search(ctx context.Context, opt SearchOptions) ([]Company,
 	if topN <= 0 {
 		topN = 20
 	}
-	// 构造 FTS5 查询表达式：每个关键词作为前缀匹配
-	ftsQuery := buildFTSQuery(q)
-	// 省/市过滤（用实表 JOIN）
+	ftQuery := buildFTQuery(q)
+
 	where := []string{}
 	args := []interface{}{}
 	if opt.Province != "" {
@@ -215,57 +212,86 @@ func (d *sqliteStore) Search(ctx context.Context, opt SearchOptions) ([]Company,
 	}
 	whereClause := ""
 	if len(where) > 0 {
-		whereClause = "WHERE " + strings.Join(where, " AND ")
+		whereClause = " AND " + strings.Join(where, " AND ")
 	}
 
-	args = append([]interface{}{ftsQuery, topN}, args...) // 注意顺序要对应 SQL 中的 ?
-	// 优先 FTS，FTS 不支持时会报错，捕获后降级 LIKE
-	sql := fmt.Sprintf(`
-SELECT c.id, c.name, COALESCE(c.code,''), COALESCE(c.registration_day,''),
-       COALESCE(c.character,''), COALESCE(c.legal_representative,''),
-       COALESCE(c.capital,''), COALESCE(c.business_scope,''),
+	matchExpr := `MATCH(c.name, c.business_scope, c.legal_rep, c.address) AGAINST (? IN BOOLEAN MODE)`
+
+	ftArgs := append([]interface{}{ftQuery}, args...)
+	ftArgs = append(ftArgs, topN)
+	sqlFT := fmt.Sprintf(`
+SELECT c.id, c.name, COALESCE(c.code,''), COALESCE(c.established_date,''),
+       COALESCE(c.industry,''), COALESCE(c.legal_rep,''),
+       COALESCE(c.registered_capital,''), COALESCE(c.business_scope,''),
        COALESCE(c.province,''), COALESCE(c.city,''), COALESCE(c.address,''),
-       c.imported_at,
-       bm25(companies_fts) AS score
-FROM companies_fts f
-JOIN companies c ON c.id = f.rowid
-%s
-AND companies_fts MATCH ?
-ORDER BY score ASC
-LIMIT ?
-`, whereClause)
-	rows, err := d.db.QueryContext(ctx, sql, args...)
+       c.created_at,
+       %s AS score
+FROM companies c
+WHERE %s%s
+ORDER BY score DESC
+LIMIT ?`, matchExpr, matchExpr, whereClause)
+
+	rows, err := d.db.QueryContext(ctx, sqlFT, ftArgs...)
 	if err != nil {
-		// 降级：LIKE 模糊匹配（modernc.org/sqlite 的 FTS5 版本不兼容时触发）
-		return d.searchLikeFallback(ctx, opt, q, topN)
+		return d.searchLikeFallback(ctx, opt, q, topN, 0)
 	}
+	out, scanErr := scanCompanies(rows, true)
+	if scanErr != nil {
+		return nil, scanErr
+	}
+
+	normalizeFTScore(out)
+
+	remain := topN - len(out)
+	if remain > 0 {
+		seen := map[int64]struct{}{}
+		for _, c := range out {
+			seen[c.ID] = struct{}{}
+		}
+		extra, err := d.searchLikeFallback(ctx, opt, q, remain, len(out))
+		if err == nil {
+			for _, c := range extra {
+				if _, ok := seen[c.ID]; !ok {
+					out = append(out, c)
+					seen[c.ID] = struct{}{}
+				}
+			}
+		}
+	}
+
+	return out, nil
+}
+
+func scanCompanies(rows *sql.Rows, withScore bool) ([]Company, error) {
 	defer rows.Close()
 	var out []Company
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay, &c.Character,
-			&c.LegalRepresentative, &c.Capital, &c.BusinessScope, &c.Province, &c.City,
-			&c.Address, &c.ImportedAt, &c.Score); err != nil {
+		var err error
+		if withScore {
+			err = rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
+				&c.Character, &c.LegalRepresentative,
+				&c.Capital, &c.BusinessScope,
+				&c.Province, &c.City, &c.Address,
+				&c.ImportedAt, &c.Score)
+		} else {
+			err = rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
+				&c.Character, &c.LegalRepresentative,
+				&c.Capital, &c.BusinessScope,
+				&c.Province, &c.City, &c.Address,
+				&c.ImportedAt)
+		}
+		if err != nil {
 			return out, err
 		}
 		out = append(out, c)
 	}
-	if err := rows.Err(); err != nil {
-		return out, err
-	}
-	// CJK 兜底：FTS5 unicode61 对中文按"词"切分不理想，关键词在词中间时可能 0 命中，
-	// 此时降级到 LIKE 模糊匹配（牺牲速度保证召回，TopN 小的情况下 ms 级仍然够用）。
-	if len(out) == 0 {
-		return d.searchLikeFallback(ctx, opt, q, topN)
-	}
-	// bm25 是"越低越好"，这里统一把 score 转成 0-100 的"匹配度"方便前端展示
-	normalizeScores(out)
-	return out, nil
+	return out, rows.Err()
 }
 
-func (d *sqliteStore) searchLikeFallback(ctx context.Context, opt SearchOptions, q string, topN int) ([]Company, error) {
-	cond := []string{"(c.name LIKE ? OR c.legal_representative LIKE ? OR c.address LIKE ?)"}
-	args := []interface{}{"%" + q + "%", "%" + q + "%", "%" + q + "%"}
+func (d *mysqlStore) searchLikeFallback(ctx context.Context, opt SearchOptions, q string, topN int, offsetRank int) ([]Company, error) {
+	cond := []string{"(c.name LIKE CONCAT('%', ?, '%') OR c.business_scope LIKE CONCAT('%', ?, '%') OR c.legal_rep LIKE CONCAT('%', ?, '%') OR c.address LIKE CONCAT('%', ?, '%'))"}
+	args := []interface{}{q, q, q, q}
 	if opt.Province != "" {
 		cond = append(cond, "c.province = ?")
 		args = append(args, opt.Province)
@@ -274,86 +300,91 @@ func (d *sqliteStore) searchLikeFallback(ctx context.Context, opt SearchOptions,
 		cond = append(cond, "c.city = ?")
 		args = append(args, opt.City)
 	}
-	args = append(args, topN)
-	sql := fmt.Sprintf(`
-SELECT c.id, c.name, COALESCE(c.code,''), COALESCE(c.registration_day,''),
-       COALESCE(c.character,''), COALESCE(c.legal_representative,''),
-       COALESCE(c.capital,''), COALESCE(c.business_scope,''),
+	namePrefix := q + "%"
+	sqlQ := fmt.Sprintf(`
+SELECT c.id, c.name, COALESCE(c.code,''), COALESCE(c.established_date,''),
+       COALESCE(c.industry,''), COALESCE(c.legal_rep,''),
+       COALESCE(c.registered_capital,''), COALESCE(c.business_scope,''),
        COALESCE(c.province,''), COALESCE(c.city,''), COALESCE(c.address,''),
-       c.imported_at
+       c.created_at
 FROM companies c
 WHERE %s
-ORDER BY CASE WHEN c.name LIKE ? THEN 0 ELSE 1 END, LENGTH(c.name)
+ORDER BY CASE WHEN c.name LIKE ? THEN 0 ELSE 1 END, LENGTH(c.name), c.id
 LIMIT ?`, strings.Join(cond, " AND "))
-	// name 前缀优先排序
-	nameLikePrefix := q + "%"
-	args2 := append([]interface{}{}, args[:len(args)-1]...)
-	args2 = append(args2, nameLikePrefix)
-	args2 = append(args2, topN)
-	rows, err := d.db.QueryContext(ctx, sql, args2...)
+	args = append(args, namePrefix, topN)
+	rows, err := d.db.QueryContext(ctx, sqlQ, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []Company
-	for rows.Next() {
-		var c Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay, &c.Character,
-			&c.LegalRepresentative, &c.Capital, &c.BusinessScope, &c.Province, &c.City,
-			&c.Address, &c.ImportedAt); err != nil {
-			return out, err
-		}
-		c.Score = float64(len(q)) / float64(maxInt(1, len(c.Name))) * 100 // 简单相似度
-		if c.Score > 100 {
-			c.Score = 100
-		}
-		out = append(out, c)
+	out, scanErr := scanCompanies(rows, false)
+	if scanErr != nil {
+		return nil, scanErr
 	}
-	return out, rows.Err()
+	for i := range out {
+		base := 50.0 - float64(offsetRank+i)*0.5
+		sim := float64(len(q)) / float64(maxInt(1, len(out[i].Name))) * 50
+		out[i].Score = base + sim
+		if out[i].Score > 100 {
+			out[i].Score = 100
+		}
+		if out[i].Score < 0 {
+			out[i].Score = 0
+		}
+	}
+	return out, nil
 }
 
-func buildFTSQuery(q string) string {
-	// 去掉特殊字符，按空白/标点分词
+func buildFTQuery(q string) string {
 	tokens := strings.FieldsFunc(q, func(r rune) bool {
-		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '，' || r == '、'
+		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '，' || r == '、' ||
+			r == ';' || r == '；' || r == '|' || r == '/' || r == '\\'
 	})
 	var parts []string
 	for _, t := range tokens {
-		t = strings.Trim(t, "*:()\"'")
+		t = strings.Trim(t, "*:()\"'+-@<>~")
 		if t == "" {
 			continue
 		}
-		// 每个 token 前缀匹配；并单独加一个 name 字段加权命中
-		parts = append(parts, fmt.Sprintf("%s*", t))
+		runes := []rune(t)
+		if len(runes) == 1 && unicode.Is(unicode.Han, runes[0]) {
+			continue
+		}
+		parts = append(parts, "+"+t)
 	}
 	if len(parts) == 0 {
-		return strings.ReplaceAll(q, "\"", "") + "*"
+		for _, r := range []rune(q) {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Han, r) {
+				s := string(r)
+				if !unicode.Is(unicode.Han, r) || len([]rune(s)) > 1 || len(parts) == 0 {
+					parts = append(parts, "+"+s)
+				}
+			}
+		}
+		if len(parts) == 0 {
+			return "+" + strings.ReplaceAll(q, "'", "")
+		}
 	}
-	return strings.Join(parts, " AND ")
+	return strings.Join(parts, " ")
 }
 
-func normalizeScores(in []Company) {
+func normalizeFTScore(in []Company) {
 	if len(in) == 0 {
 		return
 	}
-	// bm25: 越小越好。我们转换为匹配度：(1 - min/max)*100，再 clamp
-	var minS, maxS float64
-	first := true
+	var maxS float64
 	for _, c := range in {
-		if first || c.Score < minS {
-			minS = c.Score
-		}
-		if first || c.Score > maxS {
+		if c.Score > maxS {
 			maxS = c.Score
 		}
-		first = false
+	}
+	if maxS < 1e-9 {
+		for i := range in {
+			in[i].Score = 100
+		}
+		return
 	}
 	for i := range in {
-		if maxS-minS < 1e-9 {
-			in[i].Score = 100
-			continue
-		}
-		s := 100 * (1 - (in[i].Score-minS)/(maxS-minS))
+		s := 100 * (in[i].Score / maxS)
 		if s < 0 {
 			s = 0
 		}
@@ -376,8 +407,8 @@ func maxInt(a, b int) int {
 // ImportResult 导入统计。
 type ImportResult struct {
 	Inserted int64
-	Skipped  int64 // code 唯一索引冲突导致跳过
-	Failed   int64 // 解析失败/其他错误
+	Skipped  int64
+	Failed   int64
 	Duration time.Duration
 	Files    int
 }
@@ -387,7 +418,7 @@ type ImportResult struct {
 // 支持两种格式（自动识别）：
 //  1. 标准 JSON 数组：[{...}, {...}, ...]
 //  2. JSONL：每行一个 {...}（处理大文件更省内存）
-func (d *sqliteStore) ImportJSONFile(ctx context.Context, path string, batchSize int) (ImportResult, error) {
+func (d *mysqlStore) ImportJSONFile(ctx context.Context, path string, batchSize int) (ImportResult, error) {
 	var res ImportResult
 	if batchSize <= 0 {
 		batchSize = 2000
@@ -399,7 +430,6 @@ func (d *sqliteStore) ImportJSONFile(ctx context.Context, path string, batchSize
 	defer f.Close()
 	res.Files = 1
 	start := time.Now()
-	// 先探测格式：读第一个非空字符，如果是 '[' 则是 JSON 数组
 	format, headR, err := detectJSONFormat(f)
 	if err != nil {
 		return res, fmt.Errorf("探测文件格式失败 %s: %w", path, err)
@@ -416,8 +446,8 @@ func (d *sqliteStore) ImportJSONFile(ctx context.Context, path string, batchSize
 	return res, err
 }
 
-// ImportDir 递归导入目录下所有 .json 文件（按年份/省市分目录时常用）。
-func (d *sqliteStore) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
+// ImportDir 递归导入目录下所有 .json 文件。
+func (d *mysqlStore) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
 	var total ImportResult
 	err := filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
 		if err != nil {
@@ -444,8 +474,6 @@ func (d *sqliteStore) ImportDir(ctx context.Context, dir string, batchSize int) 
 
 // ---------- 导入内部实现 ----------
 
-// rawRecord guichong/- 仓库 json 分支里的原始记录格式（10 字段）。
-// rawRecord 单条工商记录的内部表示；从 JSON 导入时经 mapRec 映射。
 type rawRecord struct {
 	Name                string
 	Code                string
@@ -459,9 +487,6 @@ type rawRecord struct {
 	Address             string
 }
 
-// mapRec JSON 导入时先用 map[string]any 解码，再按字段名（中文 key / 英文 key 均兼容）转 rawRecord。
-// 中文 key 对应：guichong/- 仓库 json 分支原始格式（10 字段）
-// 英文 key 对应：rawRecord 字段名 / CamelCase / snake_case / JSON 序列化后的 Company 结构
 func mapRec(m map[string]any) (rec rawRecord) {
 	get := func(keys ...string) string {
 		for _, k := range keys {
@@ -469,7 +494,6 @@ func mapRec(m map[string]any) (rec rawRecord) {
 				if s, ok := v.(string); ok {
 					return strings.TrimSpace(s)
 				}
-				// 数字型注册资金 / 日期等兼容
 				switch t := v.(type) {
 				case float64:
 					return strings.TrimSpace(fmt.Sprintf("%g", t))
@@ -517,14 +541,12 @@ func mapRec(m map[string]any) (rec rawRecord) {
 }
 
 func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
-	// 读取前 512 字节用于格式探测（也作为 head 返回给 MultiReader 拼接）。
 	buf := make([]byte, 512)
 	n, e := io.ReadFull(r, buf)
 	head = buf[:n]
 	if e == io.EOF || (e == io.ErrUnexpectedEOF && n == 0) {
 		return "", head, fmt.Errorf("文件为空")
 	}
-	// 跳过 BOM 和前导空白
 	idx := 0
 	for idx < len(head) {
 		b := head[idx]
@@ -541,10 +563,6 @@ func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
 	case '[':
 		return "json_array", head, nil
 	case '{':
-		// 区分两种 { 开头的格式：
-		//   A) {"erDataList": [...]}  — 对象包裹数组（guichong/- 仓库 json 分支实际格式）
-		//   B) {"name":"xxx",...}\n{"name":"yyy",...}  — JSONL（每行一个对象）
-		// 判据：前 100 字符内是否出现 ": [ 或 ":[
 		prefix := string(head[idx:])
 		if len(prefix) > 100 {
 			prefix = prefix[:100]
@@ -560,7 +578,7 @@ func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
 }
 
 // importJSONL 按行 JSONL 导入（流式，内存安全）。
-func (d *sqliteStore) importJSONL(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+func (d *mysqlStore) importJSONL(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 256*1024), 32*1024*1024)
@@ -604,16 +622,15 @@ func (d *sqliteStore) importJSONL(ctx context.Context, r io.Reader, batchSize in
 	return flush()
 }
 
-// importJSONArray 导入 JSON 数组（用 json.Decoder Token 流式处理，避免一次性加载到内存）。
-func (d *sqliteStore) importJSONArray(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+// importJSONArray 导入 JSON 数组（流式，避免一次性加载内存）。
+func (d *mysqlStore) importJSONArray(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	dec := json.NewDecoder(r)
-	// 消费掉开头的 [
 	t, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("解析 [ 失败: %w", err)
 	}
-	if d, ok := t.(json.Delim); !ok || d.String() != "[" {
+	if dl, ok := t.(json.Delim); !ok || dl.String() != "[" {
 		return fmt.Errorf("文件不是 JSON 数组，第一个 token=%v", t)
 	}
 	var batch []rawRecord
@@ -649,14 +666,11 @@ func (d *sqliteStore) importJSONArray(ctx context.Context, r io.Reader, batchSiz
 	return flush()
 }
 
-// importJSONObject 导入 {"erDataList": [...]} 等对象包裹数组格式。
-// 用 json.Decoder Token API 流式处理：读取外层 {，遍历 key-value，
-// 找到第一个值为数组的 key 后逐条 Decode，避免一次性加载大文件到内存。
-func (d *sqliteStore) importJSONObject(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
+// importJSONObject 导入 {"erDataList": [...]} 等对象包裹数组格式（流式）。
+func (d *mysqlStore) importJSONObject(ctx context.Context, r io.Reader, batchSize int, res *ImportResult) error {
 	importedAt := time.Now().Unix()
 	dec := json.NewDecoder(r)
 
-	// 消费外层 {
 	t, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("解析 { 失败: %w", err)
@@ -665,20 +679,16 @@ func (d *sqliteStore) importJSONObject(ctx context.Context, r io.Reader, batchSi
 		return fmt.Errorf("期望 { 但得到 %v", t)
 	}
 
-	// 遍历对象的 key-value pairs，找到值为数组的那个
 	for dec.More() {
-		// 读取 key
 		_, err := dec.Token()
 		if err != nil {
 			return fmt.Errorf("读取 key 失败: %w", err)
 		}
-		// 读取 value 的起始 token
 		valToken, err := dec.Token()
 		if err != nil {
 			return fmt.Errorf("读取 value 失败: %w", err)
 		}
 
-		// 如果 value 是数组开头 → 找到了，逐条 Decode
 		if dl, ok := valToken.(json.Delim); ok && dl == '[' {
 			var batch []rawRecord
 			flush := func() error {
@@ -713,8 +723,6 @@ func (d *sqliteStore) importJSONObject(ctx context.Context, r io.Reader, batchSi
 			return flush()
 		}
 
-		// value 不是数组 → 跳过整个值（基本类型 Token 已读完；
-		// 嵌套对象/数组需要按深度跳过）
 		if _, ok := valToken.(json.Delim); ok {
 			depth := 1
 			for depth > 0 {
@@ -733,11 +741,11 @@ func (d *sqliteStore) importJSONObject(ctx context.Context, r io.Reader, batchSi
 			}
 		}
 	}
-	return nil // 对象里没有数组值
+	return nil
 }
 
-// insertBatch 在单事务中批量 INSERT 一批记录；利用 INSERT OR IGNORE 跳过 code 重复。
-func (d *sqliteStore) insertBatch(ctx context.Context, batch []rawRecord, importedAt int64) (inserted, skipped, failed int, err error) {
+// insertBatch 单事务中批量 INSERT，INSERT IGNORE 跳过 code 重复。
+func (d *mysqlStore) insertBatch(ctx context.Context, batch []rawRecord, importedAt int64) (inserted, skipped, failed int, err error) {
 	if len(batch) == 0 {
 		return 0, 0, 0, nil
 	}
@@ -747,11 +755,10 @@ func (d *sqliteStore) insertBatch(ctx context.Context, batch []rawRecord, import
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 用 INSERT OR IGNORE 配合 code 唯一索引：code 不为空且相同 -> 跳过
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT OR IGNORE INTO companies
- (name, code, registration_day, character, legal_representative, capital, business_scope, province, city, address, imported_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+INSERT IGNORE INTO companies
+ (name, code, established_date, industry, legal_rep, registered_capital, business_scope, province, city, district, address, status, created_at, updated_at)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -768,7 +775,10 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
 			emptyToNull(r.BusinessScope),
 			emptyToNull(r.Province),
 			emptyToNull(r.City),
+			nil,
 			emptyToNull(r.Address),
+			nil,
+			importedAt,
 			importedAt,
 		)
 		if e != nil {
@@ -798,22 +808,16 @@ func emptyToNull(s string) interface{} {
 
 // ---------- 清空 ----------
 
-// Clear 清空 companies 表（连带 FTS 索引），VACUUM 回收磁盘空间。
-func (d *sqliteStore) Clear(ctx context.Context) error {
-	if _, err := d.db.ExecContext(ctx, `DELETE FROM companies`); err != nil {
-		return err
-	}
-	// FTS 触发器会同步清理
-	if _, err := d.db.ExecContext(ctx, `VACUUM`); err != nil && !errors.Is(err, sql.ErrTxDone) {
-		// VACUUM 在某些繁忙场景会失败，非致命
-	}
-	return nil
+// Clear 清空 companies 表。
+func (d *mysqlStore) Clear(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, `DELETE FROM companies`)
+	return err
 }
 
 // ---------- 工具 ----------
 
-// Provinces 返回数据库内所有省份（用于前端筛选项）。
-func (d *sqliteStore) Provinces(ctx context.Context) ([]string, error) {
+// Provinces 返回数据库内所有省份。
+func (d *mysqlStore) Provinces(ctx context.Context) ([]string, error) {
 	rows, err := d.db.QueryContext(ctx, `SELECT DISTINCT province FROM companies WHERE province IS NOT NULL AND province <> '' ORDER BY province`)
 	if err != nil {
 		return nil, err
@@ -831,5 +835,4 @@ func (d *sqliteStore) Provinces(ctx context.Context) ([]string, error) {
 	return out, rows.Err()
 }
 
-// 编译期接口断言：确保 sqliteStore 完整实现 OfflineStore。
-var _ OfflineStore = (*sqliteStore)(nil)
+var _ OfflineStore = (*mysqlStore)(nil)

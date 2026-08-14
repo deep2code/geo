@@ -243,7 +243,7 @@ func (s *Server) toolDefinitions() []mcpTool {
 		},
 		{
 			Name:        "geo_search_companies",
-			Description: "离线工商库搜索：在本地 SQLite 离线工商注册数据库（1978-2019，1000万+ 条，源自 guichong/- 仓库）中按名称/品牌/法人模糊搜索匹配的公司列表。",
+			Description: "离线工商库搜索：在 MySQL 离线工商注册数据库（1978-2019，1000万+ 条，源自 guichong/- 仓库）中按名称/品牌/法人模糊搜索匹配的公司列表。",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -428,7 +428,7 @@ func (s *Server) toolSearchCompanies(ctx context.Context, args map[string]interf
 		"query":   opt.Query,
 		"count":   len(results),
 		"results": results,
-		"source":  "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ SQLite + FTS5",
+		"source":  "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MySQL + FULLTEXT(ngram)",
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return string(b), nil

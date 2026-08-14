@@ -63,10 +63,10 @@ graph TB
         DIS["🔍 关键词发现引擎<br/>Discover → Report"]
     end
 
-    subgraph 数据层["💾 多后端数据层"]
-        DB1["离线工商库<br/>SQLite/DuckDB<br/>1000万+企业 FTS5"]
-        DB2["审计历史库<br/>SQLite/MySQL<br/>时序 + JSON快照"]
-        DB3["China-Check缓存<br/>JSONL/Redis<br/>K/V + TTL"]
+    subgraph 数据层["💾 统一 MySQL 数据层"]
+        DB1["离线工商库<br/>MySQL 8.0<br/>千万级企业 FULLTEXT(ngram)"]
+        DB2["审计历史库<br/>MySQL 8.0<br/>时序 + JSON快照"]
+        DB3["China-Check / Auth 缓存<br/>MySQL KV 表 + TTL<br/>可无缝切换 Redis"]
         KB["📚 SinoFacts 知识库<br/>383家中国软件企业"]
     end
 
@@ -173,49 +173,44 @@ graph TB
 
 ```mermaid
 mindmap
-  root((数据层选型))
+  root((数据层选型 · 统一 MySQL))
     离线工商库
       数据特征
         千万级行
-        FTS5全文检索
+        FULLTEXT(ngram) 中文全文
         只读+批量导入
-      默认后端
-        SQLite FTS5
-        纯Go零依赖
-      可选后端
-        DuckDB列式
-        千万级更快
+      后端
+        MySQL 8.0 InnoDB
+        UTF8MB4 中文友好
     审计历史库
       数据特征
         时序追加写入
-        JSON快照列
-        品牌时间范围查询
-      默认后端
-        SQLite
-        零依赖
-      可选后端
-        MySQL
-        生产高并发
-    China-Check缓存
+        MEDIUMTEXT JSON 快照
+        品牌+时间范围查询
+      后端
+        MySQL 8.0
+        复合时序索引
+    China-Check / Auth 缓存
       数据特征
-        K/V结构
-        TTL过期
+        K/V 结构
+        TTL 过期
         高频读低频写
       默认后端
-        JSONL文件
-        本地零依赖
+        MySQL KV 表
+        MEDIUMBLOB + expire_at 索引
       可选后端
         Redis
         分布式缓存
 ```
 
-| 模块 | 数据特征 | 🟢 零依赖（默认） | 🚀 高性能（可选） | 环境变量 |
+| 模块 | 数据特征 | 🛢 生产级后端（默认） | 🚀 可选分布式 | 环境变量 |
 |---|---|---|---|---|
-| 离线工商库 | 千万级行 + FTS5 全文 | SQLite (FTS5) | DuckDB | `GEO_OFFLINE_DB_TYPE` |
-| 审计历史库 | 时序写入 + JSON 快照 | SQLite | MySQL | `GEO_HISTORY_DB_TYPE` |
-| CC 查询缓存 | K/V + TTL + 高频读 | JSONL 文件 | Redis | `GEO_CHINACHECK_CACHE_TYPE` |
+| 离线工商库 | 千万级行 + 中文全文检索 | MySQL 8.0 FULLTEXT(ngram) | — | `GEO_OFFLINE_MYSQL_DSN` |
+| 审计历史库 | 时序写入 + JSON 快照 | MySQL 8.0 复合索引 | — | `GEO_HISTORY_MYSQL_DSN` |
+| CC 查询缓存 | K/V + TTL + 高频读 | MySQL KV 表 | Redis | `GEO_CHINACHECK_MYSQL_DSN` |
+| 账号 / 会话 | 用户 + 工作区 + 刷新令牌 | MySQL 8.0 | — | `GEO_AUTH_MYSQL_DSN` |
 
-> **承诺**：所有模块默认开箱即用，**无需安装任何外部数据库**。
+> **前置依赖**：首次部署需要一个可访问的 MySQL 8.0+ 实例（docker / 云 RDS / 本地服务均可），账号需具备 `CREATE TABLE / INDEX / DML` 权限。
 
 ---
 
@@ -345,7 +340,7 @@ graph LR
 
 ```mermaid
 flowchart TD
-    START([用户输入关键词<br/>如「短视频」]) --> 1["🔎 双重搜索<br/>离线工商库 FTS5 + SinoFacts 知识库"]
+    START([用户输入关键词<br/>如「短视频」]) --> 1["🔎 双重搜索<br/>离线工商库 FULLTEXT(ngram) + SinoFacts 知识库"]
     1 --> 2{"找到多少匹配？"}
     2 -->|"1 个"| 3["✅ 直接选中"]
     2 -->|"多个"| 4["📋 展示候选列表<br/>用户点击选择"]
@@ -494,13 +489,13 @@ tree
 
 ```mermaid
 flowchart TD
-    A["零依赖部署原则"] --> A1["go:embed 单文件前端"]
-    A --> A2["纯 Go SQLite 驱动<br/>modernc.org/sqlite"]
-    A --> A3["编译后单二进制"]
+    A["统一 MySQL 部署原则"] --> A1["go:embed 单文件前端"]
+    A --> A2["纯 Go MySQL 驱动<br/>go-sql-driver/mysql"]
+    A --> A3["编译后单二进制 + 外部 MySQL 8.0"]
 
-    B["按功能选型数据库"] --> B1["三层抽象接口<br/>Store/OfflineStore/CacheStore"]
-    B --> B2["环境变量切换后端"]
-    B --> B3["默认全部零依赖"]
+    B["模块化接口不变"] --> B1["三层抽象接口<br/>Store/OfflineStore/CacheStore"]
+    B --> B2["环境变量配置 MySQL DSN"]
+    B --> B3["Schema 自动初始化<br/>首次启动建表+索引"]
 
     C["数据优先级策略"] --> C1["① 工商实时"]
     C --> C2["② 离线历史"]
