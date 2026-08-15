@@ -431,9 +431,12 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) registerRoutes() {
-	// REST API
-	s.mux.HandleFunc("/api/v1/health", s.handleHealth)
-	s.mux.HandleFunc("/api/v1/ready", s.handleReady)
+	// Kubernetes 规范健康检查路径别名（liveness / readiness）
+	s.mux.HandleFunc("/healthz", s.handleLiveness)
+	s.mux.HandleFunc("/readyz", s.handleReadiness)
+	// REST API（/api/v1/health, /api/v1/ready 复用同一实现，保持向后兼容）
+	s.mux.HandleFunc("/api/v1/health", s.handleLiveness)
+	s.mux.HandleFunc("/api/v1/ready", s.handleReadiness)
 	s.mux.HandleFunc("/api/v1/meta/whitelabel", s.handleWhitelabel)
 	s.mux.HandleFunc("/api/v1/strategies", s.handleStrategies)
 	s.mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
@@ -707,46 +710,12 @@ func (s *Server) handleWhitelabel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.whitelabel)
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	// liveness：进程存活即可（k8s livenessProbe 用）
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":  "ok",
-		"service": "geo",
-		"version": "1.0.0",
-	})
-}
+// handleHealth 已废弃：所有流量统一走 /healthz 或 /api/v1/health -> handleLiveness。
+// 保留该函数仅为避免其他 package 中可能的反射/引用风险。若有需要可直接删除。
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) { s.handleLiveness(w, r) }
 
-// handleReady 就绪检查：检查依赖（品牌引擎、历史库、离线库）是否就绪。
-// k8s readinessProbe 用，未就绪时返回 503，不接收流量。
-func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
-	checks := map[string]string{}
-	ready := true
-	if s.brandEngine == nil {
-		checks["brand_engine"] = "unavailable"
-		ready = false
-	} else {
-		checks["brand_engine"] = "ok"
-		if s.brandEngine.HistoryDB() == nil {
-			checks["history_db"] = "disabled"
-		} else {
-			checks["history_db"] = "ok"
-		}
-		if s.brandEngine.OfflineDB() == nil {
-			checks["offline_db"] = "disabled"
-		} else {
-			checks["offline_db"] = "ok"
-		}
-	}
-	status := http.StatusOK
-	if !ready {
-		status = http.StatusServiceUnavailable
-	}
-	writeJSON(w, status, map[string]interface{}{
-		"status":  map[bool]string{true: "ready", false: "not_ready"}[ready],
-		"checks":  checks,
-		"service": "geo",
-	})
-}
+// handleReady 已废弃：所有流量统一走 /readyz 或 /api/v1/ready -> handleReadiness。
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) { s.handleReadiness(w, r) }
 
 func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
 	infos := s.engine.StrategyInfos()

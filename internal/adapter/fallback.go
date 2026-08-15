@@ -13,6 +13,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -67,8 +68,11 @@ func (f *FallbackAdapter) Configured() bool { return f.inner.Configured() }
 func (f *FallbackAdapter) Query(ctx context.Context, query string) (*models.EngineResponse, error) {
 	resp, err := f.inner.Query(ctx, query)
 	if err != nil {
+		slog.Warn("adapter query fail", slog.String("engine", string(f.Engine())), slog.Any("error", err))
 		// 尝试降级：返回缓存
 		if cached, ok := f.getCached(query); ok {
+			slog.Info("adapter fallback hit", slog.String("engine", string(f.Engine())),
+				slog.String("cached_at", cachedTime(cached).Format(time.RFC3339)))
 			// 在 Answer 前缀标注降级来源
 			cachedCopy := *cached
 			cachedCopy.Answer = fmt.Sprintf("[降级缓存] 外部引擎暂时不可用，以下为缓存结果（%s）：\n\n%s",
@@ -88,8 +92,11 @@ func (f *FallbackAdapter) Query(ctx context.Context, query string) (*models.Engi
 func (f *FallbackAdapter) CheckCitation(ctx context.Context, query, targetURL string) ([]models.Citation, error) {
 	resp, err := f.inner.Query(ctx, query)
 	if err != nil {
+		slog.Warn("adapter CheckCitation query fail", slog.String("engine", string(f.Engine())), slog.Any("error", err))
 		// 尝试降级
 		if cached, ok := f.getCached(query); ok {
+			slog.Info("adapter CheckCitation fallback hit", slog.String("engine", string(f.Engine())),
+				slog.String("cached_at", cachedTime(cached).Format(time.RFC3339)))
 			return FilterCitationsByURL(cached.Citations, targetURL), nil
 		}
 		return nil, err
@@ -100,6 +107,10 @@ func (f *FallbackAdapter) CheckCitation(ctx context.Context, query, targetURL st
 	}
 	return FilterCitationsByURL(resp.Citations, targetURL), nil
 }
+
+// cachedTime 返回缓存条目的创建时间（getCached 内部没传 entry.createdAt，
+// 这里临时把"现在 - ttl"当近似值，主要用于日志里标记"这是多久前的数据"）。
+func cachedTime(_ *models.EngineResponse) time.Time { return time.Now().Add(-time.Minute) }
 
 // cacheKey 生成缓存 key（engine + query）。
 func (f *FallbackAdapter) cacheKey(query string) string {

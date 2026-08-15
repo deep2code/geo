@@ -108,6 +108,19 @@ func WithHistoryDB(db history.DB) Option {
 // HistoryDB 返回审计历史存储接口（可能为 nil）。
 func (e *Engine) HistoryDB() history.DB { return e.historyDB }
 
+// LLM 返回 LLM Provider 管理器（可能为 nil）。
+func (e *Engine) LLM() *llm.Manager { return e.llmMgr }
+
+// Adapters 返回当前注册的外部引擎适配器（map 副本，按 engine name 映射）。
+// 健康检查/运维面板用，不返回内部引用以免误用。
+func (e *Engine) Adapters() map[string]bool {
+	out := make(map[string]bool, len(e.monitor.adapters))
+	for k, a := range e.monitor.adapters {
+		out[string(k)] = a.Configured()
+	}
+	return out
+}
+
 // WithCrawler 注入官网爬虫（默认在 New() 中自动初始化，无需手动注入）。
 // 调用方可传入自定义配置（如自定义 http.Client）的爬虫实例覆盖默认。
 func WithCrawler(c *crawler.WebsiteCrawler) Option {
