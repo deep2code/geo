@@ -1,6 +1,7 @@
 package chinacheck
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"my-geo/internal/dbprovider"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -35,7 +38,7 @@ func resolveDSN(filePath string) string {
 }
 
 func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
-	dsn = resolveDSN(dsn)
+	dsn = dbprovider.NormalizeMySQLDSN(resolveDSN(dsn))
 	c := &mysqlCacheStore{
 		dsn:      dsn,
 		maxItems: defaultMaxItems,
@@ -48,12 +51,16 @@ func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("chinacheck/mysql: open failed: %w", err)
 	}
-	db.SetMaxOpenConns(64)
-	db.SetMaxIdleConns(16)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	dbprovider.ConfigurePool(db, "cache")
 	c.db = db
 
-	if _, err := db.Exec("SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("chinacheck/mysql: ping failed: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("chinacheck/mysql: set session failed: %w", err)
 	}

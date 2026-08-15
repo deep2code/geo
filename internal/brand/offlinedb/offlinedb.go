@@ -21,6 +21,8 @@ import (
 	"time"
 	"unicode"
 
+	"my-geo/internal/dbprovider"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -110,17 +112,19 @@ func Open(path string) (OfflineStore, error) {
 			dsn = defaultMySQLDSN
 		}
 	}
+	dsn = dbprovider.NormalizeMySQLDSN(dsn)
 	sqldb, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("打开 MySQL 失败: %w", err)
 	}
-	sqldb.SetMaxOpenConns(64)
-	sqldb.SetMaxIdleConns(16)
-	sqldb.SetConnMaxLifetime(30 * time.Minute)
+	dbprovider.ConfigurePool(sqldb, "offline")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
+	if err := sqldb.PingContext(ctx); err != nil {
+		_ = sqldb.Close()
+		return nil, fmt.Errorf("离线库 MySQL ping 失败: %w", err)
+	}
 	if _, err := sqldb.ExecContext(ctx, `SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON`); err != nil {
 		_ = sqldb.Close()
 		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"my-geo/internal/dbprovider"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -38,6 +40,7 @@ CREATE INDEX idx_history_ws_brand_time ON audit_history(workspace_id, brand_name
 CREATE INDEX idx_history_ws_time ON audit_history(workspace_id, generated_at);
 CREATE INDEX idx_history_brand_time ON audit_history(brand_name, generated_at);
 CREATE INDEX idx_history_time ON audit_history(generated_at);
+CREATE INDEX idx_history_ws_brand ON audit_history(workspace_id, brand_name);
 `
 
 // mysqlStore MySQL 实现的审计历史存储。
@@ -61,14 +64,19 @@ func Open(path string) (Store, error) {
 			dsn = "geo_history:geo_history_pass@tcp(127.0.0.1:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci&tls=false"
 		}
 	}
+	dsn = dbprovider.NormalizeMySQLDSN(dsn)
 	sqldb, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("history: 打开 MySQL 失败: %w", err)
 	}
-	sqldb.SetMaxOpenConns(128)
-	sqldb.SetMaxIdleConns(32)
-	sqldb.SetConnMaxLifetime(30 * time.Minute)
-	if _, err := sqldb.Exec("SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	dbprovider.ConfigurePool(sqldb, "default")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := sqldb.PingContext(ctx); err != nil {
+		sqldb.Close()
+		return nil, fmt.Errorf("history: MySQL ping 失败: %w", err)
+	}
+	if _, err := sqldb.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: MySQL 初始化会话失败: %w", err)
 	}
@@ -278,7 +286,9 @@ func (d *mysqlStore) Brands(ctx context.Context) ([]string, error) {
 	}
 	wid := WorkspaceFromContext(ctx)
 	wsClause, wsArg := wsScope(wid)
-	q := `SELECT DISTINCT brand_name FROM audit_history WHERE 1=1` + wsClause + ` ORDER BY brand_name`
+	// 用 GROUP BY 代替 DISTINCT：对于带 (workspace_id, brand_name) 索引的列，MySQL 可直接走
+	// 索引有序扫描，结果天然有序，因此还能省一次 filesort（比 DISTINCT + ORDER BY 更快）。
+	q := `SELECT brand_name FROM audit_history WHERE 1=1` + wsClause + ` GROUP BY brand_name ORDER BY brand_name`
 	var args []interface{}
 	if wsArg != nil {
 		args = append(args, wsArg)
@@ -368,10 +378,22 @@ func (d *mysqlStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, 
 	wid := WorkspaceFromContext(ctx)
 	wsClause, wsArg := wsScope(wid)
 	cutoffStart := start.Unix()
+	cutoffEnd := now.AddDate(0, 0, 1).Unix()
+
+	// 关键优化：把"每行一次网络往返 + Go 层按天 map 聚合"改为服务端 GROUP BY 聚合：
+	//   SELECT DATE(FROM_UNIXTIME(generated_at)) day, COUNT(*), AVG(score)
+	//   WHERE generated_at BETWEEN [start, end) AND workspace_id=?
+	//   GROUP BY day
+	// 网络传输从 O(N 审计行) 降到 O(days)，典型 30 天查询只需扫描 <=30 行结果。
 	q := `
-		SELECT generated_at, score FROM audit_history
-		WHERE generated_at >= ? AND generated_at < ?` + wsClause
-	args := []interface{}{cutoffStart, now.AddDate(0, 0, 1).Unix()}
+		SELECT
+			DATE(FROM_UNIXTIME(generated_at)) AS day,
+			COUNT(*) AS cnt,
+			IFNULL(AVG(score), -1) AS avg_score
+		FROM audit_history
+		WHERE generated_at >= ? AND generated_at < ?` + wsClause + `
+		GROUP BY day`
+	args := []interface{}{cutoffStart, cutoffEnd}
 	if wsArg != nil {
 		args = append(args, wsArg)
 	}
@@ -381,38 +403,22 @@ func (d *mysqlStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, 
 	}
 	defer rows.Close()
 
-	type agg struct {
-		sum   float64
-		count int64
-	}
-	buckets := make(map[string]*agg, days)
-
 	for rows.Next() {
-		var ga int64
-		var score float64
-		if err := rows.Scan(&ga, &score); err != nil {
+		var date string
+		var count int64
+		var avgScore float64
+		if err := rows.Scan(&date, &count, &avgScore); err != nil {
 			return nil, fmt.Errorf("history/mysql: DailyCounts 扫描失败: %w", err)
 		}
-		date := time.Unix(ga, 0).In(loc).Format("2006-01-02")
-		b, ok := buckets[date]
-		if !ok {
-			b = &agg{}
-			buckets[date] = b
+		if i, ok := keyMap[date]; ok {
+			out[i].Count = count
+			if count > 0 {
+				out[i].AvgScore = avgScore
+			}
 		}
-		b.count++
-		b.sum += score
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("history/mysql: DailyCounts 行迭代失败: %w", err)
-	}
-
-	for date, a := range buckets {
-		if i, ok := keyMap[date]; ok {
-			out[i].Count = a.count
-			if a.count > 0 {
-				out[i].AvgScore = a.sum / float64(a.count)
-			}
-		}
 	}
 	return out, nil
 }

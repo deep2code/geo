@@ -39,6 +39,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"my-geo/internal/config"
+	"my-geo/internal/dbprovider"
 	"my-geo/internal/util"
 )
 
@@ -542,16 +543,20 @@ func defaultAuthDSN() string {
 
 // OpenStore 打开/创建账号数据库。
 func OpenStore() (*Store, error) {
-	dsn := defaultAuthDSN()
+	dsn := dbprovider.NormalizeMySQLDSN(defaultAuthDSN())
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open auth db: %w", err)
 	}
-	db.SetMaxOpenConns(64)
-	db.SetMaxIdleConns(16)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	dbprovider.ConfigurePool(db, "auth")
 
-	if _, err := db.Exec("SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("auth db ping: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("set mysql session: %w", err)
 	}
