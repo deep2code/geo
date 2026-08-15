@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -25,10 +26,40 @@ import (
 )
 
 func main() {
+	initLogger()
 	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
 	}
+}
+
+// initLogger 初始化 slog 日志处理器。
+// 支持环境变量：
+//   - GEO_LOG_LEVEL: debug | info | warn | error（默认 info）
+//   - GEO_LOG_FORMAT: text | json（默认 text；K8s/Docker 建议用 json）
+//   - 自动检测 K8s 环境（KUBERNETES_SERVICE_HOST）时默认 JSON
+func initLogger() {
+	var level slog.Level = slog.LevelInfo
+	if v := strings.TrimSpace(os.Getenv("GEO_LOG_LEVEL")); v != "" {
+		_ = level.UnmarshalText([]byte(v))
+	}
+	format := strings.TrimSpace(os.Getenv("GEO_LOG_FORMAT"))
+	if format == "" {
+		// K8s 环境自动切 JSON
+		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+			format = "json"
+		} else {
+			format = "text"
+		}
+	}
+	opts := &slog.HandlerOptions{Level: level}
+	var h slog.Handler
+	if format == "json" {
+		h = slog.NewJSONHandler(os.Stderr, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stderr, opts)
+	}
+	slog.SetDefault(slog.New(h))
 }
 
 func newRootCmd() *cobra.Command {

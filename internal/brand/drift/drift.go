@@ -149,7 +149,7 @@ func CompareLatest(ctx context.Context, db history.DB, brandName string) (*Repor
 	if db == nil {
 		return nil, nil
 	}
-	records, err := db.List(ctx, brandName, 2)
+	records, err := db.List(ctx, brandName, 2, 0)
 	if err != nil {
 		return nil, fmt.Errorf("drift: 读取历史记录失败: %w", err)
 	}

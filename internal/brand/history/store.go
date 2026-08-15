@@ -71,7 +71,8 @@ type Store interface {
 	// Save 写入一条审计快照，返回新记录 ID。
 	Save(ctx context.Context, r Record) (int64, error)
 	// List 查询指定品牌的审计历史（按时间降序），limit<=0 表示默认 100。
-	List(ctx context.Context, brandName string, limit int) ([]Record, error)
+	// offset 用于分页（从第 offset 条开始取 limit 条）。
+	List(ctx context.Context, brandName string, limit, offset int) ([]Record, error)
 	// Latest 查询指定品牌最新一条审计记录（含完整 ReportJSON），无记录时返回 (nil,nil)。
 	Latest(ctx context.Context, brandName string) (*Record, error)
 	// GetByID 按 ID 取单条记录。

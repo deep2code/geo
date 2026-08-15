@@ -1,8 +1,56 @@
 # docker-compose.yml - GEO 系统编排部署
 #
 # 使用：docker compose up -d
+# 一键启动 geo + MySQL 8.0 + Redis 7（可选缓存）
 
 services:
+  # ===== MySQL 数据库 =====
+  mysql:
+    image: mysql:8.0
+    container_name: geo-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${GEO_MYSQL_ROOT_PASSWORD:-geoRootPass}
+      MYSQL_DATABASE: geo
+      MYSQL_USER: geo
+      MYSQL_PASSWORD: ${GEO_MYSQL_PASSWORD:-geoPass}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 可选：放置建库/建表 SQL 脚本到 ./deploy/initdb/ 下自动执行
+      # - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${GEO_MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${GEO_MYSQL_ROOT_PASSWORD:-geoRootPass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===== Redis 缓存（可选，chinacheck_cache 用）=====
+  redis:
+    image: redis:7-alpine
+    container_name: geo-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "${GEO_REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ===== GEO 应用 =====
   geo:
     build:
       context: .
@@ -16,15 +64,28 @@ services:
       - .env
     environment:
       - TZ=Asia/Shanghai
+      # MySQL DSN（指向 compose 内的 mysql 服务）
+      - GEO_OFFLINE_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_HISTORY_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_AUTH_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_CHINACHECK_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_chinacheck?parseTime=true&charset=utf8mb4&loc=Local
+      # Redis（指向 compose 内的 redis 服务）
+      - GEO_CHINACHECK_CACHE_TYPE=mysql
+      # - GEO_CHINACHECK_CACHE_TYPE=redis
+      # - GEO_CHINACHECK_REDIS_DSN=redis://redis:6379/0
     volumes:
-      # 持久化日志（如需）
       - geo-logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
       interval: 30s
-      timeout: 3s
+      timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 15s
     logging:
       driver: json-file
       options:
@@ -32,4 +93,6 @@ services:
         max-file: "3"
 
 volumes:
+  mysql-data:
+  redis-data:
   geo-logs:

@@ -86,11 +86,11 @@ func hashToInt(s string, mod int) int {
 }
 
 // buildMockTenants 基于 HistoryDB 中的品牌数据生成模拟租户信息。
-func (s *Server) buildMockTenants() []TenantInfo {
+func (s *Server) buildMockTenants(ctx context.Context) []TenantInfo {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
 		return []TenantInfo{}
 	}
-	brands, _ := s.brandEngine.HistoryDB().Brands(context.Background())
+	brands, _ := s.brandEngine.HistoryDB().Brands(ctx)
 	sort.Strings(brands)
 	plans := []string{"free", "pro", "enterprise"}
 	statuses := []string{"active", "active", "active", "suspended", "expired"}
@@ -157,7 +157,7 @@ func (s *Server) handleAdminTenants(w http.ResponseWriter, r *http.Request) {
 		limit = 100
 	}
 
-	tenants := s.buildMockTenants()
+	tenants := s.buildMockTenants(r.Context())
 	// 过滤
 	filtered := tenants[:0]
 	for _, t := range tenants {
@@ -255,7 +255,7 @@ func (s *Server) handleAdminTenantDetail(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
-	tenants := s.buildMockTenants()
+	tenants := s.buildMockTenants(r.Context())
 	for _, t := range tenants {
 		if t.ID == tenantID {
 			writeJSON(w, http.StatusOK, t)
@@ -282,7 +282,7 @@ func (s *Server) handleAdminUsage(w http.ResponseWriter, r *http.Request) {
 		totalEmails   int64
 		activeTenants int
 	)
-	tenants := s.buildMockTenants()
+	tenants := s.buildMockTenants(r.Context())
 	for _, t := range tenants {
 		totalBrands += int64(t.Brands)
 		totalAudits += int64(t.Audits)
@@ -293,7 +293,7 @@ func (s *Server) handleAdminUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	// 从 HistoryDB 获取真实统计数据覆盖
 	if s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
-		if st, err := s.brandEngine.HistoryDB().Stats(nilCtx()); err == nil {
+		if st, err := s.brandEngine.HistoryDB().Stats(r.Context()); err == nil {
 			totalBrands = st.Brands
 			totalAudits = st.Records
 		}
@@ -437,7 +437,7 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 	// 磁盘使用：优先返回 HistoryDB 文件大小
 	var diskUsed int64
 	if s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
-		if st, err := s.brandEngine.HistoryDB().Stats(nilCtx()); err == nil {
+		if st, err := s.brandEngine.HistoryDB().Stats(r.Context()); err == nil {
 			diskUsed = st.FileSize
 		}
 	}

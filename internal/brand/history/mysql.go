@@ -176,7 +176,7 @@ func (d *mysqlStore) Save(ctx context.Context, r Record) (int64, error) {
 	return id, nil
 }
 
-func (d *mysqlStore) List(ctx context.Context, brandName string, limit int) ([]Record, error) {
+func (d *mysqlStore) List(ctx context.Context, brandName string, limit, offset int) ([]Record, error) {
 	if d == nil || d.db == nil {
 		return nil, nil
 	}
@@ -185,6 +185,7 @@ func (d *mysqlStore) List(ctx context.Context, brandName string, limit int) ([]R
 	}
 	wid := WorkspaceFromContext(ctx)
 	wsClause, wsArg := wsScope(wid)
+	// 使用 LIMIT ? OFFSET ? 把分页下推到 MySQL，避免取出全部后再内存切片。
 	q := `SELECT
 		id, COALESCE(workspace_id,''), brand_name, generated_at, score, grade, tier,
 		entity_completeness, mention_rate, citation_rate, share_of_voice,
@@ -192,12 +193,12 @@ func (d *mysqlStore) List(ctx context.Context, brandName string, limit int) ([]R
 		content_gaps_count, competitor_count, negative_count, action_count
 		FROM audit_history WHERE brand_name = ?` + wsClause + `
 		ORDER BY generated_at DESC
-		LIMIT ?`
+		LIMIT ? OFFSET ?`
 	args := []interface{}{brandName}
 	if wsArg != nil {
 		args = append(args, wsArg)
 	}
-	args = append(args, limit)
+	args = append(args, limit, offset)
 	rows, err := d.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("history/mysql: List 失败: %w", err)

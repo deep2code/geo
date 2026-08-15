@@ -190,7 +190,7 @@ func (s *Scheduler) runAudit(cfg *ScheduleConfig) {
 
 	// 与上次结果对比
 	if s.historyDB != nil {
-		records, err := s.historyDB.List(ctx, cfg.BrandName, 2)
+		records, err := s.historyDB.List(ctx, cfg.BrandName, 2, 0)
 		if err == nil && len(records) >= 2 {
 			// records[0] 是最新（刚写入的），records[1] 是上一次
 			prev := records[1]

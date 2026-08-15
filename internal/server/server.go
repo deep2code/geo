@@ -186,7 +186,7 @@ func newBrandEngineFromEnv() *brand.Engine {
 			slog.Warn("离线工商库打开成功但统计失败", slog.Any("error", err))
 		} else {
 			slog.Info("离线工商 MySQL 库已启用",
-				slog.String("dsn", st.Path),
+				slog.String("dsn", maskDSN(st.Path)),
 				slog.Int64("count", st.Count),
 				slog.String("seed_source", "guichong/- 仓库 json 分支"))
 		}
@@ -194,7 +194,7 @@ func newBrandEngineFromEnv() *brand.Engine {
 	// 注入审计历史 MySQL 库（默认启用）
 	if hdb := newHistoryDBFromEnv(); hdb != nil {
 		opts = append(opts, brand.WithHistoryDB(hdb))
-		slog.Info("审计历史 MySQL 库已启用", slog.String("dsn", hdb.Path()))
+		slog.Info("审计历史 MySQL 库已启用", slog.String("dsn", maskDSN(hdb.Path())))
 	}
 	return brand.New(opts...)
 }
@@ -608,6 +608,15 @@ func serveStaticFile(w http.ResponseWriter, path string) bool {
 		}
 	}
 	w.Header().Set("Content-Type", ct)
+	// 静态资源分级缓存策略：
+	//   - hashed 资源（.js/.css/.woff2/.png 等）：immutable，浏览器永久缓存
+	//   - HTML 入口文件：no-cache，每次必须回源校验
+	if ext != ".html" && ext != ".htm" {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 	return true
@@ -1018,6 +1027,20 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+// writeInternalError 记录完整错误到日志（含 request_id），但对客户端只返回通用提示，
+// 避免泄露 SQL / 连接串 / 表结构 / 堆栈等内部实现。
+// msg 为额外上下文（如"生成报告失败"），可为空。
+func writeInternalError(w http.ResponseWriter, err error, msg string) {
+	slog.Error("internal error",
+		slog.String("message", msg),
+		slog.Any("error", err))
+	m := "内部错误，请稍后重试"
+	if msg != "" {
+		m = msg + "失败，请稍后重试"
+	}
+	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": m})
 }
 
 func readJSON(r *http.Request, v interface{}) error {
@@ -2064,27 +2087,17 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	records, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, limit+offset)
+	records, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, limit, offset)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "读取审计历史")
 		return
 	}
-	// 应用 offset（history.List 不支持 offset，取 limit+offset 条后切片）
-	end := offset + limit
-	if end > len(records) {
-		end = len(records)
-	}
-	if offset > len(records) {
-		offset = len(records)
-	}
-	paged := records[offset:end]
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"brand":   brandName,
-		"count":   len(paged),
-		"total":   len(records),
+		"count":   len(records),
 		"offset":  offset,
 		"limit":   limit,
-		"records": paged,
+		"records": records,
 	})
 }
 
@@ -4012,9 +4025,9 @@ func (s *Server) handleLeaderboardBrand(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	// 3. 获取该品牌完整历史（时间序列，按时间降序）
-	hist, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, historyLimit)
+	hist, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, historyLimit, 0)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "读取排行榜历史")
 		return
 	}
 	// 4. 构造 rank_history：基于同 category 内历史记录的相对排名

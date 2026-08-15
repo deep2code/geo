@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"log/slog"
 	"net"
@@ -177,7 +178,7 @@ func (s *statusRecorder) WriteHeader(code int) {
 // ===== 中间件链组装 =====
 
 // withMiddleware 应用完整中间件链（顺序：外层先，然后层层嵌套向内）：
-// recovery → requestLogger → withRequestID → rateLimitGlobal → waf →
+// recovery → gzip → requestLogger → withRequestID → rateLimitGlobal → waf →
 // cors(+CSRF) → auth(JWT+legacy API Key) → aiGeneratedHeaders → handler
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	cfg := auth.MiddlewareConfig{
@@ -192,14 +193,16 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 		},
 	}
 	return s.recovery(
-		s.requestLogger(
-			s.withRequestID(
-				s.rateLimitGlobal(
-					s.withWAF(
-						s.withCSRF(
-							s.withCORS(
-								auth.WithAuthN(cfg)(
-									s.withAIGeneratedHeaders(h),
+		s.withGzip(
+			s.requestLogger(
+				s.withRequestID(
+					s.rateLimitGlobal(
+						s.withWAF(
+							s.withCSRF(
+								s.withCORS(
+									auth.WithAuthN(cfg)(
+										s.withAIGeneratedHeaders(h),
+									),
 								),
 							),
 						),
@@ -237,12 +240,20 @@ func (s *Server) withAIGeneratedHeaders(h http.Handler) http.Handler {
 // ===== CORS =====
 
 // withCORS 添加 CORS 头。
-// corsOrigins 为 nil 时全开放（兼容本地开发）；否则校验 Origin 白名单。
+// corsOrigins 为 nil 时：
+//   - 本地开发（localhost/127.0.0.1）允许跨域
+//   - 生产环境默认拒绝跨域（安全姿态：deny by default）
+// corsOrigins 非 nil 时：校验 Origin 白名单。
 func (s *Server) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if corsOrigins == nil {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
+			// 本地开发放行；非 localhost 默认拒绝
+			if isLocalhostOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			// 非 localhost 且未配置白名单：不设 ACAO 头 → 浏览器拒绝跨域
 		} else if corsOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -257,26 +268,49 @@ func (s *Server) withCORS(h http.Handler) http.Handler {
 	})
 }
 
+// isLocalhostOrigin 判断 Origin 是否为本地开发地址。
+func isLocalhostOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	for _, prefix := range []string{
+		"http://localhost",
+		"https://localhost",
+		"http://127.0.0.1",
+		"https://127.0.0.1",
+		"http://[::1]",
+		"https://[::1]",
+	} {
+		if strings.HasPrefix(origin, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // ===== CSRF 防护 =====
 
 // withCSRF 对写操作（POST/PUT/PATCH/DELETE）校验 Origin。
 //
-// 当 CORS 白名单非 nil（非全开放模式）时：
-//   - 写操作的 Origin 必须在白名单中，否则拒绝（CSRF 防护）。
-//   - Origin 缺失时允许同源请求（浏览器同源导航不携带 Origin，但也不应发写请求）。
-//
-// CORS 为 "*" 全开放模式时跳过（本地开发场景）。
+// 安全策略（deny by default）：
+//   - corsOrigins 非 nil：写操作的 Origin 必须在白名单中
+//   - corsOrigins 为 nil：localhost 放行，非 localhost 写操作拒绝
+//   - Origin 缺失：允许（浏览器同源导航不携带 Origin，但非浏览器客户端也无 Origin）
 func (s *Server) withCSRF(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if corsOrigins == nil {
-			h.ServeHTTP(w, r)
-			return
-		}
 		if isWriteMethod(r.Method) {
 			origin := r.Header.Get("Origin")
-			if origin != "" && !corsOrigins[origin] {
-				writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "CSRF 校验失败：Origin 不在白名单", Code: "CSRF_ORIGIN_MISMATCH"})
-				return
+			if origin != "" {
+				allowed := false
+				if corsOrigins != nil {
+					allowed = corsOrigins[origin]
+				} else {
+					allowed = isLocalhostOrigin(origin)
+				}
+				if !allowed {
+					writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "CSRF 校验失败：Origin 不在白名单", Code: "CSRF_ORIGIN_MISMATCH"})
+					return
+				}
 			}
 		}
 		h.ServeHTTP(w, r)
@@ -573,22 +607,26 @@ func (s *Server) withWAF(h http.Handler) http.Handler {
 		}
 
 		// 4. 安全响应头
-		setSecurityHeaders(w, r.URL.Path)
+		setSecurityHeaders(w, r)
 
 		h.ServeHTTP(w, r)
 	})
 }
 
 // setSecurityHeaders 设置安全响应头。
-func setSecurityHeaders(w http.ResponseWriter, path string) {
+func setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	h.Set("X-XSS-Protection", "1; mode=block")
 	h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+	// HSTS：仅当请求经 HTTPS 到达（反代或直连）时设置，避免本地 HTTP 被锁死
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+	}
 	// CSP 仅对 API 路径设置；SPA 页面由 HTML 自身的 meta 标签控制
-	if strings.HasPrefix(path, "/api/") {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 	}
 }
@@ -613,6 +651,129 @@ func (s *Server) recovery(h http.Handler) http.Handler {
 			}
 		}()
 		h.ServeHTTP(w, r)
+	})
+}
+
+// ===== Gzip 压缩 =====
+
+// gzipResponseWriter 包装 http.ResponseWriter，对满足条件的响应自动 gzip 压缩。
+// 跳过条件（不压缩）：
+//   - 客户端不支持 gzip（Accept-Encoding 未含 gzip）
+//   - 响应已设置 Content-Encoding（例如已是压缩格式）
+//   - 响应体 < 512 字节（压缩开销 > 收益）
+//   - SSE / WebSocket / 二进制流（Content-Type 为 text/event-stream、application/zip 等）
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	gz            *gzip.Writer
+	contentType   string
+	headerWritten bool
+	statusCode    int
+	buf           []byte // 未达到 minSize 前缓存的响应体
+}
+
+const gzipMinSize = 512 // 小于此值不压缩
+
+var gzipSkipTypes = map[string]bool{
+	"application/zip":              true,
+	"application/gzip":             true,
+	"application/x-gzip":           true,
+	"application/x-tar":            true,
+	"application/x-rar-compressed": true,
+	"application/pdf":              true, // PDF 已压缩
+	"image/png":                    true, // 二进制图片已压缩
+	"image/jpeg":                   true,
+	"image/gif":                    true,
+	"image/webp":                   true,
+	"font/woff":                    true, // 字体已压缩
+	"font/woff2":                   true,
+	"text/event-stream":            true, // SSE
+	"application/octet-stream":     true, // 可能是二进制流
+}
+
+func (g *gzipResponseWriter) Write(b []byte) (int, error) {
+	if g.gz != nil {
+		return g.gz.Write(b)
+	}
+	g.buf = append(g.buf, b...)
+	if len(g.buf) >= gzipMinSize && g.shouldCompress() {
+		g.startGzip()
+		n, err := g.gz.Write(g.buf)
+		g.buf = nil
+		return n, err
+	}
+	return len(b), nil
+}
+
+func (g *gzipResponseWriter) shouldCompress() bool {
+	if g.contentType == "" {
+		return true
+	}
+	mime := g.contentType
+	if i := strings.Index(mime, ";"); i > 0 {
+		mime = strings.TrimSpace(mime[:i])
+	}
+	return !gzipSkipTypes[strings.ToLower(mime)]
+}
+
+func (g *gzipResponseWriter) startGzip() {
+	g.Header().Del("Content-Length")
+	g.Header().Set("Content-Encoding", "gzip")
+	g.Header().Set("Vary", "Accept-Encoding")
+	if !g.headerWritten {
+		g.ResponseWriter.WriteHeader(g.statusCode)
+		g.headerWritten = true
+	}
+	g.gz = gzip.NewWriter(g.ResponseWriter)
+}
+
+func (g *gzipResponseWriter) WriteHeader(code int) {
+	if g.headerWritten {
+		return
+	}
+	g.statusCode = code
+	g.contentType = g.Header().Get("Content-Type")
+	if g.contentType != "" && !g.shouldCompress() {
+		g.ResponseWriter.WriteHeader(code)
+		g.headerWritten = true
+		return
+	}
+}
+
+func (g *gzipResponseWriter) Flush() {
+	if g.gz != nil {
+		_ = g.gz.Flush()
+	}
+	if f, ok := g.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// withGzip 对响应做 gzip 压缩。
+func (s *Server) withGzip(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			h.ServeHTTP(w, r)
+			return
+		}
+		if w.Header().Get("Content-Encoding") != "" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		gw := &gzipResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		defer func() {
+			if gw.gz != nil {
+				_ = gw.gz.Close()
+			} else if !gw.headerWritten {
+				if len(gw.buf) > 0 {
+					w.Header().Set("Content-Length", strconv.Itoa(len(gw.buf)))
+					w.WriteHeader(gw.statusCode)
+					_, _ = w.Write(gw.buf)
+				} else {
+					w.WriteHeader(gw.statusCode)
+				}
+			}
+		}()
+		h.ServeHTTP(gw, r)
 	})
 }
 
