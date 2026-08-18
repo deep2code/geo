@@ -71,7 +71,12 @@
     "settings": "Settings",
     "help": "Help Center",
     "tickets": "Tickets",
-    "admin": "Admin Console"
+    "admin": "Admin Console",
+    "systemCheck": "System Check",
+    "rules": "Rules",
+    "evaluate": "Evaluate",
+    "brandDBImport": "Business DB Import",
+    "integrations": "Integrations / MCP"
   },
   "dashboard": {
     "title": "Dashboard",

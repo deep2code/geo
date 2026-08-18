@@ -56,7 +56,7 @@
 | P2-17 | ✅ 已修复 | 分页解析统一（随 P1-10 收敛） | `internal/httputil/httputil.go` |
 | P2-1 | ❌ 不采用 | ServeMux 方法路由改造 —— **已实测验证不可行/会劣化**：`server.go` 末尾有 SPA 通配 `HandleFunc("/")`，Go 1.22 ServeMux 方法路由下，错误方法的请求会先匹配该通配而回落到 SPA（返回 404/HTML），而非干净的 405；现有每 handler 的 `if r.Method !=` 检查反而提供更正确的 API 语义，且无风险。详见文末"决策记录 P2-1"。 | `internal/server/server.go` |
 | P2-2 | ✅ 已修复 | server.go 4056 行拆分（纯搬移，零逻辑变更，零行为变化）：核心 `Server`/构造/`registerRoutes`/`requireDataAdmin`/`newAutoRewriter` 留在 `server.go`（1483 行），handler 按域迁至 `web_handlers.go`/`pipeline_handlers.go`/`cms_handlers.go`/`brand_handlers.go`/`leaderboard_handlers.go`；按文件级作用域裁剪 import。build/vet/`go test ./...` 全绿。 | `internal/server/server.go` 及 5 个新文件 |
-| P2-9 | ✅ 已修复 | `brand-audit/cache/db` 归组到 `geo brand <sub>`（audit/cache/db）；旧顶层 `geo brand-*` 保留为 deprecated 别名（向后兼容，文档已同步） | `cmd/geo/main.go`、`brand_audit.go`、`brand_cache.go`、`brand_db.go`、`README.md`、`docs/getting-started.md`、`docs/architecture.md` |
+| P2-9 | ✅ 已修复（原） | `brand-audit/cache/db` 原归组到 `geo brand <sub>`（audit/cache/db）；本轮已按用户要求**彻底移除 CLI**，品牌相关能力迁移为「品牌审计」等前端页 + `GET /api/v1/brand/audit`、`POST /api/v1/brand/offlinedb/import*` 等端点；旧 `brand_*.go` 文件已删除 | `internal/server/brand_handlers.go`、`web-app/src/pages/*`、`README.md`、`docs/getting-started.md`、`docs/architecture.md` |
 
 ---
 
@@ -159,7 +159,7 @@
 
 ## 五、战略级改进方向（对标 AutoGEO 的差异化竞争点）
 
-1. **评测体系（最值得投入）**：AutoGEO 有 GEO-Bench 基准 + `evaluate` 命令。本项目应建一个**中文 GEO 评测集**（10-20 个代表性 query × 待优化页面 × 主流中文引擎），`geo evaluate` 子命令批量跑改前/改后引用率对比，产出可复现报告。这是证明产品价值的核心资产。
+1. **评测体系（最值得投入）**：AutoGEO 有 GEO-Bench 基准 + `evaluate` 命令。本项目已建一个**中文 GEO 评测集**（10-20 个代表性 query × 待优化页面 × 主流中文引擎），通过 Web「评测」页批量跑改前/改后引用率对比，产出可复现报告。这是证明产品价值的核心资产。
 2. **规则集外部化**：把 scorer 权重 + 13 个策略的触发条件从常量改为**可配置规则集**（JSON/YAML + 版本号），支持按行业/引擎偏好组合——这正是 AutoGEO"rule extraction"想解决的，而本项目可以先用配置化实现 80% 价值。
 3. **LLM 成本仪表盘**：在 metrics 基础上按品牌/任务/引擎聚合 token 消耗与美元成本，设置月度预算熔断（对齐用户已有的 DeepSeek 涨价对冲思路）。
 4. **CI 质量门禁**：golangci-lint + govulncheck + `go test -race` + 前端 typecheck 全进 CI，release 加版本注入（P1-3）。
@@ -169,13 +169,25 @@
 
 | # | 方向 | 状态 | 交付物 |
 |---|------|------|--------|
-| 1 | 评测体系 | ✅ 已实施 | `internal/eval` 包 + `geo evaluate` 子命令；`config/benchmarks/zh-geo-sample.json` 12 个中文跨领域用例；离线代理指标（有界引用率 `1−e^(−相对可见度得分)`）避免提升% 失真 |
-| 2 | 规则集外部化 | ✅ 已实施 | `internal/config/ruleset.go` + `geo rules {show\|validate\|list}`；`config/rules/*.json` 示例；`scorer.ApplyRuleSet` 注入权重与策略系数；optimize/score/analyze/serve 均支持 `--rules` |
-| 3 | LLM 成本仪表盘 | ✅ 已实施 | `internal/llm` 按模型聚合 token/USD（`modelPricing` 表 + 月度预算熔断 `ErrBudgetExceeded`）；`/api/v1/admin/cost` 端点 + `geo cost report`；Prometheus `geo_llm_cost_*` 指标 |
+| 1 | 评测体系 | ✅ 已实施 | `internal/eval` 包 + Web「评测」页（`POST /api/v1/evaluate`）；`config/benchmarks/zh-geo-sample.json` 12 个中文跨领域用例；离线代理指标（有界引用率 `1−e^(−相对可见度得分)`）避免提升% 失真 |
+| 2 | 规则集外部化 | ✅ 已实施 | `internal/config/ruleset.go` + Web「规则集」页（`GET/POST /api/v1/rules*`）；`config/rules/*.json` 示例；`scorer.ApplyRuleSet` 注入权重与策略系数；优化/评分/分析均支持规则集参数 |
+| 3 | LLM 成本仪表盘 | ✅ 已实施 | `internal/llm` 按模型聚合 token/USD（`modelPricing` 表 + 月度预算熔断 `ErrBudgetExceeded`）；`/api/v1/admin/cost` 端点 + Web 成本仪表盘页；Prometheus `geo_llm_cost_*` 指标 |
 | 4 | CI 质量门禁 | ✅ 前轮已完成（P1-8） | golangci-lint + govulncheck + `go test -race` |
 | 5 | 部署开箱即用 | ✅ 已实施 | compose 对 `.env` 设 `required:false`（缺失不报错，改用以 `environment:` 默认值一键启动）+ `GEO_ADMIN_KEY` 透传；`scripts/smoke-compose.sh` + CI `deploy-smoke` 作业（构建→探活→`/metrics`→成本端点鉴权 403/200） |
 
-> 说明：#1 评测集的相对引用得分为**离线代理指标**（无需联网/API Key，可复现）；`geo evaluate --live --llm-key sk-xxx` 接入真实引擎（OpenAI 兼容 Chat Completions）实测引用，覆盖 Actual 指标并报告 `live_cited`。指标修正点：原始 `RelativeCitationScore` 为加性指标（可 >1），直接算提升% 会得出 +886% 这类失真值；改为先经 `1−e^(−rel)` 映射到 0–1 再算提升%，结果有界、可解释（实测平均预期提升约 +408%）。
+> 说明：#1 评测集的相对引用得分为**离线代理指标**（无需联网/API Key，可复现）；在 Web「评测」页开启 live 模式并填入 LLM Key（`sk-xxx`，OpenAI 兼容 Chat Completions）接入真实引擎实测引用，覆盖 Actual 指标并报告 `live_cited`。指标修正点：原始 `RelativeCitationScore` 为加性指标（可 >1），直接算提升% 会得出 +886% 这类失真值；改为先经 `1−e^(−rel)` 映射到 0–1 再算提升%，结果有界、可解释（实测平均预期提升约 +408%）。
+
+### 补充：系统诊断三模块（2026-08-18 新增，非原战略项）
+
+为可运维性补充三类诊断能力（包 `internal/diagnostics`）：
+
+1. **关键业务健康检查**（`BusinessHealth`）：评分 / 分析 / 优化管线端到端探针；LLM 改写业务在已配置 Provider 时做真实端到端调用验证；三个 MySQL 模块（离线工商库 / 审计历史 / China-Check 缓存）TCP 探活。
+2. **属性/参数/配置校验**（`ConfigCheck`）：日志级别与格式、服务端口、LLM 预算、鉴权与弱密钥（`config.Validate` 复用）、管理员密钥、LLM/引擎 Key、各 DSN 格式、白标主题色、定时审计配置、外部规则集合法性。
+3. **系统自检**（`SelfCheck`）：运行时快照（Go 版本 / OS / CPU / goroutine / 内存）+ 上述两类聚合 + 整体健康等级，渲染为 JSON（供前端消费）。
+
+入口（**前端为主，新手友好**）：Web UI 左侧导航「🩺 系统自检」一键运行，按健康/隐患/问题分组展示并给出修复建议。管理后台 `GET /api/v1/admin/selfcheck` 在**服务端未配置 `GEO_ADMIN_KEY` 时开放**（开箱即用），一旦配置则要求 `X-Admin-Key`（防配置/密钥存在性泄露）。`pkg/geo.Engine` 新增 `LLMAvailable()` / `LLMStatus()` 供业务探针使用。
+
+**CLI 已全部移除**：用户要求所有独立命令（`geo optimize/score/analyze/serve/brand*/mcp-server/readiness/discover/drift/rules/evaluate/cost` 等）一律改为前端界面操作。现 `cmd/geo/main.go` 仅启动 Web 服务（serve 成为默认行为），并随同进程启动 MCP Server（`:9090` `/mcp`）；原命令文件 `brand_*.go`、`cost.go`、`rules.go`、`evaluate.go`、`discover.go`、`mcp_server.go` 已删除，其能力迁移为 `GET /api/v1/rules*`、`POST /api/v1/evaluate`、`POST /api/v1/brand/offlinedb/import*` 等端点 + 对应前端页（规则集 / 评测 / 工商库导入 / 集成）。
 
 ---
 
@@ -186,7 +198,7 @@
 | 第一波（1-2 天） | P0-1 建库、P0-2 MCP 加固、P1-11 冒泡排序、P1-3 版本注入、P2-4 正则提升 | 小 |
 | 第二波（2-3 天） | P1-2 taskqueue 取舍、P1-4 LLM 重试/并发/单入口、P1-5 prompt 防护、P1-6 migrations、P2-5 权重配置化 | 中 |
 | 第三波（3-5 天） | P1-1 可观测性、P1-8 测试补课 + CI 关卡、P1-10 httputil 收敛、P2-1 方法路由、P2-2 server.go 拆分 | 中-大 |
-| 战略项（按需） | 评测集 + `geo evaluate`、规则集版本化、成本仪表盘 | 新模块 |
+| 战略项（按需） | 评测集 + 评测页、规则集版本化、成本仪表盘 | 新模块 |
 
 > 备注：第一轮有意跳过的 P2-1（方法路由，本轮实测验证不可行/会劣化，见第七节决策记录）、P2-2（拆分 server.go，本轮已执行：拆为 6 个文件、零逻辑变更、build/vet/test 全绿）。
 

@@ -39,8 +39,8 @@ run: ## 直接运行（go run）
 	go run $(MAIN_PKG)
 
 .PHONY: serve
-serve: build ## 启动本地 API 服务（端口 8080）
-	bin/$(BINARY) serve -p 8080
+serve: build ## 启动本地 Web 服务（端口 8080，纯 Web 入口，无 CLI 子命令）
+	bin/$(BINARY) --port 8080
 
 .PHONY: test
 test: ## 运行测试

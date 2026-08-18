@@ -435,6 +435,12 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("/api/v1/score", s.handleScore)
 	s.mux.HandleFunc("/api/v1/optimize", s.handleOptimize)
+	// 规则集外部化管理（替代原 CLI `geo rules`）
+	s.mux.HandleFunc("/api/v1/rules", s.handleRulesList)              // GET 列出可用规则集
+	s.mux.HandleFunc("/api/v1/rules/default", s.handleRulesDefault)   // GET 默认规则集 JSON
+	s.mux.HandleFunc("/api/v1/rules/validate", s.handleRulesValidate) // POST 校验规则集 JSON
+	// GEO 评测集运行（替代原 CLI `geo evaluate`）
+	s.mux.HandleFunc("/api/v1/evaluate", s.handleEvaluate) // POST 运行评测集
 	s.mux.HandleFunc("/api/v1/brand/audit", s.handleBrandAudit)
 	s.mux.HandleFunc("/api/v1/brand/autocomplete", s.handleBrandAutocomplete)
 	s.mux.HandleFunc("/api/v1/brand/profile/autocomplete", s.handleBrandProfileAutocomplete)
@@ -458,6 +464,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/search", s.handleOfflineDBSearch)
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/clear", s.handleOfflineDBClear)
 	s.mux.HandleFunc("/api/v1/brand/offlinedb/provinces", s.handleOfflineDBProvinces)
+	// 离线工商库导入（替代原 CLI `geo brand db import-*`）
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/import", s.handleOfflineDBImport)             // POST 上传 JSON 文件导入
+	s.mux.HandleFunc("/api/v1/brand/offlinedb/import-github", s.handleOfflineDBImportGitHub) // POST 直连 GitHub 下载并导入
 	// 审计历史时间序列接口
 	s.mux.HandleFunc("/api/v1/brand/history/list", s.handleHistoryList)
 	s.mux.HandleFunc("/api/v1/brand/history/get", s.handleHistoryGet)
@@ -516,6 +525,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/announcements/", s.handleAdminAnnouncementDelete)
 	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
 	s.mux.HandleFunc("/api/v1/admin/cost", s.handleAdminCost) // LLM 成本仪表盘
+	s.mux.HandleFunc("/api/v1/admin/selfcheck", s.handleAdminSelfCheck) // 系统自检报告
 	// 帮助中心与新手引导接口（#101）
 	s.mux.HandleFunc("/api/v1/help/articles", s.handleHelpArticles)
 	s.mux.HandleFunc("/api/v1/help/articles/", s.handleHelpArticleDetail)

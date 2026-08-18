@@ -265,9 +265,9 @@ graph TB
 ```mermaid
 flowchart LR
     S1["📦 安装<br/>3 种方式任选"] --> S2["🔑 配置<br/>填 .env LLM Key<br/>(可跳过)"]
-    S2 --> S3["🔬 评分<br/>geo score<br/>零依赖体验"]
-    S3 --> S4["✍️ 优化<br/>geo optimize<br/>有 Key 可改写"]
-    S4 --> S5["🌐 Web UI<br/>geo serve<br/>浏览器可视化"]
+    S2 --> S3["🔬 评分<br/>评分页<br/>零依赖体验"]
+    S3 --> S4["✍️ 优化<br/>优化页<br/>有 Key 可改写"]
+    S4 --> S5["🌐 Web UI<br/>启动 Web 服务<br/>浏览器可视化"]
 
     style S1 fill:#dcfce7,stroke:#16a34a
     style S2 fill:#e0f2fe,stroke:#0369a1
@@ -363,39 +363,34 @@ GEO_LLM_BASE=https://open.bigmodel.cn/api/paas/v4
 GEO_LLM_MODEL=glm-4-flash
 ```
 
-> 💡 **不配置 LLM 也能用**：`score` / `analyze` / `brand-db` / `readiness` / `serve`（部分功能）等不需要 Key。
+> 💡 **不配置 LLM 也能用**：评分 / 分析 / 工商库查询 / 就绪度检查（部分功能）不需要 Key；优化改写与品牌审计需配置对应引擎 Key。
 
-### 第三步：给内容打分（零依赖体验）
+### 第三步：启动服务并给内容打分（零依赖体验）
 
 ```bash
-echo "Python 是一种广泛使用的编程语言。" | geo score
+./bin/geo                   # 直接启动 Web 服务（默认 :8080）
+bash scripts/run.sh         # 脚本启动（杀旧进程+编译+后台）
+open http://localhost:8080  # 浏览器打开
 ```
+
+打开后在「内容优化」页粘贴：
+
+```
+Python 是一种广泛使用的编程语言。
+```
+
+点击「分析」即可看到类似评分（示例）：
 
 ```
 GEO 评分: 42.3/100  等级: F
-
-评分明细：
   CitabilitySignals   12.0 / 30  (40%)  ⚠️ 缺引用来源
   Structure            8.0 / 20  (40%)  ⚠️ 缺结构
   Fluency             13.0 / 15  (87%)  ✅ 流畅
-  Keyword              3.0 / 15  (20%)
-  UniqueWords          3.0 / 10  (30%)
-  Technicality         3.0 / 10  (30%)
 ```
 
 ### 第四步：优化内容（有 LLM Key 时）
 
-```bash
-geo optimize -f my-article.md --engine chatgpt --engine perplexity -o optimized.md
-```
-
-### 第五步：启动 Web 界面
-
-```bash
-geo serve -p 8080          # 直接启动
-bash scripts/run.sh         # 脚本启动（杀旧进程+编译+后台）
-open http://localhost:8080  # 浏览器打开
-```
+在「内容优化」页填写内容并选择目标引擎（ChatGPT / Perplexity 等），点击「优化」即可由大模型改写并对比优化前后评分。无需命令行。
 
 ---
 
@@ -551,25 +546,23 @@ graph LR
     style 知识领域 fill:#e8f5e9,stroke:#2e7d32
 ```
 
-使用方式：
-```bash
-# 指定领域类型，系统自动推荐最优策略组合
-geo optimize -f article.md --domain serious     # 严肃领域
-geo optimize -f article.md --domain soft        # 软性领域
-geo optimize -f article.md --domain knowledge   # 知识领域
-```
+使用方式（在浏览器中操作，无需命令行）：
+
+1. 打开 Web 界面「内容优化」页（启动 Web 服务后访问）。
+2. 粘贴或上传待优化文章。
+3. 在「领域类型」下拉中选择 **严肃 / 软性 / 知识**，系统自动推荐最优策略组合。
 
 ### 完整优化流程
 
 ```mermaid
 flowchart TB
-    A["准备原始内容"] --> B["geo score 评分"]
+    A["准备原始内容"] --> B["评分页 评分"]
     B --> C{分数 >= 80?}
     C -->|是| D["✅ 内容已优化"]
-    C -->|否| E["geo analyze 分析信号"]
+    C -->|否| E["分析页 分析信号"]
     E --> F["识别薄弱维度"]
-    F --> G["geo optimize 优化"]
-    G --> H["geo score 再次评分"]
+    F --> G["优化页 优化"]
+    G --> H["评分页 再次评分"]
     H --> C
 
     style D fill:#c8e6c9,stroke:#2e7d32
@@ -658,17 +651,14 @@ graph TB
 
 #### ③ 执行审计
 
+Web 界面方式（可视化热力矩阵 + 趋势图，推荐）：
+
 ```bash
-# CLI 方式（最常用）
-geo brand audit -f brand-profile.json
-
-# 输出 JSON 报告到文件
-geo brand audit -f brand-profile.json -o report.json
-
-# Web 界面方式（可视化热力矩阵+趋势图）
-geo serve
-# 打开 http://localhost:8080 → 「品牌审计」面板
+./bin/geo
+# 打开 http://localhost:8080 → 「品牌审计」面板，填写品牌画像即可审计
 ```
+
+> 原 `geo brand audit` 命令行已移除，统一在「品牌审计」前端页操作。
 
 ### BVS 评分解读
 
@@ -731,16 +721,16 @@ flowchart LR
     subgraph INGEST["📥 数据导入阶段（一次性）"]
         direction TB
         SRC["🌐 种子数据源<br/>guichong/-/tree/json<br/>31省×42年 JSON"]
-        SRC --> INIT["geo brand db init<br/>建表 + FULLTEXT(ngram) 索引"]
-        INIT --> IMP["geo brand db import-file<br/>3种格式自动识别<br/>2000条/批事务插入"]
+        SRC --> INIT["首次启动自动建表<br/>+ FULLTEXT(ngram) 索引"]
+        INIT --> IMP["「工商库导入」页<br/>上传 JSON / GitHub 直连<br/>3种格式自动识别"]
         IMP --> READY["✅ 1000万+数据就绪"]
     end
 
     subgraph USAGE["🔎 日常查询阶段"]
         direction TB
-        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand db search<br/>MATCH AGAINST IN BOOLEAN MODE"]
+        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["「品牌管理」页模糊搜索<br/>MATCH AGAINST IN BOOLEAN MODE"]
         SEARCH --> AUTO["🌐 Web 下拉补全<br/>+来源Tag徽章"]
-        AUTO --> DISCOVER["✨ geo discover<br/>关键词→公司→GEO报告"]
+        AUTO --> DISCOVER["✨ 「关键词发现」页<br/>关键词→公司→GEO报告"]
     end
 
     INGEST --> USAGE
@@ -766,38 +756,22 @@ graph TB
     style P5 fill:#e9d5ff,stroke:#7c3aed
 ```
 
-### 操作命令速查
+### 操作命令速查（均已在 Web 界面提供）
 
 ```bash
-# 1. 初始化空库
-geo brand db init
-
-# 2A. 本地批量导入（推荐，全量）
+# 1. 初始化空库：首次启动服务时自动建表 + 索引，无需手动操作
+# 2A. 本地批量导入（推荐，全量）：
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
-geo brand db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/
-
-# 2B. GitHub 直接下载（推荐，快速体验）
-geo brand db import-github --years 2019 --provinces 广东,北京,上海
-
-# 3. 统计信息
-geo brand db stats
-
-# 4. 模糊搜索
-geo brand db search "腾讯" -n 5
+#    打开「工商库导入」页 → 上传 ~/geo-erddb/Enterprise-Registration-Data/json/ 下的文件
+# 2B. GitHub 直接下载（快速体验）：
+#    打开「工商库导入」页 → 选 GitHub 直连，填 years=2019 provinces=广东,北京,上海
+# 3. 统计信息：同页顶部「当前库状态」
+# 4. 模糊搜索：在「品牌管理」页输入关键词
 ```
 
 ### China-Check 实时核验缓存管理
 
-```bash
-# 预热：批量查询高频企业
-geo brand cache warm --queries "腾讯,阿里巴巴,字节跳动,华为,小米,百度"
-
-# 查看缓存占用 + 命中率
-geo brand cache stats
-
-# 压缩清理过期项
-geo brand cache compact
-```
+缓存预热 / 查看占用 / 压缩清理等运维操作现通过 `GET /api/v1/brand/chinacheck/cache` 等端点完成；日常核验由「品牌审计」页自动触发，无需命令行。
 
 ---
 
@@ -817,7 +791,7 @@ pie title 8 维 AI 就绪度 — 严重级权重
 
 ```mermaid
 flowchart LR
-    DEPLOY["🚀 部署流水线触发"] --> CHECK["geo readiness --url xxx<br/>8 维检查 + 加权重算分"]
+    DEPLOY["🚀 部署流水线触发"] --> CHECK["POST /api/v1/brand/readiness<br/>8 维检查 + 加权重算分"]
     CHECK --> SCORE["📊 0-100 评分 + A-F 等级"]
     SCORE --> GATE{"🚧 --ci-gate 阈值?<br/>例：80 分"}
     GATE -->|"✅ ≥ 阈值"| PASS["👍 exit 0<br/>流水线继续部署"]
@@ -830,12 +804,17 @@ flowchart LR
 ### 使用
 
 ```bash
-# 基本检查（输出 8 维明细 + 建议）
-geo readiness --url https://your-site.com
+# 基本检查（输出 8 维明细 + 建议）：在「系统自检」或「品牌审计」页操作，
+# 或调用端点：
+curl -X POST http://localhost:8080/api/v1/brand/readiness \
+  -H 'Content-Type: application/json' \
+  -d '{"brand_name":"","url":"https://your-site.com"}'
 
-# CI/CD 闸门模式（低于 80 分阻断）
-geo readiness --url https://your-site.com --ci-gate 80
-echo $?  # 0=通过，1=阻断
+# CI/CD 闸门模式（低于 80 分阻断）：调用 ci-gate 端点
+curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:8080/api/v1/brand/readiness/ci-gate \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://your-site.com","threshold":80}'
+# 端点返回 200=通过，4xx/5xx=阻断（具体见响应体）
 ```
 
 集成到 GitHub Actions：
@@ -844,7 +823,10 @@ echo $?  # 0=通过，1=阻断
 # .github/workflows/deploy.yml
 - name: 🚧 AI 就绪度闸门
   run: |
-    geo readiness --url https://your-site.com --ci-gate 80
+    curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:8080/api/v1/brand/readiness/ci-gate \
+      -H 'Content-Type: application/json' \
+      -d '{"url":"https://your-site.com","threshold":80}'
+    # 返回 200=通过（exit 0），4xx/5xx=阻断（exit 1）
 ```
 
 ### 8 维修复速查表
@@ -870,24 +852,22 @@ echo $?  # 0=通过，1=阻断
 graph TB
     subgraph FREE["🟢 ❌ 无需 LLM Key — 开箱即用"]
         direction TB
-        F1["geo score — 内容 GEO 评分"]
-        F2["geo analyze — 信号分析"]
-        F3["geo strategies — 策略列表"]
-        F4["geo brand db — 工商库管理"]
-        F5["geo readiness — AI 就绪度检查"]
-        F6["geo vertical — 行业类型识别"]
-        F7["geo localseo — Local SEO 审计"]
-        F8["geo serve — Web UI（评分/分析等）"]
+        F1["内容优化页 — 评分 / 分析 / 策略列表"]
+        F4["工商库导入页 — 工商库管理"]
+        F5["系统自检页 — AI 就绪度检查"]
+        F6["品牌审计页 — 行业类型识别"]
+        F7["品牌审计页 — Local SEO 审计"]
+        F8["Web 服务（本页所有功能）"]
     end
 
     subgraph PAID["🔴 ✅ 需要 LLM Key — 调用大模型"]
         direction TB
-        P1["geo optimize — 内容改写优化"]
-        P2["geo brand audit — 多引擎品牌审计"]
-        P3["geo topsource — Top Source 归因分析"]
-        P4["geo autorewrite — AutoGEO 规则重写"]
-        P5["geo externalsignals — 社媒+KOL情报"]
-        P6["geo discover（生成报告阶段）— 完整审计"]
+        P1["内容优化页 — 改写优化"]
+        P2["品牌审计页 — 多引擎品牌审计"]
+        P3["品牌审计页 — Top Source 归因分析"]
+        P4["品牌审计页 — AutoGEO 规则重写"]
+        P5["品牌审计页 — 社媒+KOL 情报"]
+        P6["关键词发现页 — 完整审计"]
     end
 
     style FREE fill:#dcfce7,stroke:#16a34a
@@ -897,16 +877,14 @@ graph TB
 ### Q: 不配置 LLM Key 能用吗？
 
 可以。以下功能不需要 LLM Key：
-- `geo score` — GEO 评分
-- `geo analyze` — 信号分析
-- `geo strategies` — 策略列表
-- `geo brand db` — 工商库管理
-- `geo readiness` — AI 就绪度检查
-- `geo serve` — Web 服务（评分/分析功能可用）
+- 内容优化页 — GEO 评分 / 分析 / 策略列表
+- 工商库导入页 — 工商库管理
+- 系统自检页 — AI 就绪度检查
+- 品牌审计页 — 行业识别 / Local SEO 审计
 
 需要 LLM Key 的功能：
-- `geo optimize` — 调用大模型改写内容
-- `geo brand audit` — 调用 AI 引擎查询品牌可见度
+- 内容优化页 — 调用大模型改写内容
+- 品牌审计页 — 调用 AI 引擎查询品牌可见度
 
 ### Q: 支持哪些 AI 引擎？
 
@@ -975,7 +953,7 @@ graph LR
         C3["🧠 TraeCode IDE"]
     end
 
-    subgraph MCP["🧩 geo mcp-server<br/>JSON-RPC 2.0 over stdio"]
+    subgraph MCP["🧩 MCP Server (HTTP)<br/>随 Web 服务启动 :9090/mcp"]
         T1["🧰 brand_audit<br/>品牌可见度审计"]
         T2["✍️ optimize<br/>内容优化"]
         T3["🏢 search_companies<br/>离线工商库搜索"]
@@ -995,17 +973,14 @@ graph LR
 {
   "mcpServers": {
     "geo": {
-      "command": "geo",
-      "args": ["mcp-server"]
+      "url": "http://localhost:9090/mcp",
+      "headers": { "X-API-Key": "${GEO_MCP_API_KEY}" }
     }
   }
 }
 ```
 
-启动：
-```bash
-geo mcp-server
-```
+MCP Server 已随 Web 服务同进程启动（默认 `:9090` `/mcp`），无需单独运行命令；可用 `GEO_MCP_PORT` 改端口、`GEO_MCP_API_KEY` 设鉴权。
 
 ### Q: 数据库需要额外安装吗？
 

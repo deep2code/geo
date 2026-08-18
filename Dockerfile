@@ -62,7 +62,7 @@ RUN addgroup -S geo && adduser -S -G geo geo
 
 WORKDIR /app
 
-# 拷贝二进制并赋予低端口绑定能力（这样 geo serve -p 80 可在非 root 下启动）
+# 拷贝二进制并赋予低端口绑定能力（这样 geo -p 80 可在非 root 下启动）
 COPY --from=builder /out/geo /app/geo
 RUN setcap cap_net_bind_service=+ep /app/geo && \
     chown geo:geo /app/geo && \
@@ -84,4 +84,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -fsS --max-time 2 http://localhost:8080/api/v1/health >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/app/geo"]
-CMD ["serve", "-p", "8080"]
+CMD ["--port", "8080"]

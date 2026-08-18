@@ -590,3 +590,121 @@ export interface LeaderboardResponse {
   rows: LeaderboardRow[]
   total: number
 }
+
+// ── 系统自检（/api/v1/admin/selfcheck） ──
+export type SelfCheckSeverity = 'ok' | 'info' | 'warn' | 'error'
+
+export interface SelfCheckCheck {
+  name: string
+  category: 'business' | 'config' | 'infra'
+  status: SelfCheckSeverity
+  message: string
+  detail?: string
+  duration_ms?: number
+}
+
+export interface SelfCheckRuntime {
+  go_version: string
+  os: string
+  arch: string
+  num_cpu: number
+  goroutines: number
+  alloc_mb: number
+}
+
+export interface SelfCheckSummary {
+  ok: number
+  info: number
+  warn: number
+  error: number
+}
+
+export interface SelfCheckReport {
+  generated_at: string
+  overall: SelfCheckSeverity
+  runtime: SelfCheckRuntime
+  business: SelfCheckCheck[]
+  config: SelfCheckCheck[]
+  summary: SelfCheckSummary
+}
+
+// ── 规则集管理（/api/v1/rules*，替代原 `geo rules` CLI） ──
+export interface RuleSetListItem {
+  name: string
+  version: string
+  source: string
+  valid: boolean
+  error?: string
+  engine?: string
+  domain?: string
+}
+
+export interface RulesListResponse {
+  rulesets: RuleSetListItem[]
+}
+
+export interface RuleSet {
+  name?: string
+  version?: string
+  engine?: string
+  domain?: string
+  weights?: Record<string, number>
+  strategy_effectiveness?: Record<string, number>
+  strategy_triggers?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface RuleSetValidateResponse {
+  valid: boolean
+  error?: string
+  name?: string
+  version?: string
+  engine?: string
+  domain?: string
+  weights?: number
+  strategy_effectiveness?: number
+  strategy_triggers?: number
+}
+
+// ── GEO 评测（/api/v1/evaluate，替代原 `geo evaluate` CLI） ──
+export interface EvaluateRequest {
+  dataset: string
+  format?: 'md' | 'json'
+  live?: boolean
+  llm_key?: string
+  llm_base?: string
+  llm_model?: string
+  rules?: string
+}
+
+export interface EvaluateResponse {
+  report: string
+  format: 'md' | 'json'
+  mode: string
+}
+
+// ── 离线工商库导入（/api/v1/brand/offlinedb/import*，替代原 `geo brand db import-*` CLI） ──
+export interface OfflineDBStats {
+  path?: string
+  backend?: string
+  count: number
+  file_size_bytes?: number
+  schema_created_at?: string
+  provinces?: Record<string, number>
+}
+
+export interface OfflineDBImportResult {
+  imported: number
+  skipped: number
+  failed: number
+  files: number
+  db_count: number
+  db_file_size_bytes?: number
+}
+
+export interface OfflineDBImportGitHubRequest {
+  years: string
+  provinces: string
+  base_url?: string
+  timeout_seconds?: number
+}

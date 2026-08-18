@@ -1,6 +1,6 @@
 {
   "name": "zh-geo-sample",
-  "description": "中文 GEO 评测集样例（12 个跨领域用例）。用于 geo evaluate 跑改前/改后引用率与评分对比。target_content 为待优化页面摘要，离线即可评测；接入真实引擎查询后可补充实测引用率。",
+  "description": "中文 GEO 评测集样例（12 个跨领域用例）。用于 Web「评测」页跑改前/改后引用率与评分对比。target_content 为待优化页面摘要，离线即可评测；在评测页开启 live 模式并填入 LLM Key 接入真实引擎后可补充实测引用率。",
   "created_at": "2026-08-18",
   "cases": [
     {

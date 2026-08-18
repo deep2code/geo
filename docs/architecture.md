@@ -53,10 +53,9 @@ mindmap
 ```mermaid
 graph TB
     subgraph 用户入口["👤 用户入口层"]
-        CLI["💻 CLI 工具链<br/>geo optimize / score / audit / discover"]
-        WEB["🌐 Web SPA<br/>Vite+React+TS<br/>10+ 页面 i18n"]
+        WEB["🌐 Web SPA<br/>Vite+React+TS<br/>10+ 页面 i18n（唯一入口，无 CLI）"]
         API["🔌 REST API<br/>/api/v1/* (60+ 端点)"]
-        MCP["🤖 MCP Server<br/>JSON-RPC 2.0 over stdio"]
+        MCP["🤖 MCP Server<br/>JSON-RPC 2.0 over HTTP<br/>同进程 :9090 /mcp"]
     end
 
     subgraph 核心引擎["⚙️ 核心引擎层"]
@@ -112,19 +111,18 @@ graph TB
 ```mermaid
 graph LR
     subgraph 零配置可用["无需 API Key ✅"]
-        geo_score["geo score<br/>评分"]
-        geo_discover["geo discover<br/>关键词搜索"]
-        geo_readiness["geo readiness<br/>就绪度检查"]
-        geo_vertical["geo vertical<br/>行业识别"]
-        geo_serve["geo serve<br/>Web UI"]
+        geo_score["内容优化页<br/>评分 / 分析"]
+        geo_discover["关键词发现页<br/>关键词搜索"]
+        geo_readiness["系统自检页<br/>就绪度检查"]
+        geo_vertical["品牌审计页<br/>行业识别"]
     end
 
     subgraph 需要APIKey["需引擎 Key 🔑"]
-        geo_optimize["geo optimize<br/>内容改写"]
-        geo_audit["geo brand audit<br/>品牌审计"]
-        geo_topsource["geo topsource<br/>归因分析"]
-        geo_autorewrite["geo autorewrite<br/>规则重写"]
-        geo_mcp["geo mcp-server<br/>Agent 工具"]
+        geo_optimize["内容优化页<br/>内容改写"]
+        geo_audit["品牌审计页<br/>品牌审计"]
+        geo_topsource["品牌审计页<br/>归因分析"]
+        geo_autorewrite["品牌审计页<br/>规则重写"]
+        geo_mcp["集成 / MCP 页<br/>Agent 工具端点"]
     end
 
     style 零配置可用 fill:#bbf7d0,stroke:#16a34a
@@ -725,7 +723,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant C as 🖥️ MCP 客户端<br/>Claude / Cursor / TraeCode
-    participant S as 🧩 geo mcp-server
+    participant S as 🧩 MCP Server（同进程 :9090 /mcp）
     participant BE as 🏢 Brand Engine
     participant DB as 📦 离线工商库
     participant CC as ✅ China-Check MCP

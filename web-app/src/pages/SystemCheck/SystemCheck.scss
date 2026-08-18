@@ -1,0 +1,183 @@
+.system-check-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.sc-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+
+  .sc-page-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .sc-page-sub {
+    margin: 8px 0 0;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-tertiary);
+    max-width: 620px;
+  }
+}
+
+/* 整体健康横幅 */
+.sc-overall {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-default);
+
+  &-icon { font-size: 34px; line-height: 1; }
+  &-body { flex: 1; min-width: 0; }
+  &-label { font-size: 18px; font-weight: 700; }
+  &-sub { margin-top: 4px; font-size: 13px; color: var(--text-secondary); }
+  &-time { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; }
+
+  &.sc-overall-ok {
+    background: var(--status-success-bg, #ecfdf5);
+    border-color: var(--status-success, #10b981);
+    .sc-overall-label { color: var(--status-success, #059669); }
+  }
+  &.sc-overall-info {
+    background: var(--status-info-bg, #eff6ff);
+    border-color: var(--status-info, #3b82f6);
+    .sc-overall-label { color: var(--status-info, #2563eb); }
+  }
+  &.sc-overall-warn {
+    background: var(--status-warning-bg, #fffbeb);
+    border-color: var(--status-warning, #f59e0b);
+    .sc-overall-label { color: var(--status-warning, #b45309); }
+  }
+  &.sc-overall-error {
+    background: var(--status-danger-bg, #fef2f2);
+    border-color: var(--status-danger, #ef4444);
+    .sc-overall-label { color: var(--status-danger, #dc2626); }
+  }
+}
+
+/* 运行时 chips */
+.sc-runtime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.sc-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+/* 区块 */
+.sc-section { margin-bottom: 24px; }
+.sc-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+  padding-left: 10px;
+  border-left: 3px solid var(--brand-primary, #6366f1);
+}
+.sc-empty { font-size: 13px; color: var(--text-tertiary); }
+
+.sc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+/* 单条检查 */
+.sc-check {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-left-width: 4px;
+  border-radius: 10px;
+  padding: 12px 14px;
+
+  &-head { display: flex; align-items: center; gap: 8px; }
+  &-icon { font-size: 16px; }
+  &-name { font-weight: 600; color: var(--text-primary); font-size: 14px; }
+  &-tag {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.04);
+    color: var(--text-tertiary);
+  }
+  &-msg { margin-top: 6px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+  &-detail {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    background: var(--bg-page);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 180px;
+    overflow: auto;
+  }
+  &-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    background: rgba(99,102,241,0.08);
+    border-radius: 8px;
+    padding: 6px 10px;
+  }
+
+  &-ok { border-left-color: var(--status-success, #10b981); }
+  &-info { border-left-color: var(--status-info, #3b82f6); }
+  &-warn { border-left-color: var(--status-warning, #f59e0b); }
+  &-error { border-left-color: var(--status-danger, #ef4444); }
+}
+
+.sc-legend {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.7;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border-default);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* 403 / 错误 状态卡 */
+.sc-forbidden,
+.sc-error {
+  text-align: center;
+  padding: 32px 20px;
+
+  &-title { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+  &-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+    max-width: 560px;
+    margin: 0 auto 18px;
+  }
+  code {
+    margin: 0 3px;
+    padding: 1px 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+}

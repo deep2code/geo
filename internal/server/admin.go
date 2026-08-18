@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"my-geo/internal/diagnostics"
 	"my-geo/internal/httputil"
 	"my-geo/internal/llm"
 )
@@ -466,4 +467,28 @@ func (s *Server) handleAdminCost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.llmMgr.Cost())
+}
+
+// handleAdminSelfCheck 返回系统自检报告（关键业务健康 + 属性/参数/配置校验 + 运行时快照）。
+//
+// 鉴权策略对新手友好：
+//   - 服务端**未配置** GEO_ADMIN_KEY（开箱即用 / 本地 Demo）→ 自检端点直接开放，无需鉴权；
+//   - 服务端**已配置** GEO_ADMIN_KEY（生产加固）→ 要求 X-Admin-Key，避免配置/密钥存在性
+//     信息泄露给未授权用户。
+// 该策略仅作用于自检端点；成本等其它 /admin 端点仍强制鉴权。
+func (s *Server) handleAdminSelfCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	if strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY")) != "" && !s.checkAdminKey(r) {
+		s.adminForbidden(w)
+		return
+	}
+	if s.engine == nil {
+		writeJSON(w, http.StatusOK, diagnostics.SelfCheckReport{})
+		return
+	}
+	report := diagnostics.SelfCheck(r.Context(), s.engine, "")
+	writeJSON(w, http.StatusOK, report)
 }

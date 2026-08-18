@@ -71,7 +71,12 @@
     "settings": "设置",
     "help": "帮助中心",
     "tickets": "提交工单",
-    "admin": "管理后台"
+    "admin": "管理后台",
+    "systemCheck": "系统自检",
+    "rules": "规则集",
+    "evaluate": "评测",
+    "brandDBImport": "工商库导入",
+    "integrations": "集成 / MCP"
   },
   "dashboard": {
     "title": "仪表盘",

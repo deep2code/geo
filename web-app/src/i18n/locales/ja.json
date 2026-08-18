@@ -71,7 +71,12 @@
     "settings": "設定",
     "help": "ヘルプセンター",
     "tickets": "チケット",
-    "admin": "管理コンソール"
+    "admin": "管理コンソール",
+    "systemCheck": "システム診断",
+    "rules": "ルールセット",
+    "evaluate": "評価",
+    "brandDBImport": "工商DB取込",
+    "integrations": "連携 / MCP"
   },
   "dashboard": {
     "title": "ダッシュボード",

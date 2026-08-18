@@ -24,6 +24,7 @@ type Engine struct {
 	optimizer *optimizer.Optimizer
 	scorer    *scorer.Scorer
 	analyzer  *analyzer.Analyzer
+	llmMgr    *llm.Manager // 全局 LLM 管理器（业务健康检查用其探测改写业务可用性）
 }
 
 // Option Engine 配置选项。
@@ -86,7 +87,7 @@ func New(opts ...Option) *Engine {
 	mgr := llm.NewManagerWithOptions(providers, llm.WithMonthlyBudgetUSD(cfg.budgetUSD))
 
 	opt := optimizer.New(sc, mgr)
-	return &Engine{optimizer: opt, scorer: sc, analyzer: a}
+	return &Engine{optimizer: opt, scorer: sc, analyzer: a, llmMgr: mgr}
 }
 
 // Optimize 执行 GEO 优化。
@@ -148,4 +149,19 @@ func (e *Engine) StrategyInfos() []models.StrategyInfo {
 // RecommendStrategies 根据领域与引擎推荐策略。
 func (e *Engine) RecommendStrategies(domain models.DomainType, engines []models.EngineType) []models.StrategyType {
 	return config.RecommendStrategies(domain, engines)
+}
+
+// LLMAvailable 是否配置了可用的 LLM Provider（不含熔断开状态判断）。
+//
+// 供业务健康检查判断"LLM 改写类业务"是否可执行真实改写。
+func (e *Engine) LLMAvailable() bool {
+	return e.llmMgr != nil && e.llmMgr.HasAvailable()
+}
+
+// LLMStatus 返回每个 LLM Provider 的运行状态快照（计数 + 熔断到期时间）。
+func (e *Engine) LLMStatus() []llm.ProviderStatus {
+	if e.llmMgr == nil {
+		return nil
+	}
+	return e.llmMgr.Status()
 }

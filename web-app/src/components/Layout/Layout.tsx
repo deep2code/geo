@@ -18,6 +18,11 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   { key: 'report', to: '/report-export', icon: '📄', labelKey: 'nav.reportExport' },
   { key: 'alerts', to: '/alert-email', icon: '📧', labelKey: 'nav.alertEmail' },
   { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
+  { key: 'system-check', to: '/system-check', icon: '🩺', labelKey: 'nav.systemCheck' },
+  { key: 'rules', to: '/rules', icon: '⚙️', labelKey: 'nav.rules' },
+  { key: 'evaluate', to: '/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
+  { key: 'brand-db-import', to: '/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
+  { key: 'integrations', to: '/integrations', icon: '🔌', labelKey: 'nav.integrations' },
   // 新增模块
   { key: 'help', to: '/help', icon: '❓', labelKey: 'nav.help' },
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },

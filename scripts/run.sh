@@ -95,17 +95,17 @@ kill_old_process() {
     done
   fi
 
-  # 方式3：通过进程名匹配（兜底，捕获所有 geo serve 进程）
+  # 方式3：通过进程名匹配（兜底，捕获所有 geo 进程；二进制不再有子命令）
   local name_pids
-  name_pids=$(pgrep -f "$BINARY_NAME serve" 2>/dev/null || true)
+  name_pids=$(pgrep -f "$BINARY_NAME" 2>/dev/null || true)
   if [[ -n "$name_pids" ]]; then
     for pid in $name_pids; do
       # 排除当前脚本自身
       if [[ "$pid" == "$$" ]]; then continue; fi
       if kill -0 "$pid" 2>/dev/null; then
-        info "发现 geo serve 进程 (PID: $pid)，正在优雅停止..."
+        info "发现 geo 进程 (PID: $pid)，正在优雅停止..."
         graceful_stop "$pid"
-        info "已停止 geo serve 进程 (PID: $pid)"
+        info "已停止 geo 进程 (PID: $pid)"
         killed=1
       fi
     done
@@ -143,9 +143,9 @@ start_service() {
 
   # 后台启动，记录 PID（setsid 完全脱离终端，确保进程持久运行）
   if command -v setsid > /dev/null 2>&1; then
-    setsid "$BIN_PATH" serve -p "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
+    setsid "$BIN_PATH" --port "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
   else
-    nohup "$BIN_PATH" serve -p "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
+    nohup "$BIN_PATH" --port "$PORT" > "$LOG_FILE" 2>&1 < /dev/null &
   fi
   local pid=$!
   disown 2>/dev/null || true

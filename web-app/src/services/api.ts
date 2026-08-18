@@ -31,7 +31,15 @@ import type {
   DiscoverResponse,
   WhitelabelMeta,
   BrandCompareResponse,
-  LeaderboardResponse
+  LeaderboardResponse,
+  SelfCheckReport,
+  RulesListResponse,
+  RuleSetValidateResponse,
+  RuleSet,
+  EvaluateResponse,
+  OfflineDBStats,
+  OfflineDBImportResult,
+  OfflineDBImportGitHubRequest
 } from '@/types/api'
 
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
@@ -412,7 +420,78 @@ export const api = {
     deleteAnnouncement: (id: string) =>
       request<any>(`/admin/announcements/${id}`, { method: 'DELETE' }),
     // 系统信息
-    system: () => request<any>('/admin/system', { method: 'GET' })
+    system: () => request<any>('/admin/system', { method: 'GET' }),
+    // 系统自检（关键业务健康 + 属性/参数/配置校验 + 运行时快照）。
+    // skipAuthRedirect：命中 403 时由页面自身展示"需管理员权限"引导，而非全局跳登录。
+    selfCheck: () =>
+      request<SelfCheckReport>('/admin/selfcheck', {
+        method: 'GET',
+        skipAuthRedirect: true
+      })
+  },
+
+  // 规则集管理（替代原 `geo rules` CLI）
+  rules: {
+    list: () => request<RulesListResponse>('/rules', { method: 'GET' }),
+    default: () => request<RuleSet>('/rules/default', { method: 'GET' }),
+    validate: (payload: { content?: string; path?: string }) =>
+      request<RuleSetValidateResponse>('/rules/validate', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        skipAuthRedirect: true
+      })
+  },
+
+  // GEO 评测（替代原 `geo evaluate` CLI）
+  evaluate: {
+    run: (payload: {
+      dataset: string
+      format?: 'md' | 'json'
+      live?: boolean
+      llm_key?: string
+      llm_base?: string
+      llm_model?: string
+      rules?: string
+    }) =>
+      request<EvaluateResponse>('/evaluate', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        timeout: 600000,
+        skipAuthRedirect: true
+      })
+  },
+
+  // 离线工商库（替代原 `geo brand db import-*` CLI）
+  offlinedb: {
+    stats: () => request<OfflineDBStats>('/brand/offlinedb/stats', { method: 'GET', skipAuthRedirect: true }),
+    provinces: () => request<string[]>('/brand/offlinedb/provinces', { method: 'GET', skipAuthRedirect: true }),
+    // 上传 JSON 文件导入（multipart）
+    importFile: async (file: File, batch?: number): Promise<OfflineDBImportResult> => {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (batch) fd.append('batch', String(batch))
+      const headers: Record<string, string> = {}
+      const ak = getAdminKey()
+      if (ak) headers['X-Admin-Key'] = ak
+      const res = await fetch(`${API_BASE}/brand/offlinedb/import`, {
+        method: 'POST',
+        body: fd,
+        headers
+      })
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as any
+        throw new Error(e?.error || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as OfflineDBImportResult
+    },
+    // 直连 GitHub 下载并导入
+    importGitHub: (payload: OfflineDBImportGitHubRequest) =>
+      request<OfflineDBImportResult>('/brand/offlinedb/import-github', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        timeout: 600000,
+        skipAuthRedirect: true
+      })
   },
 
   // 帮助中心

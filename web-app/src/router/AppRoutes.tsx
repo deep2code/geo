@@ -16,6 +16,11 @@ const Leaderboard = lazy(() => import('@/pages/Leaderboard'))
 // 新增模块
 const Admin = lazy(() => import('@/pages/Admin'))
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'))
+const SystemCheck = lazy(() => import('@/pages/SystemCheck'))
+const Rules = lazy(() => import('@/pages/Rules'))
+const Evaluate = lazy(() => import('@/pages/Evaluate'))
+const BrandDBImport = lazy(() => import('@/pages/BrandDBImport'))
+const Integrations = lazy(() => import('@/pages/Integrations'))
 const Help = lazy(() => import('@/pages/Help'))
 const Tickets = lazy(() => import('@/pages/Tickets'))
 const Landing = lazy(() => import('@/pages/Landing'))
@@ -94,6 +99,21 @@ export const AppRoutes: React.FC = () => {
           } />
           <Route path="admin" element={
             <Suspense fallback={<PageFallback />}><Admin /></Suspense>
+          } />
+          <Route path="system-check" element={
+            <Suspense fallback={<PageFallback />}><SystemCheck /></Suspense>
+          } />
+          <Route path="rules" element={
+            <Suspense fallback={<PageFallback />}><Rules /></Suspense>
+          } />
+          <Route path="evaluate" element={
+            <Suspense fallback={<PageFallback />}><Evaluate /></Suspense>
+          } />
+          <Route path="brand-db-import" element={
+            <Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense>
+          } />
+          <Route path="integrations" element={
+            <Suspense fallback={<PageFallback />}><Integrations /></Suspense>
           } />
           <Route path="help" element={
             <Suspense fallback={<PageFallback />}><Help /></Suspense>

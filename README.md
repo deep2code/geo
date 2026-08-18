@@ -52,9 +52,8 @@ MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / 
 ```mermaid
 graph TB
     subgraph 用户层["👤 使用方式"]
-        CLI["💻 CLI 命令行<br/>geo optimize / audit / discover"]
-        Web["🌐 Web UI + REST API<br/>localhost:8080"]
-        MCP["🤖 MCP Server<br/>Claude / Cursor / TraeCode"]
+        Web["🌐 Web UI + REST API<br/>localhost:8080（唯一入口，无 CLI）"]
+        MCP["🤖 MCP Server<br/>Claude / Cursor / TraeCode（同进程 :9090）"]
     end
 
     subgraph 引擎层["⚙️ 核心引擎"]
@@ -219,9 +218,9 @@ mindmap
 ```mermaid
 flowchart LR
     A["1. 安装<br/>go install ./cmd/geo<br/>或 make build"] --> B["2. (可选) 配置<br/>cp .env.example .env<br/>填入 GEO_LLM_KEY"]
-    B --> C["3. 评分<br/>echo '内容' \| geo score"]
-    C --> D["4. 优化<br/>geo optimize -f content.md"]
-    D --> E["5. Web界面<br/>geo serve -p 8080"]
+    B --> C["3. 启动<br/>./bin/geo  (默认 :8080)"]
+    C --> D["4. 浏览器打开<br/>localhost:8080"]
+    D --> E["5. 在「内容优化」页<br/>评分 / 分析 / 优化"]
 
     style A fill:#dbeafe,stroke:#2563eb
     style B fill:#e0e7ff,stroke:#4f46e5
@@ -270,84 +269,41 @@ cd .. && make build    # 或 go build ./cmd/geo
 ### 最小可用示例
 
 ```bash
-# ✅ 无需任何 Key 也能用：评分
-echo "Python 是最流行的编程语言之一。" | geo score
+# ✅ 无需任何 Key：直接启动 Web 服务（默认 :8080）
+./bin/geo
 
-# ✅ 无需任何 Key：关键词发现
-geo discover "短视频"
-
-# ✅ 无需任何 Key：AI 就绪度检查
-geo readiness --url https://example.com
+# 浏览器打开 http://localhost:8080 后，在「内容优化」页粘贴
+# “Python 是最流行的编程语言之一。” 即可免费评分；
+# 「关键词发现」页输入“短视频”即可发现；「系统自检」页一键检查就绪度。
 ```
 
 ---
 
-## ⚡ CLI 命令全景
+## 🖥️ 纯 Web 界面操作（已移除全部 CLI 子命令）
 
-```mermaid
-graph LR
-    subgraph 内容["📝 内容优化"]
-        O["optimize"]
-        S["score"]
-        A["analyze"]
-        ST["strategies"]
-    end
+本项目**不再提供任何命令行子命令**。直接运行二进制即启动 Web 服务（REST API + 前端 SPA），默认监听 `:8080`（可用 `--port` 或环境变量 `GEO_PORT` 覆盖；`--version` 打印版本）。**所有能力均通过浏览器前端界面操作**，对应左侧导航：
 
-    subgraph 品牌["🏢 品牌审计"]
-        BA["brand audit"]
-        BDB["brand db"]
-        BCA["brand cache"]
-    end
-
-    subgraph P0P1["🔥 P0/P1 扩展"]
-        D["discover"]
-        RD["readiness"]
-        VS["vertical"]
-        LS["localseo"]
-        TS["topsource"]
-        ES["externalsignals"]
-        AR["autorewrite"]
-    end
-
-    subgraph 服务["🌐 服务模式"]
-        SE["serve"]
-        MCP["mcp-server"]
-    end
-
-    subgraph 战略["🎯 战略级能力"]
-        EV["evaluate"]
-        RU["rules"]
-        CO["cost"]
-    end
-
-    style 内容 fill:#dbeafe,stroke:#2563eb
-    style 品牌 fill:#dcfce7,stroke:#16a34a
-    style P0P1 fill:#fef3c7,stroke:#d97706
-    style 服务 fill:#f3e8ff,stroke:#7c3aed
-    style 战略 fill:#ffe4e6,stroke:#e11d48
-```
-
-| 命令 | 说明 | 需 LLM Key |
+| 前端页面 | 功能 | 需 LLM Key |
 |---|---|---|
-| `geo optimize` | 内容优化（9 法策略） | ✅ |
-| `geo score` | GEO 评分（0-100） | ❌ |
-| `geo analyze` | GEO 信号分析 | ❌ |
-| `geo strategies` | 列出全部优化策略 | ❌ |
-| `geo brand audit` | 品牌可见度审计（`geo brand-audit` 已废弃） | ✅ |
-| `geo brand db` | 离线工商库管理（`geo brand-db` 已废弃） | ❌ |
-| `geo brand cache` | China-Check 缓存管理（`geo brand-cache` 已废弃） | ❌ |
-| `geo discover` | 关键词→公司→GEO 报告 | ✅/❌ |
-| `geo readiness` | 8 维 AI 就绪度 CI 闸门 | ❌ |
-| `geo vertical` | 行业类型识别 | ❌ |
-| `geo localseo` | Local SEO / GMB 审计 | ❌ |
-| `geo topsource` | Top Source 归因分析 | ✅ |
-| `geo externalsignals` | 社媒情感 + KOL 情报 | ✅ |
-| `geo autorewrite` | AutoGEO 规则重写 | ✅ |
-| `geo serve` | 启动 Web UI + API | 视功能 |
-| `geo mcp-server` | MCP Server 模式 | 视功能 |
-| `geo evaluate` | 跑中文 GEO 评测集，产出改前/改后引用率可复现报告（`--live --llm-key` 接入真实引擎实测引用） | ❌（离线代理）/ ✅（接入真实引擎） |
-| `geo rules show\|validate\|list` | 规则集外部化：查看/校验/列出可用规则集 | ❌ |
-| `geo cost report` | LLM 成本仪表盘：按模型聚合 token/USD + 预算熔断状态 | ❌（读 Prometheus/服务端） |
+| 仪表盘 / 内容优化 | 评分、分析、优化（9 法策略） | 优化 ✅ |
+| 品牌管理 / 品牌审计 | 品牌可见度审计、工商搜索 | ✅ |
+| 关键词发现 | 关键词→公司→GEO 报告 | ✅/❌ |
+| 竞品对标 / 排行榜 | 对比与排名 | ❌ |
+| 🩺 系统自检 | 三类诊断（业务健康 + 配置校验 + 运行时快照） | ❌ |
+| ⚙️ 规则集 | 查看默认规则集、列出/校验外部化规则集 | ❌ |
+| 📊 评测 | 跑中文 GEO 评测集，产出改前/改后引用率可复现报告（可接入真实引擎实测引用） | ❌（离线代理）/ ✅（live） |
+| 🗄️ 工商库导入 | 上传 JSON / 直连 GitHub 导入 1978-2019 工商注册数据 | ❌ |
+| 🔌 集成 / MCP | MCP Server 端点与客户端接入（随服务同进程启动，默认 `:9090` `/mcp`） | 视功能 |
+| 管理后台 | LLM 成本仪表盘、租户、公告等 | ❌ |
+
+> 原 `geo optimize / score / analyze / serve / brand* / mcp-server / readiness / discover / drift / rules / evaluate / cost` 等**全部子命令已移除**，统一收敛到上述 Web 界面。MCP Server 不再作为独立命令，而是**随 Web 服务一起启动**（可用 `GEO_MCP_PORT` 改端口、`GEO_MCP_API_KEY` 设鉴权）。
+
+> **三类诊断能力（前端「系统自检」页 / `GET /api/v1/admin/selfcheck`）**
+> - **关键业务健康检查**：评分 / 分析 / 优化管线、LLM 改写（端到端，需配置 Provider）、三个 MySQL 模块（离线工商库 / 审计历史 / China-Check 缓存）TCP 可达性。
+> - **属性/参数/配置校验**：日志级别与格式、服务端口、LLM 预算、鉴权与弱密钥、管理员密钥、LLM/引擎 Key、各 DSN 格式、白标主题色、定时审计配置、外部规则集合法性。
+> - **系统自检**：运行时快照（Go 版本 / OS / CPU / goroutine / 内存）+ 上述两类聚合 + 整体健康等级。
+>
+> 新手无需命令行：左侧导航「🩺 系统自检」即可一键运行，按健康/隐患/问题分组展示并给出修复建议。端点 `GET /api/v1/admin/selfcheck` 在**服务端未配置 `GEO_ADMIN_KEY` 时开放**（开箱即用）；一旦配置了管理员密钥则要求 `X-Admin-Key`。
 
 ---
 
@@ -460,7 +416,7 @@ graph TB
 ```mermaid
 tree
     root[my-geo/]
-    ├── 📂 cmd/geo/ ["CLI 入口 + 子命令"]
+    ├── 📂 cmd/geo/ ["Web 服务入口（无子命令，启动即前端 + API）"]
     ├── 📂 pkg/geo/ ["公开 API 层"]
     ├── 📂 internal/
     │   ├── 📂 adapter/ ["13 AI 引擎适配器"]
