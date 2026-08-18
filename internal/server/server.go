@@ -23,6 +23,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	_ "net/http/pprof" // /debug/pprof/* 性能剖析（注册到 DefaultServeMux，由 registerRoutes 转发）
 	"net/url"
 	"os"
 	"os/signal"
@@ -437,6 +438,11 @@ func (s *Server) registerRoutes() {
 	// Kubernetes 规范健康检查路径别名（liveness / readiness）
 	s.mux.HandleFunc("/healthz", s.handleLiveness)
 	s.mux.HandleFunc("/readyz", s.handleReadiness)
+	// 可观测性：Prometheus 指标（免鉴权）+ pprof 性能剖析。
+	// pprof 不加入鉴权白名单——启用 GEO_API_KEY / GEO_AUTH 时受保护；
+	// 未配置任何密钥时与 /healthz 一样公开（仅限单机内网部署）。
+	s.mux.HandleFunc("/metrics", s.handleMetrics)
+	s.mux.Handle("/debug/pprof/", http.DefaultServeMux)
 	// REST API（/api/v1/health, /api/v1/ready 复用同一实现，保持向后兼容）
 	s.mux.HandleFunc("/api/v1/health", s.handleLiveness)
 	s.mux.HandleFunc("/api/v1/ready", s.handleReadiness)
@@ -512,7 +518,6 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/leaderboard", s.handleLeaderboard)
 	// 竞品对标矩阵接口
 	s.mux.HandleFunc("/api/v1/brand/compare", s.handleBrandCompare)
-	// 竞品对比报告导出（HTML/JSON）
 	s.mux.HandleFunc("/api/v1/brand/compare/export", s.handleBrandCompareExport)
 	// CMS 集成接口
 	s.mux.HandleFunc("/api/v1/cms/check", s.handleCMSCheck)
@@ -546,6 +551,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/legal/data-export", s.handleLegalDataExport)
 	s.mux.HandleFunc("/api/v1/legal/data-delete", s.handleLegalDataDelete)
 	s.mux.HandleFunc("/api/v1/meta/compliance", s.handleMetaCompliance)
+
 	// ── 账号体系 #1-4：注册 / 登录 / 刷新 / 登出 / 工作区切换 / 成员管理 / 审计日志 ──
 	s.mux.HandleFunc("/api/v1/auth/register", s.authH.Register)
 	s.mux.HandleFunc("/api/v1/auth/login", s.authH.Login)

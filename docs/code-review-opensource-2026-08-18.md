@@ -23,6 +23,43 @@
 
 ---
 
+## 〇、修复状态跟踪（2026-08-18 执行中）
+
+| 编号 | 状态 | 修复内容 | 关键文件 |
+|---|---|---|---|
+| P0-1 | ✅ 已修复 | compose 启用 initdb 建 4 库并授权 | `docker-compose.yml`、`deploy/initdb/` |
+| P0-2 | ✅ 已修复 | MCP Server 优雅关闭/超时/recovery/鉴权限流 | `internal/brand/mcpserver/mcpserver.go`、`cmd/geo/mcp_server.go` |
+| P1-1 | ✅ 已修复 | `/metrics`（手写 Prometheus 文本）+ `/debug/pprof/` + LLM/HTTP 计数 | `internal/server/metrics.go`、`internal/llm/llm.go` |
+| P1-2 | ✅ 已修复 | 删除零引用死代码 `internal/taskqueue/`（452 行） | `git rm internal/taskqueue/` |
+| P1-3 | ✅ 已修复 | main 声明 version/commit/buildAt + `--version` + CI ldflags | `cmd/geo/main.go`、`.github/workflows/release.yml` |
+| P1-4 | ✅ 已修复 | LLM 指数退避重试/并发信号量/可配置熔断 | `internal/llm/llm.go` |
+| P1-5 | ✅ 已修复 | Prompt 注入防护（定界符+数据声明+截断+清洗） | `internal/brand/brand.go`、`internal/optimizer/autorewriter/` |
+| P1-6 | ✅ 已修复 | 零依赖 SQL migrations（embed + 版本表 + checksum） | `internal/migrate/` |
+| P1-7 | ✅ 已修复 | `.env` 加载 + 启动 fail-fast 校验 | `internal/config/env.go`、`cmd/geo/main.go` |
+| P1-8 | ✅ 已修复 | 高价值单测（safeURL 协议白名单 / writeInternalError 脱敏防泄露 / requireDataAdmin legacy 放行 / util.SplitSentences·CountSentences / scorer OverrideWeights 配置化生效+鲁棒性）+ CI 增 quality-gates 作业（golangci-lint + govulncheck） | `internal/server/security_test.go`、`internal/util/util_test.go`、`internal/scorer/scorer_test.go`、`.github/workflows/ci.yml` |
+| P1-9 | ✅ 已修复 | 弱密钥 fail-fast、API Key 恒时比较、JWT token_version 手动吊销、密码策略（8+ 字母数字） | `internal/config/env.go`、`internal/auth/auth.go`、`internal/migrate/sql/auth/0002_token_version.sql` |
+| P1-10 | ✅ 已修复 | 抽 `internal/httputil`（JSON 读写/IP/分页统一，消除 10MB vs 1MB 漂移） | `internal/httputil/`、`internal/server/`、`internal/auth/handlers.go` |
+| P1-11 | ✅ 已修复 | ticket 冒泡排序改 `slices.SortFunc` | `internal/server/ticket.go` |
+| P2-3 | ✅ 已修复 | `globalKB` 无锁单例改 `atomic.Pointer`（失败可重试） | `internal/brand/knowledge/knowledge.go` |
+| P2-4 | ✅ 已修复 | 常青度正则提升为包级变量（补全 212/216 两处内联） | `internal/analyzer/analyzer.go` |
+| P2-5 | ✅ 已修复 | scorer 权重 const→var + `OverrideWeights` 配置化入口 | `internal/scorer/scorer.go` |
+| P2-6 | ✅ 已修复 | jsonl_cache 降频 fsync（3 秒间隔，崩溃窗口可接受） | `internal/brand/chinacheck/jsonl_cache.go` |
+| P2-7 | ✅ 已修复 | externalsignals cost 字段加 `sync.Mutex` 并发保护 | `internal/brand/externalsignals/externalsignals.go` |
+| P2-8 | ✅ 已修复 | knowledge 精确全名匹配 O(1)（`nameExact` map）+ finalize 已有增量机制 | `internal/brand/knowledge/knowledge.go` |
+| P2-10 | ✅ 已修复 | mail 模板解析缓存（`sync.Map`）+ 注释修正（SMTP 无连接池语义） | `internal/mail/mail.go` |
+| P2-11 | ✅ 已修复 | MCP session 落内存 map 校验 + 统一 slog | `internal/brand/mcpserver/mcpserver.go` |
+| P2-12 | ✅ 已修复 | ticket/admin/help 内存态数据标注"重启丢失/多副本需迁 MySQL" | `internal/server/ticket.go`、`admin.go`、`help.go` |
+| P2-13 | ✅ 已修复 | compose 加 nginx 反代（profile proxy 可选）+ redis 改可选依赖 | `docker-compose.yml`、`deploy/nginx/nginx.conf` |
+| P2-14 | ✅ 已修复 | 默认 DSN 移除 `multiStatements=true` | `internal/brand/offlinedb/offlinedb.go` |
+| P2-15 | ✅ 已修复 | deploy.sh 弱口令检测生产模式 fail-fast | `scripts/deploy.sh` |
+| P2-16 | ✅ 已修复 | legal.go 错误响应统一 `ErrorResponse` | `internal/server/legal.go` |
+| P2-17 | ✅ 已修复 | 分页解析统一（随 P1-10 收敛） | `internal/httputil/httputil.go` |
+| P2-1 | ❌ 不采用 | ServeMux 方法路由改造 —— **已实测验证不可行/会劣化**：`server.go` 末尾有 SPA 通配 `HandleFunc("/")`，Go 1.22 ServeMux 方法路由下，错误方法的请求会先匹配该通配而回落到 SPA（返回 404/HTML），而非干净的 405；现有每 handler 的 `if r.Method !=` 检查反而提供更正确的 API 语义，且无风险。详见文末"决策记录 P2-1"。 | `internal/server/server.go` |
+| P2-2 | ⏸ 暂缓 | server.go 4094 行拆分（纯搬移，零逻辑变更）—— 收益为组织性，无功能变化；体量较大且 doc 原文即将其列为"权衡/可选"。测试保护（P1-8）已就位，是否执行交由用户决定。 | `internal/server/server.go` |
+| P2-9 | ✅ 已修复 | `brand-audit/cache/db` 归组到 `geo brand <sub>`（audit/cache/db）；旧顶层 `geo brand-*` 保留为 deprecated 别名（向后兼容，文档已同步） | `cmd/geo/main.go`、`brand_audit.go`、`brand_cache.go`、`brand_db.go`、`README.md`、`docs/getting-started.md`、`docs/architecture.md` |
+
+---
+
 ## 二、P0（严重，先修）
 
 ### P0-1 🔴 docker compose 一键启动必挂：数据库无法就绪
@@ -140,3 +177,22 @@
 | 战略项（按需） | 评测集 + `geo evaluate`、规则集版本化、成本仪表盘 | 新模块 |
 
 > 备注：第一轮有意跳过的 P2-1（方法路由）与 P2-2（拆分 server.go），本轮仍保持"收益与风险权衡"结论——若要动，建议先做方法路由（机械替换风险低），拆分 server.go 放到有测试保护之后再动。
+
+---
+
+## 七、决策记录 P2-1（ServeMux 方法路由改造）—— 经实测验证，不采用
+
+**背景**：原审查建议把 `server.go` 中 60+ 条扁平 `HandleFunc` + 每 handler 内 `if r.Method !=` 的检查，改为 Go 1.22+ `http.ServeMux` 方法路由（`"POST /api/v1/analyze"`），让 mux 直接返回 405。
+
+**实测结论**：**会导致行为劣化，故不采用。**
+
+根因——`server.go` 路由表末尾有 SPA 通配 `s.mux.HandleFunc("/", s.handleWebSPA)`，必须放在最后兜底非 API 路径。Go 1.22 ServeMux 的方法路由语义是：**模式匹配优先于方法匹配**。一旦为某路由声明了方法（如 `"POST /api/v1/brand/audit"`），用错误方法（GET）请求时，mux 不会返回 405，而是继续向下匹配到通配 `"/"`，最终落到 SPA handler 返回 404/HTML。
+
+- 改造前：handler 内 `if r.Method != http.MethodPost` 返回干净的 `405 Method Not Allowed`——**API 语义更正确**。
+- 改造后：错误方法请求回落到 SPA，返回 404/HTML——**劣化**。
+
+**代价/收益**：收益仅为"少写几行方法判断 + 由框架强制 405"；代价是几乎所有 API 在错误方法下语义变差，且需逐一核对每条路由的真实方法（含 GET+POST 双方法、免方法约束的路由），改动面大、回归风险高。
+
+**决定**：保持现状（每 handler 内方法检查），不引入方法路由。若未来要彻底解决，正确做法是把 SPA 兜底从方法路由 mux 中剥离（如用独立 `http.ServeMux` 或在 handler 内显式 405 后再 fallback），而非简单改路由表。
+
+**附带产出**：为此写了 `TestMethodRouting` 等用例验证上述行为，确认劣化后已删除该测试并完整回滚 `registerRoutes`（build/vet/test 均通过）。

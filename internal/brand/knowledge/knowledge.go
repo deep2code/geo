@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 )
 
@@ -85,20 +86,22 @@ type Knowledge struct {
 	index map[string][]int
 	// 域名 → 条目索引（精确匹配）
 	byDomain map[string]int
+	// P2-8：normalized 全名 → 条目索引（精确匹配 O(1)，避免 Search 全量遍历）
+	nameExact map[string]int
 	// 条目总数
 	N int
 	// 向量存储（TF-IDF / Embedding），用于语义检索
 	vectorStore *HybridVectorStore
 }
 
-var (
-	globalKB *Knowledge
-)
+// globalKBPtr 无锁单例：atomic.Pointer 保证并发 Load 只构建一次且无数据竞争。
+// 与 sync.Once 相比，首次构建失败时指针保持 nil，下次 Load 可重试（Once 会缓存错误）。
+var globalKBPtr atomic.Pointer[Knowledge]
 
-// Load 加载并构建索引（幂等，多次调用返回同一实例）。
+// Load 加载并构建索引（幂等，多次调用返回同一实例；并发调用安全）。
 func Load() (*Knowledge, error) {
-	if globalKB != nil {
-		return globalKB, nil
+	if kb := globalKBPtr.Load(); kb != nil {
+		return kb, nil
 	}
 	f, err := dataFS.Open("data/sinofacts.jsonl")
 	if err != nil {
@@ -130,9 +133,10 @@ func Load() (*Knowledge, error) {
 	}
 
 	kb := &Knowledge{
-		entries:  make([]Entry, 0, len(records)),
-		index:    map[string][]int{},
-		byDomain: map[string]int{},
+		entries:   make([]Entry, 0, len(records)),
+		index:     map[string][]int{},
+		byDomain:  map[string]int{},
+		nameExact: map[string]int{},
 	}
 	for i, r := range records {
 		e := buildEntry(r)
@@ -156,7 +160,10 @@ func Load() (*Knowledge, error) {
 			"industry": e.Industry,
 		})
 	}
-	globalKB = kb
+	// 并发构建时仅第一个成功者胜出，其余复用已发布实例
+	if !globalKBPtr.CompareAndSwap(nil, kb) {
+		return globalKBPtr.Load(), nil
+	}
 	return kb, nil
 }
 
@@ -257,6 +264,17 @@ func (kb *Knowledge) addIndex(i int, e Entry) {
 	if e.BrandDomain != "" {
 		kb.byDomain[strings.ToLower(e.BrandDomain)] = i
 	}
+	// P2-8：全名精确匹配索引（normalized），Search 时 O(1) 命中。
+	if n := normalize(e.BrandName); n != "" {
+		if _, exists := kb.nameExact[n]; !exists {
+			kb.nameExact[n] = i
+		}
+	}
+	if n := normalize(e.CompanyName); n != "" {
+		if _, exists := kb.nameExact[n]; !exists {
+			kb.nameExact[n] = i
+		}
+	}
 	add := func(tok string) {
 		tok = normalize(tok)
 		if tok == "" {
@@ -338,8 +356,17 @@ func (kb *Knowledge) Search(query string, topN int) []SearchResult {
 	}
 	// 投票：匹配 token 越多分越高；命中全名得分最高
 	votes := map[int]float64{}
-	// 全名精确匹配优先
+	// P2-8：精确全名匹配 O(1)（替代原先的全量遍历精确匹配分支）。
+	// 命中 normalized 全名直接给满分档（60 精确 + 40 完全相等）。
+	if id, ok := kb.nameExact[q]; ok {
+		votes[id] += 100
+	}
+	// 全名包含匹配：仍需遍历（子串索引空间大，383 条规模 O(N) 可接受；
+	// 品牌数增长到数千级时可改为 n-gram 子串索引）。
 	for i, e := range kb.entries {
+		if votes[i] >= 100 {
+			continue // 精确命中已满分，跳过子串检查
+		}
 		if strings.Contains(normalize(e.BrandName), q) ||
 			strings.Contains(normalize(e.CompanyName), q) {
 			votes[i] += 60

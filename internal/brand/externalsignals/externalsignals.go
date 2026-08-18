@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -78,14 +79,15 @@ type SignalReport struct {
 // Client 外部信号采集客户端。
 //
 // cost 字段为本次报告构建过程中累计的实际/估算费用，由 FullReport 在开始时清零，
-// 各方法顺序调用时累加；该字段非并发安全，仅用于 FullReport 顺序聚合场景。
+// 各方法（可能并发调用）累加；P2-7 加 costMu 互斥锁保证并发安全。
 type Client struct {
 	dfsAPIKey  string       // DataForSEO API Key（env GEO_DFS_APIKEY）
 	dfsEmail   string       // DataForSEO 邮箱（env GEO_DFS_EMAIL）
 	dfsBaseURL string       // DataForSEO 基址，默认 https://api.dataforseo.com/v3
 	ccBaseURL  string       // Common Crawl 索引 API 基址
 	httpClient *http.Client // 30s 超时
-	cost       float64      // 本次报告累计费用（FullReport 内顺序累加）
+	costMu     sync.Mutex
+	cost       float64 // 本次报告累计费用（FullReport 内累加，costMu 保护）
 }
 
 // NewFromEnv 从环境变量构造客户端。
@@ -316,8 +318,10 @@ func (c *Client) FullReport(ctx context.Context, domain string, keywords []strin
 		return nil, fmt.Errorf("域名不能为空")
 	}
 
-	// 重置费用累加器：FullReport 内顺序调用各方法
+	// 重置费用累加器：FullReport 内各方法累加（costMu 保护，并发安全）
+	c.costMu.Lock()
 	c.cost = 0
+	c.costMu.Unlock()
 
 	report := &SignalReport{
 		Domain:    domain,
@@ -346,7 +350,9 @@ func (c *Client) FullReport(ctx context.Context, domain string, keywords []strin
 		}
 	}
 
+	c.costMu.Lock()
 	report.Cost = roundCents(c.cost)
+	c.costMu.Unlock()
 	return report, nil
 }
 
@@ -566,8 +572,12 @@ func (c *Client) ccLatestIndex(ctx context.Context) (string, error) {
 
 // ---------------- 工具函数 ----------------
 
-// addCost 累加费用（仅 FullReport 顺序聚合场景使用，非并发安全）。
-func (c *Client) addCost(v float64) { c.cost += v }
+// addCost 累加费用（costMu 保护，并发安全）。
+func (c *Client) addCost(v float64) {
+	c.costMu.Lock()
+	c.cost += v
+	c.costMu.Unlock()
+}
 
 // guessIntent 根据关键词启发式推断搜索意图。
 func guessIntent(kw string) string {

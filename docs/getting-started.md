@@ -660,10 +660,10 @@ graph TB
 
 ```bash
 # CLI 方式（最常用）
-geo brand-audit -f brand-profile.json
+geo brand audit -f brand-profile.json
 
 # 输出 JSON 报告到文件
-geo brand-audit -f brand-profile.json -o report.json
+geo brand audit -f brand-profile.json -o report.json
 
 # Web 界面方式（可视化热力矩阵+趋势图）
 geo serve
@@ -731,14 +731,14 @@ flowchart LR
     subgraph INGEST["📥 数据导入阶段（一次性）"]
         direction TB
         SRC["🌐 种子数据源<br/>guichong/-/tree/json<br/>31省×42年 JSON"]
-        SRC --> INIT["geo brand-db init<br/>建表 + FULLTEXT(ngram) 索引"]
-        INIT --> IMP["geo brand-db import-file<br/>3种格式自动识别<br/>2000条/批事务插入"]
+        SRC --> INIT["geo brand db init<br/>建表 + FULLTEXT(ngram) 索引"]
+        INIT --> IMP["geo brand db import-file<br/>3种格式自动识别<br/>2000条/批事务插入"]
         IMP --> READY["✅ 1000万+数据就绪"]
     end
 
     subgraph USAGE["🔎 日常查询阶段"]
         direction TB
-        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand-db search<br/>MATCH AGAINST IN BOOLEAN MODE"]
+        QRY["关键词输入<br/>'短视频'/'云计算'..."] --> SEARCH["geo brand db search<br/>MATCH AGAINST IN BOOLEAN MODE"]
         SEARCH --> AUTO["🌐 Web 下拉补全<br/>+来源Tag徽章"]
         AUTO --> DISCOVER["✨ geo discover<br/>关键词→公司→GEO报告"]
     end
@@ -770,33 +770,33 @@ graph TB
 
 ```bash
 # 1. 初始化空库
-geo brand-db init
+geo brand db init
 
 # 2A. 本地批量导入（推荐，全量）
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
-geo brand-db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/
+geo brand db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/
 
 # 2B. GitHub 直接下载（推荐，快速体验）
-geo brand-db import-github --years 2019 --provinces 广东,北京,上海
+geo brand db import-github --years 2019 --provinces 广东,北京,上海
 
 # 3. 统计信息
-geo brand-db stats
+geo brand db stats
 
 # 4. 模糊搜索
-geo brand-db search "腾讯" -n 5
+geo brand db search "腾讯" -n 5
 ```
 
 ### China-Check 实时核验缓存管理
 
 ```bash
 # 预热：批量查询高频企业
-geo brand-cache warm --queries "腾讯,阿里巴巴,字节跳动,华为,小米,百度"
+geo brand cache warm --queries "腾讯,阿里巴巴,字节跳动,华为,小米,百度"
 
 # 查看缓存占用 + 命中率
-geo brand-cache stats
+geo brand cache stats
 
 # 压缩清理过期项
-geo brand-cache compact
+geo brand cache compact
 ```
 
 ---
@@ -873,7 +873,7 @@ graph TB
         F1["geo score — 内容 GEO 评分"]
         F2["geo analyze — 信号分析"]
         F3["geo strategies — 策略列表"]
-        F4["geo brand-db — 工商库管理"]
+        F4["geo brand db — 工商库管理"]
         F5["geo readiness — AI 就绪度检查"]
         F6["geo vertical — 行业类型识别"]
         F7["geo localseo — Local SEO 审计"]
@@ -883,7 +883,7 @@ graph TB
     subgraph PAID["🔴 ✅ 需要 LLM Key — 调用大模型"]
         direction TB
         P1["geo optimize — 内容改写优化"]
-        P2["geo brand-audit — 多引擎品牌审计"]
+        P2["geo brand audit — 多引擎品牌审计"]
         P3["geo topsource — Top Source 归因分析"]
         P4["geo autorewrite — AutoGEO 规则重写"]
         P5["geo externalsignals — 社媒+KOL情报"]
@@ -900,13 +900,13 @@ graph TB
 - `geo score` — GEO 评分
 - `geo analyze` — 信号分析
 - `geo strategies` — 策略列表
-- `geo brand-db` — 工商库管理
+- `geo brand db` — 工商库管理
 - `geo readiness` — AI 就绪度检查
 - `geo serve` — Web 服务（评分/分析功能可用）
 
 需要 LLM Key 的功能：
 - `geo optimize` — 调用大模型改写内容
-- `geo brand-audit` — 调用 AI 引擎查询品牌可见度
+- `geo brand audit` — 调用 AI 引擎查询品牌可见度
 
 ### Q: 支持哪些 AI 引擎？
 

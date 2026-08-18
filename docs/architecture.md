@@ -121,7 +121,7 @@ graph LR
 
     subgraph 需要APIKey["需引擎 Key 🔑"]
         geo_optimize["geo optimize<br/>内容改写"]
-        geo_audit["geo brand-audit<br/>品牌审计"]
+        geo_audit["geo brand audit<br/>品牌审计"]
         geo_topsource["geo topsource<br/>归因分析"]
         geo_autorewrite["geo autorewrite<br/>规则重写"]
         geo_mcp["geo mcp-server<br/>Agent 工具"]

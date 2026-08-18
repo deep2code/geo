@@ -45,7 +45,7 @@ type Announcement struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-// 公告内存存储（进程重启清空，可接受）。
+// 公告内存存储（进程重启清空，可接受；多副本部署需迁 MySQL 共享）。
 var (
 	announcementsMu sync.Mutex
 	announcements   []Announcement

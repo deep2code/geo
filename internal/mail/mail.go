@@ -4,7 +4,9 @@
 // 支持：
 //   - HTML + Plain Text 双版本邮件（multipart/alternative）
 //   - 附件（multipart/mixed，PDF/JSON 等）
-//   - Sender 复用 SMTP 连接（批量场景复用）
+//   - 每封邮件独立 SMTP 会话（SMTP 协议无连接池语义：QUIT 后连接即关闭，
+//     复用需维持长连保活心跳，收益有限且增加状态管理复杂度，故不池化）
+//   - 模板解析缓存（renderTemplate 首次解析后 sync.Map 缓存，避免重复 Parse）
 //   - 环境变量一键配置（GEO_SMTP_*）
 //
 // 环境变量：
@@ -34,11 +36,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"my-geo/internal/config"
 	"my-geo/internal/util"
 )
+
+// P2-10：模板解析缓存。模板源（TemplateWeekly 等常量）在进程内固定不变，
+// 首次 renderTemplate 解析后缓存 *template.Template，后续直接 Execute，省去重复 Parse。
+var templateCache sync.Map // name → *template.Template
 
 // aiMailDisclaimerShort 邮件末尾附的短版 AI 生成声明（法务 #81）。
 // 放在所有邮件（告警、周报、报告）的 HTML footer；纯文本同步附短声明。
@@ -591,9 +598,17 @@ func RenderWeeklyHTML(d TemplateWeeklyData) (string, error) {
 }
 
 func renderTemplate(name, src string, data any) (string, error) {
-	t := template.New(name)
-	if _, err := t.Parse(src); err != nil {
-		return "", fmt.Errorf("mail: 模板解析失败 %s: %w", name, err)
+	// P2-10：优先从缓存取已解析模板（模板源为常量，name 唯一对应 src）。
+	var t *template.Template
+	if v, ok := templateCache.Load(name); ok {
+		t = v.(*template.Template)
+	} else {
+		nt := template.New(name)
+		if _, err := nt.Parse(src); err != nil {
+			return "", fmt.Errorf("mail: 模板解析失败 %s: %w", name, err)
+		}
+		t = nt
+		templateCache.Store(name, t)
 	}
 	var out bytes.Buffer
 	if err := t.Execute(&out, data); err != nil {

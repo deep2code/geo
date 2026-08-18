@@ -289,9 +289,9 @@ graph LR
     end
 
     subgraph 品牌["🏢 品牌审计"]
-        BA["brand-audit"]
-        BDB["brand-db"]
-        BCA["brand-cache"]
+        BA["brand audit"]
+        BDB["brand db"]
+        BCA["brand cache"]
     end
 
     subgraph P0P1["🔥 P0/P1 扩展"]
@@ -321,9 +321,9 @@ graph LR
 | `geo score` | GEO 评分（0-100） | ❌ |
 | `geo analyze` | GEO 信号分析 | ❌ |
 | `geo strategies` | 列出全部优化策略 | ❌ |
-| `geo brand-audit` | 品牌可见度审计 | ✅ |
-| `geo brand-db` | 离线工商库管理 | ❌ |
-| `geo brand-cache` | China-Check 缓存管理 | ❌ |
+| `geo brand audit` | 品牌可见度审计（`geo brand-audit` 已废弃） | ✅ |
+| `geo brand db` | 离线工商库管理（`geo brand-db` 已废弃） | ❌ |
+| `geo brand cache` | China-Check 缓存管理（`geo brand-cache` 已废弃） | ❌ |
 | `geo discover` | 关键词→公司→GEO 报告 | ✅/❌ |
 | `geo readiness` | 8 维 AI 就绪度 CI 闸门 | ❌ |
 | `geo vertical` | 行业类型识别 | ❌ |

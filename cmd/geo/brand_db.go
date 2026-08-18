@@ -29,12 +29,12 @@ import (
 // 推荐工作流：
 //  1. git clone --depth 1 -b json https://github.com/guichong/- ~/geo-enterprise-json
 //     （文件太多很大，建议仅 clone json 分支，且可 --filter=blob:none 或用浅克隆）
-//  2. geo brand-db import-file -f ~/geo-enterprise-json/Enterprise-Registration-Data/json/2018/广东省.json
-//     或批量：geo brand-db import-file -d ~/geo-enterprise-json/Enterprise-Registration-Data/json/
-//  3. 不想自己 clone：用 geo brand-db import-github --years 2019 --provinces 广东,北京 直连 raw 下载
-func newBrandDBCmd() *cobra.Command {
+//  2. geo brand db import-file -f ~/geo-enterprise-json/Enterprise-Registration-Data/json/2018/广东省.json
+//     或批量：geo brand db import-file -d ~/geo-enterprise-json/Enterprise-Registration-Data/json/
+//  3. 不想自己 clone：用 geo brand db import-github --years 2019 --provinces 广东,北京 直连 raw 下载
+func buildBrandDBCmd(name string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "brand-db",
+		Use:   name,
 		Short: "离线工商注册信息 MySQL 数据库管理（1978-2019，1000万+ 种子数据）",
 		Long: `离线工商注册信息数据库管理（MySQL 8.0+；使用 FULLTEXT ngram 中文分词；DSN 用 GEO_OFFLINE_MYSQL_DSN 设置）。
 
@@ -45,16 +45,16 @@ func newBrandDBCmd() *cobra.Command {
 快速开始：
   # 方式 A：本地已有仓库（推荐，1000万条整体走 git 更稳）
   git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
-  geo brand-db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/2019
+  geo brand db import-file -d ~/geo-erddb/Enterprise-Registration-Data/json/2019
 
   # 方式 B：直接从 GitHub raw 下载指定年份+省份（适合少量样本）
-  geo brand-db import-github --years 2018,2019 --provinces 广东,北京,上海
+  geo brand db import-github --years 2018,2019 --provinces 广东,北京,上海
 
   # 使用
-  geo brand-db stats                          # 统计总数/省分布/文件大小
-  geo brand-db search "腾讯" -n 5              # 模糊搜索 Top 5
-  geo brand-db init                            # 仅建库不导入（建空表）
-  geo brand-db clear                           # 清空整个库并回收空间`,
+  geo brand db stats                          # 统计总数/省分布/文件大小
+  geo brand db search "腾讯" -n 5              # 模糊搜索 Top 5
+  geo brand db init                            # 仅建库不导入（建空表）
+  geo brand db clear                           # 清空整个库并回收空间`,
 	}
 	cmd.AddCommand(
 		newBrandDBInitCmd(),

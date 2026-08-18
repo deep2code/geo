@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,10 @@ type jsonlStore struct {
 
 	// P1-2：自上次重写以来懒删除的过期条目数，达到阈值触发磁盘重写。
 	purgedSinceCompact int
+	// P2-6：上次 fsync 的 unix nano。降频刷盘——每次 set 都 fsync 在高写入场景
+	// 下成为瓶颈；改为间隔 fsyncInterval 才刷一次，崩溃最多丢失该窗口内条目
+	//（缓存数据可接受，内存态在 load 时重建）。
+	lastSync atomic.Int64
 }
 
 // 默认缓存参数。
@@ -37,6 +42,9 @@ const (
 
 	// compactAfterPurges 懒删除累计达到该数量后触发一次磁盘重写（清理残留行）。
 	compactAfterPurges = 100
+
+	// fsyncInterval 两次 fsync 之间的最小间隔（纳秒）。3 秒平衡了持久性与吞吐。
+	fsyncInterval int64 = 3_000_000_000
 )
 
 // cacheEntry 单条缓存（序列化到 JSONL 每行）。
@@ -234,7 +242,17 @@ func (c *jsonlStore) appendEntry(e cacheEntry) error {
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return err
 	}
-	return f.Sync()
+	// P2-6：降频 fsync——距上次刷盘超过 fsyncInterval 才调用 f.Sync()，
+	// 避免每次 set 都触发一次 fsync 系统调用（高写入场景下成为吞吐瓶颈）。
+	// fsync 任一打开句柄都会刷该文件的全部脏页，故历史未 Sync 的写也会一并落盘。
+	now := time.Now().UnixNano()
+	if now-c.lastSync.Load() > fsyncInterval {
+		if err := f.Sync(); err != nil {
+			return err
+		}
+		c.lastSync.Store(now)
+	}
+	return nil
 }
 
 func (c *jsonlStore) load() error {

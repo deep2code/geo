@@ -92,6 +92,7 @@ func (s *Server) requestLogger(h http.Handler) http.Handler {
 		start := time.Now()
 		rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		h.ServeHTTP(rw, r)
+		observeRequest(r.URL.Path, rw.status)
 		rid := RequestIDFromContext(r.Context())
 		if rid == "" {
 			slog.Info("http request",
@@ -143,6 +144,7 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 			"/favicon.ico":   true,
 			"/healthz":       true, // 探活端点必须公开，避免鉴权误判宕机
 			"/readyz":        true,
+			"/metrics":       true, // Prometheus 抓取端点（无敏感数据）
 			"/api/v1/health": true,
 			"/api/v1/ready":  true,
 		},

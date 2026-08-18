@@ -17,9 +17,9 @@ import (
 //
 // 参考 AiCMO / oneglanse 的品牌监控能力，对品牌在 AI 引擎中的
 // 提及/引用/情感/位置/竞品/幽灵引用进行检测，输出 BVS 评分与运营报告。
-func newBrandAuditCmd() *cobra.Command {
+func buildBrandAuditCmd(name string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "brand-audit",
+		Use:   name,
 		Short: "品牌可见度审计：评分 + 报告 + 运营行动建议",
 		Long: `品牌可见度审计（Brand Visibility Audit）。
 

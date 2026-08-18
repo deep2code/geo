@@ -23,19 +23,19 @@ import (
 //	compact              压缩/去重缓存文件（剔除过期条目）
 //	import -f list.txt   按品牌/公司名清单批量预热缓存（每行一个查询词，支持 # 注释）
 //	import --queries "腾讯,阿里,字节"  直接传逗号分隔的查询词
-func newBrandCacheCmd() *cobra.Command {
+func buildBrandCacheCmd(name string) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "brand-cache",
+		Use:   name,
 		Short: "China-Check MCP 工商核验本地缓存管理（预热/统计/清空）",
 		Long: `管理 China-Check MCP 的 MySQL 持久化缓存（默认使用 GEO_CHINACHECK_MYSQL_DSN 环境变量连接）。
 
 常用场景：
   1. 第一次部署，批量预热自己关心的 Top 1000 品牌：
-     geo brand-cache import -f my_brands.txt
+     geo brand cache import -f my_brands.txt
   2. 查看缓存占用：
-     geo brand-cache stats
+     geo brand cache stats
   3. 数据大版本更新（如年度）后清缓存：
-     geo brand-cache clear
+     geo brand cache clear
 
 环境变量（与 server 共用同一套）：
   GEO_CHINACHECK_CACHE_PATH=/path/to/file.jsonl  自定义缓存文件

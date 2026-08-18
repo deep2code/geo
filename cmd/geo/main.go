@@ -41,6 +41,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "警告: 加载 .env 失败:", err)
 	}
 	initLogger()
+	// 同步构建信息到 server 包（/metrics 的 geo_build_info 与 geo --version 保持一致）。
+	server.SetBuildInfo(version, commit)
 	// 启动关键配置 fail-fast 校验（弱密钥/缺 DSN 拒绝启动）。
 	if err := config.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
@@ -100,9 +102,11 @@ func newRootCmd() *cobra.Command {
 		newAnalyzeCmd(),
 		newStrategiesCmd(),
 		newServeCmd(),
-		newBrandAuditCmd(),
-		newBrandCacheCmd(),
-		newBrandDBCmd(),
+		newBrandCmd(),
+		// 向后兼容：保留旧的顶层 brand-* 命令（已废弃，建议改用 geo brand <sub>）
+		withDeprecated(buildBrandAuditCmd("brand-audit"), "use 'geo brand audit' instead"),
+		withDeprecated(buildBrandCacheCmd("brand-cache"), "use 'geo brand cache' instead"),
+		withDeprecated(buildBrandDBCmd("brand-db"), "use 'geo brand db' instead"),
 		newMCPServerCmd(),
 		newReadinessCmd(),
 		newCrawlabilityCmd(),
@@ -115,6 +119,27 @@ func newRootCmd() *cobra.Command {
 		newDriftCmd(),
 	)
 	return root
+}
+
+// withDeprecated 标记命令为废弃（运行时仍可用，仅打印警告），用于平滑迁移。
+func withDeprecated(cmd *cobra.Command, msg string) *cobra.Command {
+	cmd.Deprecated = msg
+	return cmd
+}
+
+// newBrandCmd brand 命令组：将品牌域子命令归组到 `geo brand <sub>`。
+func newBrandCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "brand",
+		Short: "品牌域命令（审计 / 工商库 / 缓存）",
+		Long:  "品牌域命令集合：可见度审计、离线工商库管理、China-Check 缓存管理。",
+	}
+	cmd.AddCommand(
+		buildBrandAuditCmd("audit"),
+		buildBrandCacheCmd("cache"),
+		buildBrandDBCmd("db"),
+	)
+	return cmd
 }
 
 // llmFlags 通用 LLM 配置 flags。
@@ -355,6 +380,8 @@ func newServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "启动 REST API 服务",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 优先级：--port flag > GEO_PORT 环境变量 > 8080。
+			// flag 默认值为空，避免默认值遮蔽环境变量回退分支。
 			port, _ := cmd.Flags().GetString("port")
 			if port == "" {
 				port = config.Env("GEO_PORT", "8080")
@@ -368,10 +395,13 @@ func newServeCmd() *cobra.Command {
 			fmt.Println("  POST /api/v1/analyze")
 			fmt.Println("  POST /api/v1/score")
 			fmt.Println("  POST /api/v1/optimize")
+			fmt.Println("可观测性：")
+			fmt.Println("  GET  /metrics           Prometheus 指标")
+			fmt.Println("  GET  /debug/pprof/      性能剖析")
 			return srv.ListenAndServe()
 		},
 	}
-	cmd.Flags().StringP("port", "p", "8080", "服务端口")
+	cmd.Flags().StringP("port", "p", "", "服务端口（默认 GEO_PORT 环境变量，缺省 8080）")
 	llmFlags(cmd)
 	return cmd
 }

@@ -48,6 +48,9 @@ var (
 	reTechnical = regexp.MustCompile(`\b[A-Z]{2,}\b|API|算法|架构|协议|框架`)
 	// 汉字（countWords 中用于把中文替换为空格以统计英文单词）
 	reHan = regexp.MustCompile(`[\p{Han}]`)
+	// P2-4：常青度评分用的时效性/价格正则提升为包级变量，避免每次调用重新编译。
+	reTimeSensitive = regexp.MustCompile(`20\d\d年|20\d\d-\d{1,2}|去年|本月|今日`)
+	rePriceSensitive = regexp.MustCompile(`￥|¥|\$\d|价格|元/`)
 )
 
 // Analyze 分析内容，返回各类 GEO 信号检测结果。
@@ -209,11 +212,11 @@ func detectNegativeSignals(content string) []string {
 func calcEvergreenScore(content string, a *models.ContentAnalysis) int {
 	score := 70 // 基础分
 	// 含具体日期 → 时效性内容，降低常青度
-	if regexp.MustCompile(`20\d\d年|20\d\d-\d{1,2}|去年|本月|今日`).MatchString(content) {
+	if reTimeSensitive.MatchString(content) {
 		score -= 20
 	}
 	// 含价格 → 易过期
-	if regexp.MustCompile(`￥|¥|\$\d|价格|元/`).MatchString(content) {
+	if rePriceSensitive.MatchString(content) {
 		score -= 15
 	}
 	// 有结构化信号 → 提升

@@ -36,6 +36,7 @@ type TicketReply struct {
 }
 
 // 工单内存存储。
+// ⚠️ 进程内存态，重启丢失；多副本部署需迁移到 MySQL（当前仅单实例适用）。
 var (
 	ticketStore sync.Map // map[string]*Ticket
 	ticketSeq   int64    // 工单自增序号

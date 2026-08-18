@@ -18,8 +18,12 @@ const (
 	maxNegativeScore   = 10.0 // 负向信号（扣分制）
 )
 
+// 以下权重/参数默认值对标 AutoGEO 策略效果系数。全部为可覆盖变量（var），
+// 支持按行业/引擎偏好调参——调用 OverrideWeights 在启动时一次性覆盖，
+// 避免频繁调参需要改代码重编译（对标 AutoGEO rule extraction 的配置化思路）。
+
 // 可引用性信号各信号权重（参考策略效果系数）。
-const (
+var (
 	weightQuotation      = 8.0
 	weightStatistics     = 7.0
 	weightCiteSources    = 7.0
@@ -30,7 +34,7 @@ const (
 )
 
 // 结构信号各信号权重。
-const (
+var (
 	weightHeadingHierarchy  = 8.0
 	weightFrontLoading      = 7.0
 	weightLists             = 5.0
@@ -40,7 +44,7 @@ const (
 )
 
 // 内容质量评分参数。
-const (
+var (
 	qualityFullWordMin    = 300  // 词数达标（拿满分）下限
 	qualityFullWordMax    = 2000 // 词数达标上限
 	qualityPartialWordMin = 100  // 词数部分得分下限
@@ -51,23 +55,23 @@ const (
 )
 
 // 负向信号扣分参数。
-const (
+var (
 	negativePenaltyPerSignal = 2.5 // 每个负向信号扣分
 	negativeFullSignals      = 4   // 达到该数量扣满本维度
 )
 
 // EstimateVisibility 可见度预估参数。
-const (
+var (
 	positionScoreDivisor  = 100.0 // 评分 → 0-1 位置分
 	citationFreqBaseDiv   = 20.0  // 评分 → 基准引用频率
 	citationFreqBoost     = 5.0   // 每个策略带来的引用频率提升
 	citationOrderBase     = 10    // 引用次序基准
-	citationOrderDiv      = 12    // 评分 → 引用次序改善幅度
+	citationOrderDiv      = 12.0  // 评分 → 引用次序改善幅度（float64，参与浮点除法）
 	semanticSimilarityDiv = 2.0   // 策略提升折算进语义相似度
 )
 
 // EstimateUtility 效用预估参数。
-const (
+var (
 	utilityHighQuality    = 0.9  // 高质量（有引用来源/无负向信号）
 	utilityLowQuality     = 0.5  // 低质量（无引用来源）
 	keypointCoverageDiv   = 5.0  // 结构信号数 → 关键点覆盖率
@@ -75,6 +79,37 @@ const (
 	utilityQualityPenalty = 0.15 // 每个负向信号的回答质量扣分
 	utilityDimensionCount = 3.0  // 效用指标维度数（求均值）
 )
+
+// OverrideWeights 覆盖评分权重（按名称）。零值/非法名称忽略，仅覆盖合法键。
+// 应在启动早期调用一次（Scorer 创建前），非并发安全。
+// 支持的键：quotation / statistics / cite_sources / fluency / authoritative /
+// technical_terms / unique_words / heading_hierarchy / front_loading / lists /
+// definition_opening / tables / faq / negative_penalty / evergreen。
+func OverrideWeights(w map[string]float64) {
+	if len(w) == 0 {
+		return
+	}
+	set := func(name string, dst *float64) {
+		if v, ok := w[name]; ok && v >= 0 {
+			*dst = v
+		}
+	}
+	set("quotation", &weightQuotation)
+	set("statistics", &weightStatistics)
+	set("cite_sources", &weightCiteSources)
+	set("fluency", &weightFluency)
+	set("authoritative", &weightAuthoritative)
+	set("technical_terms", &weightTechnicalTerms)
+	set("unique_words", &weightUniqueWords)
+	set("heading_hierarchy", &weightHeadingHierarchy)
+	set("front_loading", &weightFrontLoading)
+	set("lists", &weightLists)
+	set("definition_opening", &weightDefinitionOpening)
+	set("tables", &weightTables)
+	set("faq", &weightFAQ)
+	set("negative_penalty", &negativePenaltyPerSignal)
+	set("evergreen", &evergreenScoreWeight)
+}
 
 // Scorer 评分引擎。
 type Scorer struct {
