@@ -55,7 +55,7 @@
 | P2-16 | ✅ 已修复 | legal.go 错误响应统一 `ErrorResponse` | `internal/server/legal.go` |
 | P2-17 | ✅ 已修复 | 分页解析统一（随 P1-10 收敛） | `internal/httputil/httputil.go` |
 | P2-1 | ❌ 不采用 | ServeMux 方法路由改造 —— **已实测验证不可行/会劣化**：`server.go` 末尾有 SPA 通配 `HandleFunc("/")`，Go 1.22 ServeMux 方法路由下，错误方法的请求会先匹配该通配而回落到 SPA（返回 404/HTML），而非干净的 405；现有每 handler 的 `if r.Method !=` 检查反而提供更正确的 API 语义，且无风险。详见文末"决策记录 P2-1"。 | `internal/server/server.go` |
-| P2-2 | ⏸ 暂缓 | server.go 4094 行拆分（纯搬移，零逻辑变更）—— 收益为组织性，无功能变化；体量较大且 doc 原文即将其列为"权衡/可选"。测试保护（P1-8）已就位，是否执行交由用户决定。 | `internal/server/server.go` |
+| P2-2 | ✅ 已修复 | server.go 4056 行拆分（纯搬移，零逻辑变更，零行为变化）：核心 `Server`/构造/`registerRoutes`/`requireDataAdmin`/`newAutoRewriter` 留在 `server.go`（1483 行），handler 按域迁至 `web_handlers.go`/`pipeline_handlers.go`/`cms_handlers.go`/`brand_handlers.go`/`leaderboard_handlers.go`；按文件级作用域裁剪 import。build/vet/`go test ./...` 全绿。 | `internal/server/server.go` 及 5 个新文件 |
 | P2-9 | ✅ 已修复 | `brand-audit/cache/db` 归组到 `geo brand <sub>`（audit/cache/db）；旧顶层 `geo brand-*` 保留为 deprecated 别名（向后兼容，文档已同步） | `cmd/geo/main.go`、`brand_audit.go`、`brand_cache.go`、`brand_db.go`、`README.md`、`docs/getting-started.md`、`docs/architecture.md` |
 
 ---
@@ -138,7 +138,7 @@
 | # | 发现 | 位置 | 建议 |
 |---|---|---|---|
 | P2-1 | 路由仍为 Go 1.22 前风格：60+ 条扁平 `HandleFunc` + 每 handler 手写 `if r.Method !=`，路径参数靠 `strings.TrimPrefix`+`SplitN` 手动解析（`ticket.go:214`、`admin.go:205`） | `server.go:429-556` | 升级到 `http.ServeMux` 方法路由（`"POST /api/v1/analyze"`）或引入 chi；第一轮已权衡跳过，此轮仍建议**先只做方法路由**（低风险机械替换），手动路径解析逐步替换 |
-| P2-2 | `server.go` 4094 行巨型文件 | `internal/server/server.go` | 按 handler 域拆分（auth_handlers/audit_handlers/optimize_handlers…），纯搬移零逻辑变更 |
+| P2-2 | `server.go` 4056 行巨型文件（已修复） | `internal/server/server.go` | 已按 handler 域拆分：核心留在 `server.go`（1483 行），handler 迁至 `web_handlers.go`/`pipeline_handlers.go`/`cms_handlers.go`/`brand_handlers.go`/`leaderboard_handlers.go`；纯搬移零逻辑变更 |
 | P2-3 | `globalKB` 无锁单例初始化竞态（先判空后赋值非原子） | `knowledge.go:95-159` | `sync.Once` 或 `atomic.Pointer[Knowledge]` |
 | P2-4 | `countWords` 每次调用 `regexp.MustCompile` | `analyzer.go:247` | 提升为包级 `var reHan`（同文件 30-34 行已是此模式） |
 | P2-5 | scorer 权重全为包级常量（`weightQuotation=8.0` 等），不可配置 | `scorer.go:23-39` | 提升为 `var` + 接入 config，支持按行业/引擎覆盖权重（对标 AutoGEO 规则集） |
@@ -176,7 +176,7 @@
 | 第三波（3-5 天） | P1-1 可观测性、P1-8 测试补课 + CI 关卡、P1-10 httputil 收敛、P2-1 方法路由、P2-2 server.go 拆分 | 中-大 |
 | 战略项（按需） | 评测集 + `geo evaluate`、规则集版本化、成本仪表盘 | 新模块 |
 
-> 备注：第一轮有意跳过的 P2-1（方法路由）与 P2-2（拆分 server.go），本轮仍保持"收益与风险权衡"结论——若要动，建议先做方法路由（机械替换风险低），拆分 server.go 放到有测试保护之后再动。
+> 备注：第一轮有意跳过的 P2-1（方法路由，本轮实测验证不可行/会劣化，见第七节决策记录）、P2-2（拆分 server.go，本轮已执行：拆为 6 个文件、零逻辑变更、build/vet/test 全绿）。
 
 ---
 

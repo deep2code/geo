@@ -14,7 +14,7 @@ func TestHandleMetrics(t *testing.T) {
 	observeRequest("/api/v1/health", http.StatusOK)
 	observeRequest("/api/v1/brand/audit", http.StatusNotFound)
 	observeRequest("/api/v1/brand/report/pdf", http.StatusInternalServerError)
-	observeRequest("/metrics", http.StatusOK) // 应被过滤
+	observeRequest("/metrics", http.StatusOK)               // 应被过滤
 	observeRequest("/debug/pprof/goroutine", http.StatusOK) // 应被过滤
 
 	rec := httptest.NewRecorder()
