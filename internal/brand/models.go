@@ -115,10 +115,10 @@ type Competitor struct {
 
 // PromptResult 单个查询词在单个引擎上的检测结果。
 type PromptResult struct {
-	Prompt     string             `json:"prompt"`
-	Engine     models.EngineType  `json:"engine"`
-	Answer     string             `json:"answer"`
-	Citations  []models.Citation  `json:"citations,omitempty"`
+	Prompt    string            `json:"prompt"`
+	Engine    models.EngineType `json:"engine"`
+	Answer    string            `json:"answer"`
+	Citations []models.Citation `json:"citations,omitempty"`
 	// 品牌是否在回答文本中被提及。
 	BrandMentioned bool `json:"brand_mentioned"`
 	// 品牌首次提及的位置（按段落计，1 表示第一段，0 表示未提及）。
@@ -146,11 +146,11 @@ type CompetitorMention struct {
 
 // EngineStats 单个引擎的聚合统计。
 type EngineStats struct {
-	Engine            models.EngineType `json:"engine"`
-	TotalPrompts      int               `json:"total_prompts"`
-	MentionCount      int               `json:"mention_count"`
-	CitationCount     int               `json:"citation_count"`
-	GhostCitationCount int              `json:"ghost_citation_count"`
+	Engine             models.EngineType `json:"engine"`
+	TotalPrompts       int               `json:"total_prompts"`
+	MentionCount       int               `json:"mention_count"`
+	CitationCount      int               `json:"citation_count"`
+	GhostCitationCount int               `json:"ghost_citation_count"`
 	// 提及率 = MentionCount / TotalPrompts × 100。
 	MentionRate float64 `json:"mention_rate"`
 	// 引用率 = CitationCount / TotalPrompts × 100。
@@ -168,8 +168,8 @@ type EngineStats struct {
 	Configured bool `json:"configured"`
 
 	// 内部累加字段（不序列化）。
-	brandPositions      []int
-	competitorMentions  map[string]int
+	brandPositions     []int
+	competitorMentions map[string]int
 }
 
 // CompetitorNames 返回该引擎上被提及的竞品名列表（供 scheduler 等外部包使用）。
@@ -186,9 +186,9 @@ func (s EngineStats) CompetitorNames() []string {
 
 // ContentGap 内容缺口：竞品被提及而品牌未被提及的高机会 prompt。
 type ContentGap struct {
-	Prompt          string   `json:"prompt"`
+	Prompt          string            `json:"prompt"`
 	Engine          models.EngineType `json:"engine"`
-	CompetitorNamed []string `json:"competitor_named"`
+	CompetitorNamed []string          `json:"competitor_named"`
 	// 建议创建的内容主题。
 	SuggestedTopic string `json:"suggested_topic"`
 }
@@ -196,14 +196,14 @@ type ContentGap struct {
 // VisibilityReport 品牌可见度报告。
 type VisibilityReport struct {
 	// 报告元信息。
-	BrandName  string    `json:"brand_name"`
-	Industry   string    `json:"industry,omitempty"`
-	Category   string    `json:"category,omitempty"`
+	BrandName string `json:"brand_name"`
+	Industry  string `json:"industry,omitempty"`
+	Category  string `json:"category,omitempty"`
 	// 关联公司信息（品牌-公司实体关联，便于前端展示公司名与官网）。
 	Company *Company `json:"company,omitempty"`
 	// 公司信息完备度评分（0-100），越高说明品牌实体画像越完整。
-	EntityCompletenessScore float64 `json:"entity_completeness_score,omitempty"`
-	GeneratedAt time.Time `json:"generated_at"`
+	EntityCompletenessScore float64   `json:"entity_completeness_score,omitempty"`
+	GeneratedAt             time.Time `json:"generated_at"`
 	// 品牌可见度评分（BVS，0-100）。
 	Score float64 `json:"score"`
 	// 评分等级 A-F。
@@ -272,11 +272,11 @@ const (
 // 页面性能 10% + AI 就绪 10% + 图像优化 5%。
 type ScoreBreakdown struct {
 	// --- 引擎可见度 6 维（历史兼容，仍由引擎统计填充）---
-	MentionRate      float64 `json:"mention_rate"`
-	CitationRate     float64 `json:"citation_rate"`
-	ShareOfVoice     float64 `json:"share_of_voice"`
-	CitationPosition float64 `json:"citation_position"`
-	Sentiment        float64 `json:"sentiment"`
+	MentionRate       float64 `json:"mention_rate"`
+	CitationRate      float64 `json:"citation_rate"`
+	ShareOfVoice      float64 `json:"share_of_voice"`
+	CitationPosition  float64 `json:"citation_position"`
+	Sentiment         float64 `json:"sentiment"`
 	EntityRecognition float64 `json:"entity_recognition"`
 
 	// --- BVS 加权健康 7 维（权重见 DimWeight 常量）---
@@ -308,16 +308,16 @@ type ScoreBreakdown struct {
 
 // CompetitorSOV 竞品声量份额。
 type CompetitorSOV struct {
-	Name        string  `json:"name"`
-	MentionCount int    `json:"mention_count"`
-	SOV         float64 `json:"sov"` // 占总提及的比例
+	Name         string  `json:"name"`
+	MentionCount int     `json:"mention_count"`
+	SOV          float64 `json:"sov"` // 占总提及的比例
 }
 
 // NegativeMention 负面提及。
 type NegativeMention struct {
-	Prompt string            `json:"prompt"`
-	Engine models.EngineType `json:"engine"`
-	Snippet string           `json:"snippet"` // 负面上下文片段
+	Prompt  string            `json:"prompt"`
+	Engine  models.EngineType `json:"engine"`
+	Snippet string            `json:"snippet"` // 负面上下文片段
 	// Category 负面分类（product_issue/service_issue/pricing_issue/competitive_disadvantage/false_info/security_privacy/other）。
 	Category string `json:"category,omitempty"`
 	// Severity 负面严重级别（critical/high/medium/low），基于分类与上下文判定。
@@ -326,10 +326,10 @@ type NegativeMention struct {
 
 // ActionItem 运营行动建议，指导运营人员下一步工作方向。
 type ActionItem struct {
-	Priority   string `json:"priority"` // high / medium / low
-	Category   string `json:"category"` // content / engine / reputation / entity
-	Title      string `json:"title"`
-	Detail     string `json:"detail"`
+	Priority string `json:"priority"` // high / medium / low
+	Category string `json:"category"` // content / engine / reputation / entity
+	Title    string `json:"title"`
+	Detail   string `json:"detail"`
 	// 具体待办，运营人员可直接执行。
 	Tasks []string `json:"tasks,omitempty"`
 	// 预期影响。

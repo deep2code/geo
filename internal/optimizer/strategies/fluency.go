@@ -5,15 +5,16 @@ import (
 	"strings"
 
 	"my-geo/internal/models"
+	"my-geo/internal/util"
 )
 
 // FluencyStrategy 流畅度优化策略。
 // 合并过短句子、拆分过长句子，提升文本流畅度与可读性。
 type FluencyStrategy struct{}
 
-func (s *FluencyStrategy) Name() string             { return "流畅度优化" }
+func (s *FluencyStrategy) Name() string              { return "流畅度优化" }
 func (s *FluencyStrategy) Type() models.StrategyType { return models.StrategyFluency }
-func (s *FluencyStrategy) Effectiveness() float64   { return 0.29 }
+func (s *FluencyStrategy) Effectiveness() float64    { return 0.29 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *FluencyStrategy) PWCBoost() float64 { return 20.0 }
@@ -41,7 +42,7 @@ func (s *FluencyStrategy) Preprocess(content string, req *models.OptimizationReq
 
 // balanceLine 对单行做长短句平衡：合并过短句、拆分过长句。
 func balanceLine(line string) string {
-	sentences := splitSentences(line)
+	sentences := util.SplitSentences(line)
 	// 合并过短句（去空格后字符数 <= 8 视为过短）
 	merged := make([]string, 0, len(sentences))
 	for _, sen := range sentences {

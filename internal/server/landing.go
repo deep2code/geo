@@ -15,19 +15,19 @@ type PricingPlan struct {
 	Features    []string   `json:"features"`     // 功能列表
 	Limits      PlanLimits `json:"limits"`
 	Popular     bool       `json:"popular"` // 是否推荐
-	CTA         string     `json:"cta"`      // 按钮文案
+	CTA         string     `json:"cta"`     // 按钮文案
 }
 
 // PlanLimits 方案权益上限。
 type PlanLimits struct {
-	Brands          int  `json:"brands"`            // 最大品牌数，-1=无限
-	AuditsPerMonth  int  `json:"audits_per_month"`  // 每月审计次数
-	EmailsPerMonth  int  `json:"emails_per_month"`  // 每月邮件数
-	ReportsPerMonth int  `json:"reports_per_month"` // 每月报告数
+	Brands           int  `json:"brands"`            // 最大品牌数，-1=无限
+	AuditsPerMonth   int  `json:"audits_per_month"`  // 每月审计次数
+	EmailsPerMonth   int  `json:"emails_per_month"`  // 每月邮件数
+	ReportsPerMonth  int  `json:"reports_per_month"` // 每月报告数
 	ConcurrentAudits int  `json:"concurrent_audits"` // 并发审计数
-	APIAccess       bool `json:"api_access"`
-	Whitelabel      bool `json:"whitelabel"`
-	PrioritySupport bool `json:"priority_support"`
+	APIAccess        bool `json:"api_access"`
+	Whitelabel       bool `json:"whitelabel"`
+	PrioritySupport  bool `json:"priority_support"`
 }
 
 // FeatureShowcase 功能亮点。

@@ -11,9 +11,9 @@ import (
 // 为论断补充具体统计数据、百分比与数值，显著提升内容可信度与引用率。
 type StatisticsStrategy struct{}
 
-func (s *StatisticsStrategy) Name() string             { return "统计数据增强" }
+func (s *StatisticsStrategy) Name() string              { return "统计数据增强" }
 func (s *StatisticsStrategy) Type() models.StrategyType { return models.StrategyStatistics }
-func (s *StatisticsStrategy) Effectiveness() float64   { return 0.33 }
+func (s *StatisticsStrategy) Effectiveness() float64    { return 0.33 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *StatisticsStrategy) PWCBoost() float64 { return 32.8 }

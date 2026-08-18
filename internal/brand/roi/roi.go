@@ -13,8 +13,9 @@
 package roi
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -35,20 +36,20 @@ type PricePer1K struct {
 // 数据来源：各厂商公开定价页（截至 2025 年），仅供参考。
 // 生产环境可通过 SetPrice 运行时更新。
 var defaultPrices = map[models.EngineType]PricePer1K{
-	models.EngineChatGPT:    {Input: 0.15, Output: 0.60},   // gpt-4o-mini
-	models.EnginePerplexity: {Input: 0.15, Output: 0.60},   // sonar
-	models.EngineGemini:     {Input: 0.075, Output: 0.30},  // gemini-1.5-flash
-	models.EngineClaude:     {Input: 0.80, Output: 4.00},   // claude-3-5-sonnet
-	models.EngineGrok:       {Input: 0.50, Output: 1.50},   // grok-2
-	models.EngineQwen:       {Input: 0.04, Output: 0.12},   // qwen-turbo
-	models.EngineGLM:        {Input: 0.05, Output: 0.15},   // glm-4-flash
-	models.EngineDeepSeek:   {Input: 0.03, Output: 0.08},   // deepseek-chat
-	models.EngineKimi:       {Input: 0.12, Output: 0.12},   // moonshot-v1-8k
-	models.EngineWenxin:     {Input: 0.12, Output: 0.12},   // ernie-speed
-	models.EngineDoubao:     {Input: 0.03, Output: 0.06},   // doubao-pro
-	models.EngineXiaomi:     {Input: 0.05, Output: 0.10},   // MiLM
-	models.EngineXunfei:     {Input: 0.05, Output: 0.10},   // spark-lite
-	models.EngineYuanbao:    {Input: 0.10, Output: 0.20},   // hunyuan-standard
+	models.EngineChatGPT:    {Input: 0.15, Output: 0.60},  // gpt-4o-mini
+	models.EnginePerplexity: {Input: 0.15, Output: 0.60},  // sonar
+	models.EngineGemini:     {Input: 0.075, Output: 0.30}, // gemini-1.5-flash
+	models.EngineClaude:     {Input: 0.80, Output: 4.00},  // claude-3-5-sonnet
+	models.EngineGrok:       {Input: 0.50, Output: 1.50},  // grok-2
+	models.EngineQwen:       {Input: 0.04, Output: 0.12},  // qwen-turbo
+	models.EngineGLM:        {Input: 0.05, Output: 0.15},  // glm-4-flash
+	models.EngineDeepSeek:   {Input: 0.03, Output: 0.08},  // deepseek-chat
+	models.EngineKimi:       {Input: 0.12, Output: 0.12},  // moonshot-v1-8k
+	models.EngineWenxin:     {Input: 0.12, Output: 0.12},  // ernie-speed
+	models.EngineDoubao:     {Input: 0.03, Output: 0.06},  // doubao-pro
+	models.EngineXiaomi:     {Input: 0.05, Output: 0.10},  // MiLM
+	models.EngineXunfei:     {Input: 0.05, Output: 0.10},  // spark-lite
+	models.EngineYuanbao:    {Input: 0.10, Output: 0.20},  // hunyuan-standard
 }
 
 // ============================================================
@@ -58,7 +59,7 @@ var defaultPrices = map[models.EngineType]PricePer1K{
 // Record 单次 API 调用的用量记录。
 type Record struct {
 	Engine    models.EngineType
-	Operation string    // 操作类型：query / check_citation / optimize / brand_audit
+	Operation string // 操作类型：query / check_citation / optimize / brand_audit
 	Timestamp time.Time
 	Usage     models.TokenUsage
 	Cost      float64 // 估算成本（美元）
@@ -66,12 +67,12 @@ type Record struct {
 
 // EngineStats 单引擎汇总统计。
 type EngineStats struct {
-	Engine          models.EngineType `json:"engine"`
-	Calls           int               `json:"calls"`
-	PromptTokens    int               `json:"prompt_tokens"`
-	CompletionTokens int              `json:"completion_tokens"`
-	TotalTokens     int               `json:"total_tokens"`
-	TotalCost       float64           `json:"total_cost"`
+	Engine           models.EngineType `json:"engine"`
+	Calls            int               `json:"calls"`
+	PromptTokens     int               `json:"prompt_tokens"`
+	CompletionTokens int               `json:"completion_tokens"`
+	TotalTokens      int               `json:"total_tokens"`
+	TotalCost        float64           `json:"total_cost"`
 }
 
 // OperationStats 单操作类型汇总统计。
@@ -84,15 +85,15 @@ type OperationStats struct {
 
 // Report 用量与成本报告。
 type Report struct {
-	GeneratedAt  time.Time        `json:"generated_at"`
-	Period       string           `json:"period"` // "all" / "today" / "7d" / "30d"
-	TotalCalls   int              `json:"total_calls"`
-	TotalTokens  int              `json:"total_tokens"`
-	PromptTokens int              `json:"prompt_tokens"`
-	CompletionTokens int          `json:"completion_tokens"`
-	TotalCost    float64          `json:"total_cost"`
-	ByEngine     []EngineStats    `json:"by_engine"`
-	ByOperation  []OperationStats `json:"by_operation"`
+	GeneratedAt      time.Time        `json:"generated_at"`
+	Period           string           `json:"period"` // "all" / "today" / "7d" / "30d"
+	TotalCalls       int              `json:"total_calls"`
+	TotalTokens      int              `json:"total_tokens"`
+	PromptTokens     int              `json:"prompt_tokens"`
+	CompletionTokens int              `json:"completion_tokens"`
+	TotalCost        float64          `json:"total_cost"`
+	ByEngine         []EngineStats    `json:"by_engine"`
+	ByOperation      []OperationStats `json:"by_operation"`
 }
 
 // ============================================================
@@ -103,10 +104,10 @@ type Report struct {
 //
 // 记录每次 API 调用的 token 用量并估算成本，支持按引擎、操作类型、时间维度汇总。
 type Tracker struct {
-	mu          sync.RWMutex
-	records     []Record
-	prices      map[models.EngineType]PricePer1K
-	maxRecords  int // 最大记录数（防止内存无限增长），0 为不限
+	mu         sync.RWMutex
+	records    []Record
+	prices     map[models.EngineType]PricePer1K
+	maxRecords int // 最大记录数（防止内存无限增长），0 为不限
 }
 
 // NewTracker 创建追踪器。
@@ -263,16 +264,12 @@ func (t *Tracker) Report(period string) Report {
 	for _, es := range engineMap {
 		report.ByEngine = append(report.ByEngine, *es)
 	}
-	sort.Slice(report.ByEngine, func(i, j int) bool {
-		return report.ByEngine[i].TotalTokens > report.ByEngine[j].TotalTokens
-	})
+	slices.SortFunc(report.ByEngine, func(a, b EngineStats) int { return cmp.Compare(b.TotalTokens, a.TotalTokens) })
 
 	for _, os := range opMap {
 		report.ByOperation = append(report.ByOperation, *os)
 	}
-	sort.Slice(report.ByOperation, func(i, j int) bool {
-		return report.ByOperation[i].TotalCost > report.ByOperation[j].TotalCost
-	})
+	slices.SortFunc(report.ByOperation, func(a, b OperationStats) int { return cmp.Compare(b.TotalCost, a.TotalCost) })
 
 	return report
 }

@@ -11,9 +11,9 @@ import (
 // 基于内容生成 3-5 个常见问题问答对，增强内容对问答型查询的覆盖。
 type FAQStrategy struct{}
 
-func (s *FAQStrategy) Name() string             { return "FAQ问答生成" }
+func (s *FAQStrategy) Name() string              { return "FAQ问答生成" }
 func (s *FAQStrategy) Type() models.StrategyType { return models.StrategyFAQ }
-func (s *FAQStrategy) Effectiveness() float64   { return 0.20 }
+func (s *FAQStrategy) Effectiveness() float64    { return 0.20 }
 
 // PWCBoost 返回理论 PWC 增益百分比（工程扩展策略：FAQ 模式直接匹配问答查询）。
 func (s *FAQStrategy) PWCBoost() float64 { return 18.0 }

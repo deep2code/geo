@@ -11,6 +11,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"encoding/json"
@@ -26,9 +27,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -79,7 +81,7 @@ type Server struct {
 	engine      *geo.Engine
 	brandEngine *brand.Engine
 	scheduler   *scheduler.Scheduler
-	mailSender  *mail.Sender // SMTP 邮件发送器（未配置时为 nil）
+	mailSender  *mail.Sender  // SMTP 邮件发送器（未配置时为 nil）
 	authSvc     *auth.Service // 账号体系（未启用时为 nil；但 Service.Enabled() 才为 false）
 	authH       auth.HandlerSet
 	whitelabel  Whitelabel
@@ -342,12 +344,6 @@ func newOfflineDBFromEnv() offlinedb.DB {
 		return nil
 	}
 	return db
-}
-
-// humanBytes 兼容别名（已迁移至 util.HumanBytes，保留对外引用以防外部调用）。
-// 精度：util.HumanBytes 使用 2 位小数；此前内部未被外部包使用，不构成 API 变更。
-func humanBytes(n int64) string {
-	return util.HumanBytes(n)
 }
 
 // newLLMManagerFromEnv 从环境变量构建 LLM 管理器（用于品牌智能补全）。
@@ -623,40 +619,70 @@ func serveStaticFile(w http.ResponseWriter, path string) bool {
 }
 
 // applyWhitelabelToHTML 对白标 HTML 模板进行占位符替换注入。
-func (wl Whitelabel) applyWhitelabelToHTML(html string) string {
-	html = strings.ReplaceAll(html, "<!-- WL_INJECT -->", wl.buildInjectBlock())
-	html = strings.ReplaceAll(html, "{{WL_BRAND_NAME}}", wl.BrandName)
-	html = strings.ReplaceAll(html, "{{WL_PRIMARY_COLOR}}", wl.PrimaryColor)
-	html = strings.ReplaceAll(html, "{{WL_LOGO_URL}}", wl.LogoURL)
-	html = strings.ReplaceAll(html, "{{WL_DOMAIN}}", wl.Domain)
-	return html
+// 所有占位符值一律 HTML 转义后再注入，防止 XSS。
+func (wl Whitelabel) applyWhitelabelToHTML(page string) string {
+	page = strings.ReplaceAll(page, "<!-- WL_INJECT -->", wl.buildInjectBlock())
+	page = strings.ReplaceAll(page, "{{WL_BRAND_NAME}}", html.EscapeString(wl.BrandName))
+	page = strings.ReplaceAll(page, "{{WL_PRIMARY_COLOR}}", html.EscapeString(wl.PrimaryColor))
+	page = strings.ReplaceAll(page, "{{WL_LOGO_URL}}", html.EscapeString(wl.LogoURL))
+	page = strings.ReplaceAll(page, "{{WL_DOMAIN}}", html.EscapeString(wl.Domain))
+	return page
 }
 
 // buildInjectBlock 构建 <!-- WL_INJECT --> 占位符的实际注入内容（CSS 变量 + Favicon）。
+// 所有来自环境变量的值一律 HTML 转义，防止注入 <script> 等（XSS）。
 func (wl Whitelabel) buildInjectBlock() string {
 	var parts []string
-	parts = append(parts, fmt.Sprintf(`<meta name="theme-color" content="%s">`, wl.PrimaryColor))
+	// 主题色仅允许 CSS 安全格式：校验为 hex/rgb 基础格式，非法则忽略
+	parts = append(parts, fmt.Sprintf(`<meta name="theme-color" content="%s">`, html.EscapeString(wl.PrimaryColor)))
 	if wl.FaviconURL != "" {
-		parts = append(parts, fmt.Sprintf(`<link rel="icon" type="image/x-icon" href="%s">`, wl.FaviconURL))
+		// favicon 仅允许 http(s) 协议，其余一律忽略（防 javascript: 等协议注入）
+		if safe, ok := safeURL(wl.FaviconURL); ok {
+			parts = append(parts, fmt.Sprintf(`<link rel="icon" type="image/x-icon" href="%s">`, html.EscapeString(safe)))
+		}
 	}
 	parts = append(parts, fmt.Sprintf(`<style>
 :root {
   --wl-primary-color: %s;
   --wl-brand-name: %q;
 }
-</style>`, wl.PrimaryColor, wl.BrandName))
+</style>`, html.EscapeString(wl.PrimaryColor), html.EscapeString(wl.BrandName)))
 	return strings.Join(parts, "\n")
 }
 
-// readIndexHTMLData 读取 index.html 原始字节（web/dist/index.html 优先，失败回退 web/index.html）。
-func readIndexHTMLData() ([]byte, error) {
-	subFS, err := fs.Sub(webFS, "web/dist")
-	if err == nil {
-		if data, e := fs.ReadFile(subFS, "index.html"); e == nil {
-			return data, nil
-		}
+// safeURL 校验 URL 仅允许 http/https 协议，返回规范化后值。
+func safeURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return "", false
 	}
-	return webFS.ReadFile("web/index.html")
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", false
+	}
+	return raw, true
+}
+
+// readIndexHTMLData 读取 index.html 原始字节（web/dist/index.html 优先，失败回退 web/index.html）。
+// embed.FS 内容在编译期固定、运行期不可变，因此结果用 sync.Once 缓存，避免每个请求重复解析 fs.Sub。
+var (
+	indexHTMLOnce sync.Once
+	indexHTMLData []byte
+	indexHTMLErr  error
+)
+
+func readIndexHTMLData() ([]byte, error) {
+	indexHTMLOnce.Do(func() {
+		subFS, err := fs.Sub(webFS, "web/dist")
+		if err == nil {
+			if data, e := fs.ReadFile(subFS, "index.html"); e == nil {
+				indexHTMLData = data
+				return
+			}
+		}
+		indexHTMLData, indexHTMLErr = webFS.ReadFile("web/index.html")
+	})
+	return indexHTMLData, indexHTMLErr
 }
 
 // serveIndexHTML 返回 SPA 的 index.html 入口文件，并执行白标占位符替换。
@@ -713,18 +739,11 @@ func (s *Server) handleWebSPA(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWhitelabel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	writeJSON(w, http.StatusOK, s.whitelabel)
 }
-
-// handleHealth 已废弃：所有流量统一走 /healthz 或 /api/v1/health -> handleLiveness。
-// 保留该函数仅为避免其他 package 中可能的反射/引用风险。若有需要可直接删除。
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) { s.handleLiveness(w, r) }
-
-// handleReady 已废弃：所有流量统一走 /readyz 或 /api/v1/ready -> handleReadiness。
-func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) { s.handleReadiness(w, r) }
 
 func (s *Server) handleStrategies(w http.ResponseWriter, r *http.Request) {
 	infos := s.engine.StrategyInfos()
@@ -740,16 +759,16 @@ type analyzeRequest struct {
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var req analyzeRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(req.Content) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
 		return
 	}
 	analysis := s.engine.Analyze(req.Content)
@@ -758,16 +777,16 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleScore(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var req analyzeRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(req.Content) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
 		return
 	}
 	score, breakdowns := s.engine.Score(req.Content)
@@ -909,16 +928,16 @@ func cmsGenerateSuggestions(analysis *models.ContentAnalysis, score float64) []c
 
 func (s *Server) handleCMSCheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var req cmsCheckRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(req.HTML) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "html 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "html 不能为空"})
 		return
 	}
 	plain := cmsStripHTMLTags(req.HTML)
@@ -948,7 +967,7 @@ func (s *Server) handleCMSCheck(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCMSInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -968,7 +987,7 @@ func (s *Server) handleCMSInfo(w http.ResponseWriter, r *http.Request) {
 // 用于运维快速确认限流、WAF、CSRF、安全头等防护是否生效。
 func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -1003,21 +1022,21 @@ func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleOptimize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var req models.OptimizationRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(req.Content) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
 		return
 	}
 	resp, err := s.engine.Optimize(r.Context(), &req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -1040,7 +1059,7 @@ func writeInternalError(w http.ResponseWriter, err error, msg string) {
 	if msg != "" {
 		m = msg + "失败，请稍后重试"
 	}
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": m})
+	writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: m})
 }
 
 func readJSON(r *http.Request, v interface{}) error {
@@ -1057,9 +1076,17 @@ func readJSON(r *http.Request, v interface{}) error {
 	return nil
 }
 
-// scoreToGrade 兼容别名（已迁移至 util.ScoreToGrade）。
-func scoreToGrade(score float64) string {
-	return util.ScoreToGrade(score)
+// requireDataAdmin 校验"数据清理类"接口的权限（P2-9）。
+// 双模式：账号体系启用时要求 PermManageData（Owner/Admin），否则 403；
+// legacy GEO_API_KEY 模式中 API Key 鉴权已通过即为全权，直接放行。
+func (s *Server) requireDataAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if s.authSvc != nil && s.authSvc.Enabled() {
+		if err := auth.RequirePermission(r.Context(), auth.PermManageData); err != nil {
+			writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
+			return false
+		}
+	}
+	return true
 }
 
 // handleBrandAudit 处理品牌可见度审计请求。
@@ -1068,29 +1095,29 @@ func scoreToGrade(score float64) string {
 // 请求体为品牌画像 JSON（brand.BrandProfile）。
 func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var profile brand.BrandProfile
 	if err := readJSON(r, &profile); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if profile.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "name 不能为空"})
 		return
 	}
 	if len(profile.Prompts) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompts 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "prompts 不能为空"})
 		return
 	}
 	if s.brandEngine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌审计引擎未初始化"})
 		return
 	}
 	report, err := s.brandEngine.Audit(r.Context(), profile)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -1104,7 +1131,7 @@ func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
 // 该接口不依赖品牌引擎，即便未配置任何 AI 引擎也能正常返回。
 func (s *Server) handleBrandMarkets(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -1121,21 +1148,21 @@ func (s *Server) handleBrandMarkets(w http.ResponseWriter, r *http.Request) {
 // 从审计历史 DB 取最新一条审计记录的 report_json，调用 report.GenerateHTML 生成。
 func (s *Server) handleBrandReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	brandName := strings.TrimSpace(r.URL.Query().Get("brand"))
 	if brandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand 参数"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用（无法导出报告）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用（无法导出报告）"})
 		return
 	}
 	rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), brandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	if rec == nil || strings.TrimSpace(rec.ReportJSON) == "" {
@@ -1146,12 +1173,12 @@ func (s *Server) handleBrandReport(w http.ResponseWriter, r *http.Request) {
 	}
 	var vr brand.VisibilityReport
 	if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "解析审计报告失败: " + err.Error()})
+		writeInternalError(w, err, "解析审计报告")
 		return
 	}
 	htmlOut, err := report.GenerateHTML(&vr)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "生成 HTML 报告失败: " + err.Error()})
+		writeInternalError(w, err, "生成 HTML 报告")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1172,35 +1199,35 @@ func (s *Server) handleBrandReport(w http.ResponseWriter, r *http.Request) {
 // 无 Chromium 环境时自动降级：返回 JSON 错误提示并附 HTML 报告下载链接。
 func (s *Server) handleBrandReportPDF(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	brandName := strings.TrimSpace(r.URL.Query().Get("brand"))
 	if brandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand 参数"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用（无法导出报告）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用（无法导出报告）"})
 		return
 	}
 	rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), brandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	if rec == nil || strings.TrimSpace(rec.ReportJSON) == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "未找到该品牌的审计记录"})
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "未找到该品牌的审计记录"})
 		return
 	}
 	var vr brand.VisibilityReport
 	if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "解析审计报告失败: " + err.Error()})
+		writeInternalError(w, err, "解析审计报告")
 		return
 	}
 	htmlOut, err := report.GenerateHTML(&vr)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "生成 HTML 报告失败: " + err.Error()})
+		writeInternalError(w, err, "生成 HTML 报告")
 		return
 	}
 	pdfBytes, err := report.GeneratePDF(r.Context(), htmlOut)
@@ -1228,11 +1255,11 @@ func (s *Server) handleBrandReportPDF(w http.ResponseWriter, r *http.Request) {
 // format: pdf / html / both（默认 both）
 func (s *Server) handleBrandReportEmail(w http.ResponseWriter, r *http.Request) {
 	if s.mailSender == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "邮件未启用（请配置 GEO_SMTP_* 环境变量）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "邮件未启用（请配置 GEO_SMTP_* 环境变量）"})
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -1242,30 +1269,30 @@ func (s *Server) handleBrandReportEmail(w http.ResponseWriter, r *http.Request) 
 		Format string   `json:"format"` // pdf/html/both
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.Brand) == "" || len(body.To) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand 与 to 必填"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand 与 to 必填"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.Brand)
 	if err != nil || rec == nil || rec.ReportJSON == "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "未找到该品牌的审计记录"})
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "未找到该品牌的审计记录"})
 		return
 	}
 	var vr brand.VisibilityReport
 	if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "解析报告失败: " + err.Error()})
+		writeInternalError(w, err, "解析报告")
 		return
 	}
 	htmlOut, err := report.GenerateHTML(&vr)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "生成报告失败: " + err.Error()})
+		writeInternalError(w, err, "生成报告")
 		return
 	}
 	format := body.Format
@@ -1288,7 +1315,7 @@ func (s *Server) handleBrandReportEmail(w http.ResponseWriter, r *http.Request) 
 		// PDF 失败不阻塞，继续发送 HTML 版
 	}
 	if err := s.mailSender.Send(msg); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "发送邮件失败: " + err.Error()})
+		writeInternalError(w, err, "发送邮件")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1303,7 +1330,7 @@ func (s *Server) handleBrandReportEmail(w http.ResponseWriter, r *http.Request) 
 // GET /api/v1/mail/status
 func (s *Server) handleMailStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1336,11 +1363,11 @@ func ternary[T any](cond bool, a, b T) T {
 // template_data 对应 mail.TemplateAlertData / mail.TemplateWeeklyData。
 func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	if s.mailSender == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "邮件未启用（请配置 GEO_SMTP_* 环境变量）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "邮件未启用（请配置 GEO_SMTP_* 环境变量）"})
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -1354,11 +1381,11 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 		Attachments  []mail.Attachment `json:"attachments"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if len(body.To) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "to 必填"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "to 必填"})
 		return
 	}
 	msg := &mail.Message{
@@ -1384,7 +1411,7 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 			}
 			h, err := mail.RenderAlertHTML(d)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "alert 模板渲染失败: " + err.Error()})
+				writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "alert 模板渲染失败: " + err.Error()})
 				return
 			}
 			msg.HTMLBody = h
@@ -1402,7 +1429,7 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 			}
 			h, err := mail.RenderWeeklyHTML(d)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "weekly 模板渲染失败: " + err.Error()})
+				writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "weekly 模板渲染失败: " + err.Error()})
 				return
 			}
 			msg.HTMLBody = h
@@ -1410,16 +1437,16 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 				msg.Subject = d.Subject
 			}
 		default:
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "未知 template: " + body.Template})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "未知 template: " + body.Template})
 			return
 		}
 	}
 	if msg.Subject == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subject 或 template_data.subject 必填"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "subject 或 template_data.subject 必填"})
 		return
 	}
 	if err := s.mailSender.Send(msg); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "发送失败: " + err.Error()})
+		writeInternalError(w, err, "发送")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "to": body.To, "subject": msg.Subject})
@@ -1443,25 +1470,25 @@ func sanitizeFilename(s string) string {
 // 返回: 品牌候选画像（domain/aliases/category/products/competitors/prompts/summary）
 func (s *Server) handleBrandAutocomplete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var req brand.AutocompleteRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if req.BrandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_name 不能为空"})
 		return
 	}
 	if s.brandEngine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌审计引擎未初始化"})
 		return
 	}
 	candidate, err := s.brandEngine.Autocomplete(r.Context(), req.BrandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, candidate)
@@ -1478,21 +1505,21 @@ func (s *Server) handleBrandAutocomplete(w http.ResponseWriter, r *http.Request)
 // 内部调用 brandEngine.Autocomplete，将 AutocompleteCandidate 转换为 BrandProfile 返回。
 func (s *Server) handleBrandProfileAutocomplete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌审计引擎未初始化"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌审计引擎未初始化"})
 		return
 	}
 	brandName := strings.TrimSpace(r.URL.Query().Get("name"))
 	if brandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "name 不能为空"})
 		return
 	}
 	candidate, err := s.brandEngine.Autocomplete(r.Context(), brandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	// 将 AutocompleteCandidate 转换为 BrandProfile
@@ -1567,7 +1594,7 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	results := kb.Search(q, limit)
@@ -1661,7 +1688,7 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 		"query":           q,
 		"result":          out,
 		"sinofacts_count": len(results),
-		"offlinedb_count": maxInt(0, len(out)-len(results)),
+		"offlinedb_count": max(0, len(out)-len(results)),
 		"license":         "SinoFacts dataset under CC BY 4.0 (https://sinofacts.com); 离线工商数据源自 guichong/- 仓库（国家工商公示系统 1978-2019 公开历史数据）。",
 	})
 }
@@ -1715,11 +1742,11 @@ func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	if strings.TrimSpace(q) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "q 不能为空"})
 		return
 	}
 	result, err := cc.Search(r.Context(), q, limit)
@@ -1777,11 +1804,11 @@ func (s *Server) handleChinaCheckSnapshot(w http.ResponseWriter, r *http.Request
 			query = body.Q
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	if companyID == "" && strings.TrimSpace(query) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "company_id 和 q 至少提供一个"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "company_id 和 q 至少提供一个"})
 		return
 	}
 	snap, err := cc.GetSnapshot(r.Context(), companyID, query)
@@ -1809,14 +1836,6 @@ func firstNotEmpty(strs ...string) string {
 	return ""
 }
 
-// maxInt server 内部辅助。
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // ---------- 离线工商 MySQL 库调试接口 ----------
 
 // handleOfflineDBStats  GET /api/v1/brand/offlinedb/stats
@@ -1832,7 +1851,7 @@ func (s *Server) handleOfflineDBStats(w http.ResponseWriter, r *http.Request) {
 	}
 	st, err := odb.Stats(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -1868,13 +1887,13 @@ func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET/POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET/POST"})
 		return
 	}
 	start := time.Now()
 	res, err := odb.Search(r.Context(), opt)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"error": err.Error(), "result": []struct{}{}})
+		writeInternalError(w, err, "离线工商检索")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -1891,7 +1910,10 @@ func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
 // handleOfflineDBClear POST /api/v1/brand/offlinedb/clear 清空库（清空表）
 func (s *Server) handleOfflineDBClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅 POST"})
+		return
+	}
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.OfflineDB() == nil {
@@ -1900,7 +1922,7 @@ func (s *Server) handleOfflineDBClear(w http.ResponseWriter, r *http.Request) {
 	}
 	before, _ := s.brandEngine.OfflineDB().Stats(r.Context())
 	if err := s.brandEngine.OfflineDB().Clear(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	after, _ := s.brandEngine.OfflineDB().Stats(r.Context())
@@ -1921,7 +1943,7 @@ func (s *Server) handleOfflineDBProvinces(w http.ResponseWriter, r *http.Request
 	}
 	list, err := s.brandEngine.OfflineDB().Provinces(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"provinces": list})
@@ -1974,7 +1996,7 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 			action = strings.ToLower(body.Action)
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 
@@ -1982,8 +2004,11 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 	case "stats":
 		writeJSON(w, http.StatusOK, ca.Stats())
 	case "clear":
+		if !s.requireDataAdmin(w, r) {
+			return
+		}
 		if err := ca.Clear(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeInternalError(w, err, "")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -1992,8 +2017,11 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 			"stats":   ca.Stats(),
 		})
 	case "compact":
+		if !s.requireDataAdmin(w, r) {
+			return
+		}
 		if err := ca.Compact(); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeInternalError(w, err, "")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -2009,11 +2037,11 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 		}
 		body.Limit = 3
 		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "解析失败: " + err.Error()})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "解析失败: " + err.Error()})
 			return
 		}
 		if len(body.Queries) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "queries 不能为空"})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "queries 不能为空"})
 			return
 		}
 		ctx := r.Context()
@@ -2058,7 +2086,7 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 // GET/POST /api/v1/brand/history/list?brand=腾讯&limit=50
 func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	brandName := r.URL.Query().Get("brand")
@@ -2072,7 +2100,7 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if brandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand 参数"})
 		return
 	}
 	limit := 50
@@ -2105,26 +2133,26 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/brand/history/get?id=123
 func (s *Server) handleHistoryGet(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 id 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 id 参数"})
 		return
 	}
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id 参数无效"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id 参数无效"})
 		return
 	}
 	rec, err := s.brandEngine.HistoryDB().GetByID(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	if rec == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "记录不存在"})
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "记录不存在"})
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
@@ -2134,12 +2162,12 @@ func (s *Server) handleHistoryGet(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/brand/history/stats
 func (s *Server) handleHistoryStats(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	st, err := s.brandEngine.HistoryDB().Stats(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
@@ -2149,7 +2177,7 @@ func (s *Server) handleHistoryStats(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/brand/history/stats/daily?days=30
 func (s *Server) handleHistoryStatsDaily(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	days := 30
@@ -2160,7 +2188,7 @@ func (s *Server) handleHistoryStatsDaily(w http.ResponseWriter, r *http.Request)
 	}
 	out, err := s.brandEngine.HistoryDB().DailyCounts(r.Context(), days)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	// 兼容字段：为前端 chart 直接可绑，再返回一个聚合 summary。
@@ -2197,12 +2225,12 @@ func (s *Server) handleHistoryStatsDaily(w http.ResponseWriter, r *http.Request)
 // GET /api/v1/brand/history/brands
 func (s *Server) handleHistoryBrands(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	names, err := s.brandEngine.HistoryDB().Brands(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -2214,12 +2242,19 @@ func (s *Server) handleHistoryBrands(w http.ResponseWriter, r *http.Request) {
 // handleHistoryClear 清空历史库。
 // POST /api/v1/brand/history/clear
 func (s *Server) handleHistoryClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅 POST"})
+		return
+	}
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	if err := s.brandEngine.HistoryDB().Clear(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "历史库已清空"})
@@ -2246,7 +2281,7 @@ func (s *Server) handleSchedulerStatus(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/brand/scheduler/trigger  body: {"brand_name": "...", "profile": {...}}
 func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "品牌引擎未初始化"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌引擎未初始化"})
 		return
 	}
 	var body struct {
@@ -2254,14 +2289,14 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 		Profile   brand.BrandProfile `json:"profile"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败: " + err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "请求体解析失败: " + err.Error()})
 		return
 	}
 	if body.BrandName == "" {
 		body.BrandName = body.Profile.Name
 	}
 	if body.BrandName == "" || len(body.Profile.Prompts) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brand_name 或 profile.prompts"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand_name 或 profile.prompts"})
 		return
 	}
 	// 取上一次审计的引擎统计（用于模型分歧告警对比）
@@ -2277,7 +2312,7 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 	// 直接执行审计
 	report, err := s.brandEngine.Audit(r.Context(), body.Profile)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	resp := map[string]interface{}{
@@ -2297,35 +2332,34 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 
 // handleReadinessAudit 处理 AI 可见度就绪审计请求。
 //
-// GET  /api/v1/brand/readiness?url=example.com
 // POST /api/v1/brand/readiness  JSON {"url": "example.com"}
 //
 // 检查目标网站对 AI 搜索引擎的可见度就绪度（robots.txt / llms.txt /
 // 结构化数据 / sitemap.xml / TTFB），返回 readiness.AuditResult。
 func (s *Server) handleReadinessAudit(w http.ResponseWriter, r *http.Request) {
-	var rawURL string
-	if r.Method == http.MethodGet {
-		rawURL = r.URL.Query().Get("url")
-	} else if r.Method == http.MethodPost {
-		var body struct {
-			URL string `json:"url"`
-		}
-		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		rawURL = body.URL
-	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
+	var body struct {
+		URL    string `json:"url"`
+		Domain string `json:"domain"` // 与前端 BrandProfile.domain 对齐的别名
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	rawURL := body.URL
+	if rawURL == "" {
+		rawURL = body.Domain
+	}
 	if strings.TrimSpace(rawURL) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "url 不能为空"})
 		return
 	}
 	result, err := readiness.Audit(r.Context(), rawURL)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -2333,27 +2367,26 @@ func (s *Server) handleReadinessAudit(w http.ResponseWriter, r *http.Request) {
 
 // handleCrawlabilityAudit 处理 AI 可爬取性审计请求。
 //
-// GET  /api/v1/brand/crawlability?url=https://example.com
 // POST /api/v1/brand/crawlability  JSON {"url": "https://example.com"}
 //
 // 审计 27 个 AI 爬虫的 robots.txt 放行状态、JSON-LD schema 丰富度、
 // llms.txt 存在性、知识图谱（Wikidata/Wikipedia/百度百科）存在性。
 func (s *Server) handleCrawlabilityAudit(w http.ResponseWriter, r *http.Request) {
-	var rawURL string
-	if r.Method == http.MethodGet {
-		rawURL = r.URL.Query().Get("url")
-	} else if r.Method == http.MethodPost {
-		var body struct {
-			URL string `json:"url"`
-		}
-		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-			return
-		}
-		rawURL = body.URL
-	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
+	}
+	var body struct {
+		URL    string `json:"url"`
+		Domain string `json:"domain"` // 与前端 BrandProfile.domain 对齐的别名
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	rawURL := body.URL
+	if rawURL == "" {
+		rawURL = body.Domain
 	}
 	if strings.TrimSpace(rawURL) == "" {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "url 不能为空"})
@@ -2361,7 +2394,7 @@ func (s *Server) handleCrawlabilityAudit(w http.ResponseWriter, r *http.Request)
 	}
 	result, err := crawlability.Audit(r.Context(), rawURL)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -2433,7 +2466,7 @@ func (s *Server) handleDriftAudit(w http.ResponseWriter, r *http.Request) {
 	// 默认取最近两条对比
 	report, err := drift.CompareLatest(r.Context(), s.brandEngine.HistoryDB(), brandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	if report == nil {
@@ -2476,7 +2509,7 @@ func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
 			Limit     int      `json:"limit"`
 		}
 		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 			return
 		}
 		brandName = body.BrandName
@@ -2485,11 +2518,11 @@ func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
 			limit = body.Limit
 		}
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	if strings.TrimSpace(brandName) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_name 不能为空"})
 		return
 	}
 	if len(platforms) == 0 {
@@ -2508,7 +2541,7 @@ func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
 
 	result, err := social.Monitor(r.Context(), brandName, platforms, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -2526,7 +2559,7 @@ func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
 // competitors 可选，用于识别竞品引用源（生成"竞品引用源，需关注"推荐）。
 func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2535,11 +2568,11 @@ func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
 		Competitors []brand.Competitor   `json:"competitors"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.BrandName) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_name 不能为空"})
 		return
 	}
 
@@ -2548,7 +2581,7 @@ func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
 	if len(results) == 0 && s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
 		rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.BrandName)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "读取审计历史失败: " + err.Error()})
+			writeInternalError(w, err, "读取审计历史")
 			return
 		}
 		if rec != nil && strings.TrimSpace(rec.ReportJSON) != "" {
@@ -2559,7 +2592,7 @@ func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(results) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "results 为空且无可用审计历史记录"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "results 为空且无可用审计历史记录"})
 		return
 	}
 
@@ -2578,7 +2611,7 @@ func (s *Server) handleKOLAnalyze(w http.ResponseWriter, r *http.Request) {
 // 最新审计记录中取。brand_domain 可选，用于判定品牌是否已在该域名上曝光。
 func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2587,11 +2620,11 @@ func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) 
 		BrandDomain string               `json:"brand_domain"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.BrandName) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_name 不能为空"})
 		return
 	}
 
@@ -2600,7 +2633,7 @@ func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) 
 	if len(results) == 0 && s.brandEngine != nil && s.brandEngine.HistoryDB() != nil {
 		rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), body.BrandName)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "读取审计历史失败: " + err.Error()})
+			writeInternalError(w, err, "读取审计历史")
 			return
 		}
 		if rec != nil && strings.TrimSpace(rec.ReportJSON) != "" {
@@ -2611,7 +2644,7 @@ func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	if len(results) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "results 为空且无可用审计历史记录"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "results 为空且无可用审计历史记录"})
 		return
 	}
 
@@ -2629,12 +2662,12 @@ func (s *Server) handleTopSourceAnalyze(w http.ResponseWriter, r *http.Request) 
 // 返回检测到的行业类型、中文标签与差异化评分权重。
 func (s *Server) handleVerticalDetect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var profile map[string]interface{}
 	if err := readJSON(r, &profile); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	v := vertical.Detect(profile)
@@ -2678,7 +2711,7 @@ func (s *Server) handleVerticalList(w http.ResponseWriter, r *http.Request) {
 // 检查 NAP 一致性、GMB 资料完整度、本地引用收录情况，返回综合评分与建议。
 func (s *Server) handleLocalSEOAudit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2687,11 +2720,11 @@ func (s *Server) handleLocalSEOAudit(w http.ResponseWriter, r *http.Request) {
 		Profile   map[string]interface{} `json:"profile,omitempty"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.BrandName) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brand_name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_name 不能为空"})
 		return
 	}
 	// nap.name 为空时用 brand_name 兜底
@@ -2700,7 +2733,7 @@ func (s *Server) handleLocalSEOAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	report, err := localseo.Audit(r.Context(), body.BrandName, body.NAP)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -2731,23 +2764,23 @@ func (s *Server) handleExternalSignals(w http.ResponseWriter, r *http.Request) {
 			Keywords []string `json:"keywords"`
 		}
 		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 			return
 		}
 		domain = body.Domain
 		keywords = body.Keywords
 	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	if strings.TrimSpace(domain) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "domain 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "domain 不能为空"})
 		return
 	}
 	client := externalsignals.NewFromEnv()
 	report, err := client.FullReport(r.Context(), domain, keywords)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -2802,7 +2835,7 @@ func (s *Server) handleAutoRewriteRules(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
 		return
 	}
 	var body struct {
@@ -2811,13 +2844,13 @@ func (s *Server) handleAutoRewriteRules(w http.ResponseWriter, r *http.Request) 
 		CitationResult string `json:"citation_result"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	rw := s.newAutoRewriter()
 	rs, err := rw.ExtractRules(r.Context(), body.Query, body.Doc, body.CitationResult)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, rs)
@@ -2831,7 +2864,7 @@ func (s *Server) handleAutoRewriteRules(w http.ResponseWriter, r *http.Request) 
 // rules 为空时使用默认规则。返回改写后内容、应用规则、预估 PWC 提升与 GEU 校验结果。
 func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2842,11 +2875,11 @@ func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
 		Rules         []autorewriter.Rule `json:"rules"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.Content) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
 		return
 	}
 	rw := s.newAutoRewriter()
@@ -2859,7 +2892,7 @@ func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := rw.Rewrite(r.Context(), req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -2871,7 +2904,7 @@ func (s *Server) handleAutoRewrite(w http.ResponseWriter, r *http.Request) {
 // 请求体: {"original": "...", "rewritten": "..."}
 func (s *Server) handleAutoRewriteGEU(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2879,17 +2912,17 @@ func (s *Server) handleAutoRewriteGEU(w http.ResponseWriter, r *http.Request) {
 		Rewritten string `json:"rewritten"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.Original) == "" || strings.TrimSpace(body.Rewritten) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "original 与 rewritten 均不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "original 与 rewritten 均不能为空"})
 		return
 	}
 	rw := s.newAutoRewriter()
 	geu, err := rw.CheckGEU(r.Context(), body.Original, body.Rewritten)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, geu)
@@ -2899,48 +2932,40 @@ func (s *Server) handleAutoRewriteGEU(w http.ResponseWriter, r *http.Request) {
 
 // handleReadinessCIGate 处理 AI 就绪度 CI 门禁判定请求。
 //
-// GET  /api/v1/brand/readiness/ci-gate?url=example.com&threshold=80
 // POST /api/v1/brand/readiness/ci-gate  JSON {"url": "example.com", "threshold": 80}
 //
 // 先执行 8 维就绪审计，再按 threshold（默认 60）判定门禁是否通过。
 // 返回 readiness.CIGateResult，含 blocking_issues 与人类可读汇总。
 // CI/CD 集成时可直接根据 passed 字段决定流水线是否中断。
 func (s *Server) handleReadinessCIGate(w http.ResponseWriter, r *http.Request) {
-	var (
-		rawURL    string
-		threshold = readiness.DefaultCIThreshold()
-	)
-	if r.Method == http.MethodGet {
-		rawURL = r.URL.Query().Get("url")
-		if t := r.URL.Query().Get("threshold"); t != "" {
-			if n, err := strconv.ParseFloat(t, 64); err == nil {
-				threshold = n
-			}
-		}
-	} else if r.Method == http.MethodPost {
-		var body struct {
-			URL       string  `json:"url"`
-			Threshold float64 `json:"threshold"`
-		}
-		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		rawURL = body.URL
-		if body.Threshold > 0 {
-			threshold = body.Threshold
-		}
-	} else {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET / POST"})
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
+	var body struct {
+		URL       string  `json:"url"`
+		Domain    string  `json:"domain"` // 与前端 BrandProfile.domain 对齐的别名
+		Threshold float64 `json:"threshold"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	threshold := readiness.DefaultCIThreshold()
+	if body.Threshold > 0 {
+		threshold = body.Threshold
+	}
+	rawURL := body.URL
+	if rawURL == "" {
+		rawURL = body.Domain
+	}
 	if strings.TrimSpace(rawURL) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "url 不能为空"})
 		return
 	}
 	result, err := readiness.Audit(r.Context(), rawURL)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	gate := readiness.CIGateReportWithThreshold(result, threshold)
@@ -2953,18 +2978,18 @@ func (s *Server) handleReadinessCIGate(w http.ResponseWriter, r *http.Request) {
 // 响应: {"keyword":"短视频","candidates":[...]}
 func (s *Server) handleBrandDiscover(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
 		Keyword string `json:"keyword"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.Keyword) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "keyword 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "keyword 不能为空"})
 		return
 	}
 
@@ -2979,7 +3004,7 @@ func (s *Server) handleBrandDiscover(w http.ResponseWriter, r *http.Request) {
 
 	result, err := discover.Discover(r.Context(), body.Keyword, offlineDB, kb)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -2991,7 +3016,7 @@ func (s *Server) handleBrandDiscover(w http.ResponseWriter, r *http.Request) {
 // 响应: 完整 GEOReport（品牌画像 + 审计 + 就绪度 + 建议）
 func (s *Server) handleBrandDiscoverReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	var body struct {
@@ -2999,17 +3024,17 @@ func (s *Server) handleBrandDiscoverReport(w http.ResponseWriter, r *http.Reques
 		Keyword   string             `json:"keyword"`
 	}
 	if err := readJSON(r, &body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
 	if strings.TrimSpace(body.Candidate.Name) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "candidate.name 不能为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "candidate.name 不能为空"})
 		return
 	}
 
 	report, err := discover.GenerateReport(r.Context(), &body.Candidate, body.Keyword, s.brandEngine)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, report)
@@ -3040,20 +3065,20 @@ var dimensionPriorityIndex = func() map[string]int {
 // sortDimensionsByPriority 按优先级排序维度（稳定排序）。
 // 优先级列表内的维度按列表顺序排列，未在列表中的按字母序追加在末尾。
 func sortDimensionsByPriority(dims []string) {
-	sort.SliceStable(dims, func(i, j int) bool {
-		pi, oki := dimensionPriorityIndex[dims[i]]
-		pj, okj := dimensionPriorityIndex[dims[j]]
+	slices.SortStableFunc(dims, func(a, b string) int {
+		pi, oki := dimensionPriorityIndex[a]
+		pj, okj := dimensionPriorityIndex[b]
 		if !oki {
 			pi = len(dimensionPriority)
 		}
 		if !okj {
 			pj = len(dimensionPriority)
 		}
-		if pi != pj {
-			return pi < pj
+		if c := cmp.Compare(pi, pj); c != 0 {
+			return c
 		}
 		// 同优先级（含均未在列表中）按字母序
-		return dims[i] < dims[j]
+		return cmp.Compare(a, b)
 	})
 }
 
@@ -3155,17 +3180,17 @@ type compareDiffResult struct {
 // 缺少审计记录的品牌在 brands 数组中对应位置为 null，并在 errors 中说明。
 func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 
 	brandsRaw := r.URL.Query().Get("brands")
 	if strings.TrimSpace(brandsRaw) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brands 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brands 参数"})
 		return
 	}
 	parts := strings.Split(brandsRaw, ",")
@@ -3183,7 +3208,7 @@ func (s *Server) handleBrandCompare(w http.ResponseWriter, r *http.Request) {
 		brandList = append(brandList, name)
 	}
 	if len(brandList) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brands 参数为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brands 参数为空"})
 		return
 	}
 	if len(brandList) > 5 {
@@ -3391,16 +3416,16 @@ func compareTierLabel(tier string) string {
 // format=json：直接返回 compare 数据（与 /api/v1/brand/compare 一致）
 func (s *Server) handleBrandCompareExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	brandsRaw := r.URL.Query().Get("brands")
 	if strings.TrimSpace(brandsRaw) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少 brands 参数"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brands 参数"})
 		return
 	}
 	format := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("format")))
@@ -3408,7 +3433,7 @@ func (s *Server) handleBrandCompareExport(w http.ResponseWriter, r *http.Request
 		format = "html"
 	}
 	if format != "html" && format != "json" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "format 仅支持 html 或 json"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "format 仅支持 html 或 json"})
 		return
 	}
 	parts := strings.Split(brandsRaw, ",")
@@ -3423,7 +3448,7 @@ func (s *Server) handleBrandCompareExport(w http.ResponseWriter, r *http.Request
 		brandList = append(brandList, name)
 	}
 	if len(brandList) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brands 参数为空"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brands 参数为空"})
 		return
 	}
 	if len(brandList) > 5 {
@@ -3846,12 +3871,17 @@ func (s *Server) getAllBrandLatestRecords(ctx context.Context) ([]leaderboardIte
 	if err != nil {
 		return nil, err
 	}
-	items := make([]leaderboardItem, 0, len(brands))
-	for _, b := range brands {
-		rec, err := s.brandEngine.HistoryDB().Latest(ctx, b)
-		if err != nil || rec == nil {
-			continue
-		}
+	if len(brands) == 0 {
+		return []leaderboardItem{}, nil
+	}
+	// 单轮批量查询（LatestForBrands 内部用 JOIN 下推聚合），避免逐品牌 N+1（P1-5）。
+	recs, err := s.brandEngine.HistoryDB().LatestForBrands(ctx, brands)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]leaderboardItem, 0, len(recs))
+	for i := range recs {
+		rec := &recs[i]
 		cat, ind := inferCategoryFromReportJSON(rec.ReportJSON)
 		items = append(items, leaderboardItem{
 			BrandName: rec.BrandName,
@@ -3863,9 +3893,7 @@ func (s *Server) getAllBrandLatestRecords(ctx context.Context) ([]leaderboardIte
 			Generated: rec.Generated,
 		})
 	}
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].Score > items[j].Score
-	})
+	slices.SortFunc(items, func(a, b leaderboardItem) int { return cmp.Compare(b.Score, a.Score) })
 	for i := range items {
 		items[i].Rank = i + 1
 	}
@@ -3877,16 +3905,16 @@ func (s *Server) getAllBrandLatestRecords(ctx context.Context) ([]leaderboardIte
 // GET /api/v1/leaderboard/categories
 func (s *Server) handleLeaderboardCategories(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	items, err := s.getAllBrandLatestRecords(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	catSet := map[string]int{}
@@ -3900,13 +3928,11 @@ func (s *Server) handleLeaderboardCategories(w http.ResponseWriter, r *http.Requ
 			"count":    cnt,
 		})
 	}
-	sort.Slice(categories, func(i, j int) bool {
-		ci := categories[i]["count"].(int)
-		cj := categories[j]["count"].(int)
-		if ci != cj {
-			return ci > cj
+	slices.SortFunc(categories, func(a, b map[string]interface{}) int {
+		if c := cmp.Compare(b["count"].(int), a["count"].(int)); c != 0 {
+			return c
 		}
-		return categories[i]["category"].(string) < categories[j]["category"].(string)
+		return cmp.Compare(a["category"].(string), b["category"].(string))
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"count":      len(categories),
@@ -3921,11 +3947,11 @@ func (s *Server) handleLeaderboardCategories(w http.ResponseWriter, r *http.Requ
 //   - limit 可选：默认 50，最大 500
 func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
@@ -3940,7 +3966,7 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := s.getAllBrandLatestRecords(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	var filtered []leaderboardItem
@@ -3976,11 +4002,11 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 //   - 可选参数 history_limit：历史记录条数，默认 50，最大 500
 func (s *Server) handleLeaderboardBrand(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "审计历史库未启用"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用"})
 		return
 	}
 	prefix := "/api/v1/leaderboard/brand/"
@@ -3988,7 +4014,7 @@ func (s *Server) handleLeaderboardBrand(w http.ResponseWriter, r *http.Request) 
 	brandName, _ = url.PathUnescape(brandName)
 	brandName = strings.TrimSpace(brandName)
 	if brandName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺少品牌名参数（路径：/api/v1/leaderboard/brand/:brand）"})
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少品牌名参数（路径：/api/v1/leaderboard/brand/:brand）"})
 		return
 	}
 	historyLimit := 50
@@ -4003,18 +4029,18 @@ func (s *Server) handleLeaderboardBrand(w http.ResponseWriter, r *http.Request) 
 	// 1. 获取该品牌最新记录（用于 category / 当前排名计算）
 	latestRec, err := s.brandEngine.HistoryDB().Latest(r.Context(), brandName)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	if latestRec == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "未找到该品牌的审计记录"})
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "未找到该品牌的审计记录"})
 		return
 	}
 	category, industry := inferCategoryFromReportJSON(latestRec.ReportJSON)
 	// 2. 获取所有品牌最新记录，找到该品牌的当前排名
 	allItems, err := s.getAllBrandLatestRecords(r.Context())
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeInternalError(w, err, "")
 		return
 	}
 	currentRank := 0

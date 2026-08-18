@@ -253,9 +253,9 @@ func (s *Server) handleMetaCompliance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{
-		"user_agent":        util.MyGEOUserAgent,
-		"crawler_info_url":  util.MyGEOCrawlInfoURL,
-		"compliance_email":  util.MyGEOComplianceEmail,
+		"user_agent":              util.MyGEOUserAgent,
+		"crawler_info_url":        util.MyGEOCrawlInfoURL,
+		"compliance_email":        util.MyGEOComplianceEmail,
 		"ai_generated_disclaimer": aiGeneratedDisclaimerShort,
 		"legal_routes": map[string]string{
 			"terms":   "/terms",

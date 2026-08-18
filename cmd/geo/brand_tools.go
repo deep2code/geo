@@ -251,9 +251,9 @@ func newTopSourceCmd() *cobra.Command {
 				Results   []struct {
 					Prompt    string `json:"prompt"`
 					Citations []struct {
-						URL      string `json:"url"`
-						Title    string `json:"title"`
-						Snippet  string `json:"snippet"`
+						URL     string `json:"url"`
+						Title   string `json:"title"`
+						Snippet string `json:"snippet"`
 					} `json:"citations"`
 				} `json:"results"`
 			}
@@ -394,7 +394,7 @@ func newLocalSEOCmd() *cobra.Command {
 				return err
 			}
 			var body struct {
-				BrandName string          `json:"brand_name"`
+				BrandName string           `json:"brand_name"`
 				NAP       localseo.NAPInfo `json:"nap"`
 			}
 			if err := json.Unmarshal(data, &body); err != nil {

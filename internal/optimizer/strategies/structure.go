@@ -11,9 +11,9 @@ import (
 // 为无标题的长文本添加基础 Markdown 标题分段，并将连续短行转为列表。
 type StructureStrategy struct{}
 
-func (s *StructureStrategy) Name() string             { return "结构化优化" }
+func (s *StructureStrategy) Name() string              { return "结构化优化" }
 func (s *StructureStrategy) Type() models.StrategyType { return models.StrategyStructure }
-func (s *StructureStrategy) Effectiveness() float64   { return 0.22 }
+func (s *StructureStrategy) Effectiveness() float64    { return 0.22 }
 
 // PWCBoost 返回理论 PWC 增益百分比（工程扩展策略：结构化内容便于 AI 解析抽取）。
 func (s *StructureStrategy) PWCBoost() float64 { return 12.0 }

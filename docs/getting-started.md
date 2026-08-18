@@ -304,7 +304,7 @@ graph TB
 ```
 
 ```bash
-# 方式一：从源码编译（需要 Go 1.21+）
+# 方式一：从源码编译（需要 Go 1.26+）
 git clone https://github.com/deep2code/geo.git
 cd geo
 make build        # 产物在 bin/geo

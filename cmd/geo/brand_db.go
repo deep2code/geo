@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -132,7 +133,7 @@ func newBrandDBStatsCmd() *cobra.Command {
 				for k, v := range st.Provinces {
 					list = append(list, kv{k, v})
 				}
-				sort.Slice(list, func(i, j int) bool { return list[i].v > list[j].v })
+				slices.SortFunc(list, func(a, b kv) int { return cmp.Compare(b.v, a.v) })
 				fmt.Println(" 按省 Top10:")
 				total := st.Count
 				if total == 0 {

@@ -11,7 +11,8 @@
 //   - 知识图谱存在性（Wikidata/Wikipedia/百度百科）
 //
 // 评分公式（透明公开）：
-//   爬虫访问 40% + 结构化数据 30% + llms.txt 20% + 知识图谱 10%
+//
+//	爬虫访问 40% + 结构化数据 30% + llms.txt 20% + 知识图谱 10%
 package crawlability
 
 import (
@@ -45,10 +46,10 @@ const (
 
 // AIBot 描述一个 AI 爬虫。
 type AIBot struct {
-	UserAgent string    `json:"user_agent"`  // robots.txt 中的 User-agent
-	Name      string    `json:"name"`        // 人类可读名称
-	Tier      AIBotTier `json:"tier"`        // 分级
-	Vendor    string    `json:"vendor"`      // 厂商（OpenAI/Anthropic/Google 等）
+	UserAgent string    `json:"user_agent"` // robots.txt 中的 User-agent
+	Name      string    `json:"name"`       // 人类可读名称
+	Tier      AIBotTier `json:"tier"`       // 分级
+	Vendor    string    `json:"vendor"`     // 厂商（OpenAI/Anthropic/Google 等）
 }
 
 // 27 个主流 AI 爬虫（借鉴 geo-optimizer-skill 的分类）。
@@ -85,29 +86,29 @@ var aiBots = []AIBot{
 
 // BotCheckResult 单个爬虫的检查结果。
 type BotCheckResult struct {
-	Bot       AIBot  `json:"bot"`
-	Allowed   bool   `json:"allowed"`    // 是否被允许
-	RuleType  string `json:"rule_type"`  // "explicit_allow"/"explicit_disallow"/"no_rule"(默认允许)
-	Evidence  string `json:"evidence"`   // 证据（匹配的 robots.txt 规则）
+	Bot      AIBot  `json:"bot"`
+	Allowed  bool   `json:"allowed"`   // 是否被允许
+	RuleType string `json:"rule_type"` // "explicit_allow"/"explicit_disallow"/"no_rule"(默认允许)
+	Evidence string `json:"evidence"`  // 证据（匹配的 robots.txt 规则）
 }
 
 // SchemaCheck JSON-LD schema 检查结果。
 type SchemaCheck struct {
-	HasJSONLD    bool              `json:"has_json_ld"`
-	SchemaTypes  []string          `json:"schema_types"`   // 发现的 @type
-	AttrCount    int               `json:"attr_count"`     // 属性总数（丰富度）
-	Richness     string            `json:"richness"`       // rich/medium/poor/none
+	HasJSONLD   bool     `json:"has_json_ld"`
+	SchemaTypes []string `json:"schema_types"` // 发现的 @type
+	AttrCount   int      `json:"attr_count"`   // 属性总数（丰富度）
+	Richness    string   `json:"richness"`     // rich/medium/poor/none
 }
 
 // LlmsTxtCheck llms.txt 检查结果。
 type LlmsTxtCheck struct {
-	Present      bool     `json:"present"`
-	HasH1        bool     `json:"has_h1"`         // 有 H1 标题
-	HasQuote     bool     `json:"has_quote"`      // 有 blockquote 摘要
-	Sections     int      `json:"sections"`       // 分区数（## 标题）
-	Links        int      `json:"links"`          // 链接数
-	HasFullTxt   bool     `json:"has_full_txt"`   // 配套 llms-full.txt
-	Depth        string   `json:"depth"`          // deep/medium/shallow/none
+	Present    bool   `json:"present"`
+	HasH1      bool   `json:"has_h1"`       // 有 H1 标题
+	HasQuote   bool   `json:"has_quote"`    // 有 blockquote 摘要
+	Sections   int    `json:"sections"`     // 分区数（## 标题）
+	Links      int    `json:"links"`        // 链接数
+	HasFullTxt bool   `json:"has_full_txt"` // 配套 llms-full.txt
+	Depth      string `json:"depth"`        // deep/medium/shallow/none
 }
 
 // KnowledgeGraphCheck 知识图谱存在性检查结果。
@@ -115,20 +116,20 @@ type KnowledgeGraphCheck struct {
 	Wikidata    bool `json:"wikidata"`
 	WikipediaEN bool `json:"wikipedia_en"`
 	WikipediaZH bool `json:"wikipedia_zh"`
-	BaiduBaike  bool `json:"baidu_baike"`     // 百度百科（中国本土化）
+	BaiduBaike  bool `json:"baidu_baike"` // 百度百科（中国本土化）
 }
 
 // AuditResult 完整的可爬取性审计结果。
 type AuditResult struct {
-	URL          string             `json:"url"`
-	TotalScore   float64            `json:"total_score"`   // 0-100
-	Grade        string             `json:"grade"`         // A-F
-	BotChecks    []BotCheckResult   `json:"bot_checks"`
-	SchemaCheck  SchemaCheck        `json:"schema_check"`
-	LlmsTxtCheck LlmsTxtCheck       `json:"llms_txt_check"`
-	KGCheck      KnowledgeGraphCheck `json:"knowledge_graph_check"`
-	Recommendations []string        `json:"recommendations"`
-	AuditedAt    time.Time          `json:"audited_at"`
+	URL             string              `json:"url"`
+	TotalScore      float64             `json:"total_score"` // 0-100
+	Grade           string              `json:"grade"`       // A-F
+	BotChecks       []BotCheckResult    `json:"bot_checks"`
+	SchemaCheck     SchemaCheck         `json:"schema_check"`
+	LlmsTxtCheck    LlmsTxtCheck        `json:"llms_txt_check"`
+	KGCheck         KnowledgeGraphCheck `json:"knowledge_graph_check"`
+	Recommendations []string            `json:"recommendations"`
+	AuditedAt       time.Time           `json:"audited_at"`
 }
 
 // httpClient 共享 HTTP 客户端。

@@ -56,9 +56,9 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '/Users/junjunyi/src-code/my-geo/internal/server/web/dist',
+    outDir: path.resolve(__dirname, '../internal/server/web/dist'),
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: 'hidden',
     rollupOptions: {
       output: {
         manualChunks: {

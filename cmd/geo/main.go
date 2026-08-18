@@ -1,11 +1,12 @@
 // Package main 是 GEO 命令行工具入口。
 //
 // 子命令参考 geo-optimizer-skill 的 CLI 设计：
-//   geo optimize  优化内容
-//   geo score     评分
-//   geo analyze   分析信号
-//   geo strategies 列出策略
-//   geo serve     启动 API 服务
+//
+//	geo optimize  优化内容
+//	geo score     评分
+//	geo analyze   分析信号
+//	geo strategies 列出策略
+//	geo serve     启动 API 服务
 package main
 
 import (

@@ -10,9 +10,9 @@ import (
 // 使用丰富多样的词汇，增加独特表述，提升内容区分度。
 type UniqueWordsStrategy struct{}
 
-func (s *UniqueWordsStrategy) Name() string             { return "独特词汇增强" }
+func (s *UniqueWordsStrategy) Name() string              { return "独特词汇增强" }
 func (s *UniqueWordsStrategy) Type() models.StrategyType { return models.StrategyUniqueWords }
-func (s *UniqueWordsStrategy) Effectiveness() float64   { return 0.18 }
+func (s *UniqueWordsStrategy) Effectiveness() float64    { return 0.18 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准：词汇多样性对 PWC 影响不显著）。
 func (s *UniqueWordsStrategy) PWCBoost() float64 { return 0.0 }

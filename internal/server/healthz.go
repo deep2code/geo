@@ -39,10 +39,10 @@ type healthChecks struct {
 
 // checkResult 单项检查结果。
 type checkResult struct {
-	Status    string `json:"status"`              // ok | warn | fail | disabled
-	Message   string `json:"message,omitempty"`   // 人类可读错误/说明
-	LatencyMs int64  `json:"latency_ms"`          // 本次检查耗时
-	Detail    string `json:"detail,omitempty"`    // DSN 脱敏 / host:port 等
+	Status    string `json:"status"`            // ok | warn | fail | disabled
+	Message   string `json:"message,omitempty"` // 人类可读错误/说明
+	LatencyMs int64  `json:"latency_ms"`        // 本次检查耗时
+	Detail    string `json:"detail,omitempty"`  // DSN 脱敏 / host:port 等
 }
 
 func newHealthChecks() *healthChecks {

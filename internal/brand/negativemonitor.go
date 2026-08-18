@@ -6,9 +6,9 @@ import (
 
 // 负面分类常量。
 const (
-	NegativeCategoryProductIssue            = "product_issue"             // 产品缺陷/bug/质量问题
-	NegativeCategoryServiceIssue            = "service_issue"             // 客服/售后/服务态度
-	NegativeCategoryPricingIssue            = "pricing_issue"             // 价格/性价比/收费
+	NegativeCategoryProductIssue            = "product_issue"            // 产品缺陷/bug/质量问题
+	NegativeCategoryServiceIssue            = "service_issue"            // 客服/售后/服务态度
+	NegativeCategoryPricingIssue            = "pricing_issue"            // 价格/性价比/收费
 	NegativeCategoryCompetitiveDisadvantage = "competitive_disadvantage" // 竞争劣势/不如竞品
 	NegativeCategoryFalseInfo               = "false_info"               // 虚假/欺骗/诈骗
 	NegativeCategorySecurityPrivacy         = "security_privacy"         // 隐私/数据安全
@@ -107,12 +107,12 @@ func NegativeCategoryLabel(category string) string {
 
 // NegativeSummary 负面查询监控摘要。
 type NegativeSummary struct {
-	TotalCount      int            `json:"total_count"`
-	CriticalCount   int            `json:"critical_count"`
-	ByCategory      map[string]int `json:"by_category"`
-	TopCategories   []string       `json:"top_categories"` // 按数量降序的 Top3 分类
-	RequiresAlert   bool           `json:"requires_alert"` // 是否需要告警（critical > 0 或总数 ≥ 5）
-	AlertMessage    string         `json:"alert_message,omitempty"`
+	TotalCount    int            `json:"total_count"`
+	CriticalCount int            `json:"critical_count"`
+	ByCategory    map[string]int `json:"by_category"`
+	TopCategories []string       `json:"top_categories"` // 按数量降序的 Top3 分类
+	RequiresAlert bool           `json:"requires_alert"` // 是否需要告警（critical > 0 或总数 ≥ 5）
+	AlertMessage  string         `json:"alert_message,omitempty"`
 }
 
 // SummarizeNegatives 聚合负面提及，生成监控摘要与告警。

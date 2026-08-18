@@ -51,8 +51,8 @@ var (
 // Analyze 分析内容，返回各类 GEO 信号检测结果。
 func (a *Analyzer) Analyze(content string) *models.ContentAnalysis {
 	analysis := &models.ContentAnalysis{
-		RawText:          content,
-		WordCount:        countWords(content),
+		RawText:           content,
+		WordCount:         countWords(content),
 		CitabilitySignals: make(map[string]bool),
 		StructureSignals:  make(map[string]bool),
 		AnalyzedAt:        time.Now(),

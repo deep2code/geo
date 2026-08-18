@@ -172,7 +172,10 @@ func (d *mysqlStore) Save(ctx context.Context, r Record) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("history/mysql: 写入失败: %w", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("history/mysql: 读取自增 ID 失败: %w", err)
+	}
 	return id, nil
 }
 
@@ -254,6 +257,61 @@ func (d *mysqlStore) Latest(ctx context.Context, brandName string) (*Record, err
 	}
 	r.ReportJSON = reportJSON.String
 	return &r, nil
+}
+
+// LatestForBrands 一次查询多个品牌各自的最新记录（P1-5：替代逐品牌 Latest 的 N+1）。
+// 用 JOIN (SELECT brand_name, MAX(id) ... GROUP BY brand_name) 下推聚合，
+// 单条 SQL 完成，网络往返从 O(N) 降到 O(1)。brandNames 为空时直接返回空。
+func (d *mysqlStore) LatestForBrands(ctx context.Context, brandNames []string) ([]Record, error) {
+	if d == nil || d.db == nil {
+		return nil, nil
+	}
+	if len(brandNames) == 0 {
+		return nil, nil
+	}
+	wid := WorkspaceFromContext(ctx)
+	wsClause, wsArg := wsScope(wid)
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(brandNames)), ",")
+	args := make([]interface{}, 0, len(brandNames)+1)
+	for _, b := range brandNames {
+		args = append(args, b)
+	}
+	if wsArg != nil {
+		args = append(args, wsArg)
+	}
+	q := `SELECT
+		h.id, COALESCE(h.workspace_id,''), h.brand_name, h.generated_at, h.score, h.grade, h.tier,
+		h.entity_completeness, h.mention_rate, h.citation_rate, h.share_of_voice,
+		h.citation_position, h.sentiment, h.entity_recognition,
+		h.content_gaps_count, h.competitor_count, h.negative_count, h.action_count,
+		h.report_json
+		FROM audit_history h
+		JOIN (
+			SELECT brand_name, MAX(id) AS max_id
+			FROM audit_history
+			WHERE brand_name IN (` + placeholders + `)` + wsClause + `
+			GROUP BY brand_name
+		) t ON h.id = t.max_id`
+	rows, err := d.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("history/mysql: LatestForBrands 失败: %w", err)
+	}
+	defer rows.Close()
+	var out []Record
+	for rows.Next() {
+		var r Record
+		var reportJSON sql.NullString
+		if err := rows.Scan(&r.ID, &r.WorkspaceID, &r.BrandName, &r.Generated, &r.Score, &r.Grade, &r.Tier,
+			&r.EntityCompleteness, &r.MentionRate, &r.CitationRate, &r.ShareOfVoice,
+			&r.CitationPosition, &r.Sentiment, &r.EntityRecognition,
+			&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
+			&reportJSON); err != nil {
+			return nil, fmt.Errorf("history/mysql: LatestForBrands 扫描失败: %w", err)
+		}
+		r.ReportJSON = reportJSON.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (d *mysqlStore) GetByID(ctx context.Context, id int64) (*Record, error) {

@@ -1,8 +1,9 @@
 package brand
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
 
 	"my-geo/internal/models"
 )
@@ -24,17 +25,35 @@ func EntityCompleteness(profile BrandProfile) float64 {
 	score := 0.0
 	total := 8.0
 	// 基础品牌字段
-	if profile.Name != "" { score++ }
-	if profile.Domain != "" { score++ }
-	if profile.Industry != "" { score += 0.5 }
-	if len(profile.Products) > 0 { score++ }
+	if profile.Name != "" {
+		score++
+	}
+	if profile.Domain != "" {
+		score++
+	}
+	if profile.Industry != "" {
+		score += 0.5
+	}
+	if len(profile.Products) > 0 {
+		score++
+	}
 	// 公司字段（权重加倍：公司实体是关联的核心）
 	if profile.Company != nil {
-		if profile.Company.Name != "" { score += 1.5 }
-		if profile.Company.Domain != "" { score += 1 }
-		if len(profile.Company.Aliases) > 0 { score += 0.5 }
-		if profile.Company.Industry != "" { score += 0.5 }
-		if profile.Company.Description != "" { score += 0.5 }
+		if profile.Company.Name != "" {
+			score += 1.5
+		}
+		if profile.Company.Domain != "" {
+			score += 1
+		}
+		if len(profile.Company.Aliases) > 0 {
+			score += 0.5
+		}
+		if profile.Company.Industry != "" {
+			score += 0.5
+		}
+		if profile.Company.Description != "" {
+			score += 0.5
+		}
 	}
 	return min(score/total*100, 100)
 }
@@ -107,7 +126,7 @@ func (s *Scorer) Aggregate(results []PromptResult, profile BrandProfile, configu
 		}
 		stats = append(stats, *st)
 	}
-	sort.Slice(stats, func(i, j int) bool { return string(stats[i].Engine) < string(stats[j].Engine) })
+	slices.SortFunc(stats, func(a, b EngineStats) int { return cmp.Compare(string(a.Engine), string(b.Engine)) })
 	return stats
 }
 
@@ -181,9 +200,13 @@ func (s *Scorer) ScoreWithProfile(stats []EngineStats, profile *BrandProfile, en
 
 	// 实体识别得分 = (100 - 幽灵引用率) × 0.8 + 实体完备度 × 0.2
 	ghostBase := 100 - avgGhost
-	if ghostBase < 0 { ghostBase = 0 }
+	if ghostBase < 0 {
+		ghostBase = 0
+	}
 	entityScore := ghostBase*0.8 + math.Max(entityCompleteness, 0)*0.2
-	if entityScore > 100 { entityScore = 100 }
+	if entityScore > 100 {
+		entityScore = 100
+	}
 	// 引擎可见度 6 维归一化（保留用于历史兼容）
 	mentionScore := math.Min(avgMention/75*100, 100)
 	citationScore := math.Min(avgCitation/15*100, 100)
@@ -193,22 +216,34 @@ func (s *Scorer) ScoreWithProfile(stats []EngineStats, profile *BrandProfile, en
 	// --- BVS 7 维计算（从引擎可见度指标映射）---
 	// 内容质量：引用率为主（60%），辅以声量份额（40%）
 	contentQuality := citationScore*0.6 + sovScore*0.4
-	if contentQuality > 100 { contentQuality = 100 }
+	if contentQuality > 100 {
+		contentQuality = 100
+	}
 	// 技术 SEO：实体识别度为主（70%），实体完备度辅之（30%）
 	techSEO := entityScore*0.7 + math.Max(entityCompleteness, 0)*0.3
-	if techSEO > 100 { techSEO = 100 }
+	if techSEO > 100 {
+		techSEO = 100
+	}
 	// 站内 SEO：提及率为主（70%），引用位置辅之（30%）
 	onPageSEO := mentionScore*0.7 + avgPos*0.3
-	if onPageSEO > 100 { onPageSEO = 100 }
+	if onPageSEO > 100 {
+		onPageSEO = 100
+	}
 	// Schema：实体完备度为主（60%），幽灵引用率辅之（40%）
 	schemaScore := math.Max(entityCompleteness, 0)*0.6 + ghostBase*0.4
-	if schemaScore > 100 { schemaScore = 100 }
+	if schemaScore > 100 {
+		schemaScore = 100
+	}
 	// 页面性能：引用位置为主（80%），提及率辅之（20%）
 	perfScore := avgPos*0.8 + mentionScore*0.2
-	if perfScore > 100 { perfScore = 100 }
+	if perfScore > 100 {
+		perfScore = 100
+	}
 	// AI 搜索就绪：情感正面率为主（50%），低幽灵引用辅之（50%）
 	aiReadyScore := sentimentScore*0.5 + ghostBase*0.5
-	if aiReadyScore > 100 { aiReadyScore = 100 }
+	if aiReadyScore > 100 {
+		aiReadyScore = 100
+	}
 	// 图像优化：无图片数据时取中性默认分 60
 	imageScore := 60.0
 
@@ -293,7 +328,7 @@ func CriticalDimensions(bd ScoreBreakdown) []string {
 		{"图像优化", bd.ImageOptimization},
 	}
 	for _, d := range dims {
-	 sev := SeverityOf(d.score)
+		sev := SeverityOf(d.score)
 		if sev == SeverityCritical || sev == SeverityHigh {
 			critical = append(critical, d.name)
 		}

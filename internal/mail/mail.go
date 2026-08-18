@@ -8,12 +8,13 @@
 //   - 环境变量一键配置（GEO_SMTP_*）
 //
 // 环境变量：
-//   GEO_SMTP_HOST       SMTP 服务器主机（如 smtp.qq.com）
-//   GEO_SMTP_PORT       SMTP 端口（默认 587，TLS/STARTTLS）
-//   GEO_SMTP_USER       SMTP 用户名
-//   GEO_SMTP_PASSWORD   SMTP 密码/授权码
-//   GEO_SMTP_FROM       发件人显示（含 <email>），例如 "GEO 告警 <no-reply@geo.io>"
-//   GEO_SMTP_TLS        auto/starttls/ssl/none（默认 auto：25=none 465=ssl 其它=starttls）
+//
+//	GEO_SMTP_HOST       SMTP 服务器主机（如 smtp.qq.com）
+//	GEO_SMTP_PORT       SMTP 端口（默认 587，TLS/STARTTLS）
+//	GEO_SMTP_USER       SMTP 用户名
+//	GEO_SMTP_PASSWORD   SMTP 密码/授权码
+//	GEO_SMTP_FROM       发件人显示（含 <email>），例如 "GEO 告警 <no-reply@geo.io>"
+//	GEO_SMTP_TLS        auto/starttls/ssl/none（默认 auto：25=none 465=ssl 其它=starttls）
 package mail
 
 import (
@@ -23,6 +24,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log/slog"
 	"mime"
 	"mime/quotedprintable"
 	"net"
@@ -57,10 +59,10 @@ const aiMailFooterText = "\n\n-- \n" + aiMailDisclaimerShort +
 
 // Attachment 邮件附件。
 type Attachment struct {
-	Filename    string    // 文件名
-	ContentType string    // MIME 类型，空时从文件名推断
-	Content     []byte    // 附件二进制内容
-	Source      string    // 可选：文件路径（Content 为空时从文件读）
+	Filename    string // 文件名
+	ContentType string // MIME 类型，空时从文件名推断
+	Content     []byte // 附件二进制内容
+	Source      string // 可选：文件路径（Content 为空时从文件读）
 }
 
 // Message 一封待发送邮件。
@@ -111,6 +113,12 @@ func NewSenderFromConfig(host string, port int, user, password, from, tlsMode st
 	if fromAddr == "" {
 		fromAddr = user // 回退到用户名
 	}
+	// P1-9：发件人显示名/地址防头注入（配置来自环境变量，防御 CR/LF 注入）。
+	// 注意：不强制要求 @（GEO_SMTP_FROM 未配置时回退 user 可能为空），
+	// 仅拒绝注入向量，避免破坏未配置发件人的既有部署。
+	if strings.ContainsAny(from, "\r\n\x00") || strings.ContainsAny(fromAddr, "\r\n\x00") {
+		return nil, fmt.Errorf("mail: 发件人配置包含非法控制字符（CR/LF）")
+	}
 	return &Sender{
 		Host: host, Port: port,
 		User: user, Password: password,
@@ -126,6 +134,15 @@ func (s *Sender) Enabled() bool { return s != nil && s.Host != "" }
 func (s *Sender) Send(m *Message) error {
 	if !s.Enabled() {
 		return fmt.Errorf("mail: SMTP 未配置")
+	}
+	// P1-9：头注入防护——所有收件人在入口统一校验（拒绝 CR/LF/控制字符/分隔符）。
+	// To/Cc/Bcc 会拼接进邮件头，未校验的地址可注入额外 Bcc 头或伪造收件人。
+	for _, group := range [][]string{m.To, m.Cc, m.Bcc} {
+		for _, addr := range group {
+			if err := validateRecipient(addr); err != nil {
+				return err
+			}
+		}
 	}
 	recipients := dedupEmails(append(append(m.To, m.Cc...), m.Bcc...))
 	if len(recipients) == 0 {
@@ -182,11 +199,23 @@ func (s *Sender) deliver(recipients []string, data []byte) error {
 	}
 	defer c.Quit()
 
+	// P1-10：STARTTLS 降级明文防护。
+	//   starttls 模式：强制加密，服务器不支持时直接报错（绝不明文发凭据）；
+	//   auto 模式：支持则加密；不支持时若有凭据则报错（防止明文传输 SMTP 密码），
+	//   无凭据（匿名中继）才允许降级明文并记警告。
 	if s.TLS == "starttls" || s.TLS == "auto" {
-		if ok, _ := c.Extension("STARTTLS"); ok {
+		ok, _ := c.Extension("STARTTLS")
+		switch {
+		case ok:
 			if err := c.StartTLS(&tls.Config{ServerName: s.Host}); err != nil {
 				return fmt.Errorf("mail: STARTTLS 失败: %w", err)
 			}
+		case s.TLS == "starttls":
+			return fmt.Errorf("mail: 服务器 %s 不支持 STARTTLS（GEO_SMTP_TLS=starttls 强制加密）", s.Host)
+		case s.User != "":
+			return fmt.Errorf("mail: 服务器 %s 不支持 STARTTLS，且配置了 SMTP 凭据，拒绝明文认证（可显式设置 GEO_SMTP_TLS=none 降级）", s.Host)
+		default:
+			slog.Warn("mail: SMTP 服务器不支持 STARTTLS，匿名发送降级为明文", "host", s.Host, "port", s.Port)
 		}
 	}
 	if s.User != "" {
@@ -327,6 +356,12 @@ func writeAttachment(b *bytes.Buffer, att Attachment) error {
 	if len(att.Content) > 0 {
 		content = att.Content
 	} else if att.Source != "" {
+		// P1-9：附件 Source 路径白名单——只允许安全相对路径。
+		// /api/v1/mail/send 接口直接接收用户传入的 Attachment.Source，
+		// 若不限制，攻击者可读取服务器任意文件（如 /etc/passwd）作为附件发出。
+		if !filepath.IsLocal(att.Source) {
+			return fmt.Errorf("mail: 附件 Source 必须是安全相对路径（拒绝绝对路径/路径穿越）: %q", att.Source)
+		}
 		data, err := os.ReadFile(att.Source)
 		if err != nil {
 			return fmt.Errorf("mail: 读取附件文件 %s 失败: %w", att.Source, err)
@@ -388,6 +423,32 @@ func extractEmail(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// validateRecipient 校验单个收件人地址，防止邮件头注入（P1-9）。
+// 地址会拼接进 To/Cc/Bcc 头并用于 SMTP RCPT 命令，未校验的地址可
+// 通过 CRLF 注入额外邮件头（如 Bcc 窃取收件人）或伪造命令。
+func validateRecipient(addr string) error {
+	a := strings.TrimSpace(addr)
+	if a == "" {
+		return fmt.Errorf("mail: 收件人地址为空")
+	}
+	// 头注入向量：CR / LF / NUL 等控制字符一律拒绝
+	if strings.ContainsAny(a, "\r\n\x00") {
+		return fmt.Errorf("mail: 收件人地址包含非法控制字符: %q", a)
+	}
+	// 分隔符：逗号会破坏 Cc 头结构，分号可被部分客户端解析为额外地址
+	if strings.ContainsAny(a, ",;") {
+		return fmt.Errorf("mail: 收件人地址包含非法分隔符: %q", a)
+	}
+	// 基础格式：必须含 @（至少一个），且不包含空白（地址不可含空格）
+	if !strings.Contains(a, "@") {
+		return fmt.Errorf("mail: 收件人地址缺少 @: %q", a)
+	}
+	if strings.ContainsAny(a, " \t") {
+		return fmt.Errorf("mail: 收件人地址包含空白字符: %q", a)
+	}
+	return nil
+}
+
 func dedupEmails(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
@@ -408,9 +469,10 @@ func resolveTLSMode(mode string, port int) string {
 		switch port {
 		case 465:
 			return "ssl"
-		case 25:
-			return "none"
 		default:
+			// 25/587 等端口默认优先 STARTTLS（多数现代服务器支持）。
+			// 服务器不支持时由 deliver 按凭据有无决定降级或报错；
+			// 确需明文可显式配置 GEO_SMTP_TLS=none。
 			return "starttls"
 		}
 	}
@@ -486,12 +548,12 @@ type TemplateAlertData struct {
 
 // TemplateWeeklyBrand 周报单品牌行。
 type TemplateWeeklyBrand struct {
-	Name     string
-	Score    float64
-	Delta    float64
+	Name      string
+	Score     float64
+	Delta     float64
 	DeltaText string
-	Grade    string
-	GradeBg  string // CSS 颜色
+	Grade     string
+	GradeBg   string // CSS 颜色
 }
 
 // TemplateWeeklyData 周报模板数据。

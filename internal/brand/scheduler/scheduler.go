@@ -32,32 +32,32 @@ type MonitorResult struct {
 	Disappearance   bool                `json:"disappearance"`
 	GoneFromEngines []models.EngineType `json:"gone_from_engines,omitempty"`
 	// ShareDrop 声量下降：某引擎上品牌声量份额下降超过阈值。
-	ShareDrop      bool                    `json:"share_drop"`
-	ShareDropsByEngine []ShareDropDetail   `json:"share_drops_by_engine,omitempty"`
+	ShareDrop          bool              `json:"share_drop"`
+	ShareDropsByEngine []ShareDropDetail `json:"share_drops_by_engine,omitempty"`
 	// PositionDegrade 位置下滑：某引擎上品牌平均提及位置显著后退。
-	PositionDegrade      bool                       `json:"position_degrade"`
+	PositionDegrade          bool                    `json:"position_degrade"`
 	PositionDegradesByEngine []PositionDegradeDetail `json:"position_degrades_by_engine,omitempty"`
 	// ModelDivergence 模型分歧：不同引擎对品牌的结论矛盾（提及/未提及、情感正/负）。
-	ModelDivergence bool     `json:"model_divergence"`
-	DivergenceDetail string  `json:"divergence_detail,omitempty"`
+	ModelDivergence  bool   `json:"model_divergence"`
+	DivergenceDetail string `json:"divergence_detail,omitempty"`
 	// 检测时间。
 	CheckedAt time.Time `json:"checked_at"`
 }
 
 // ShareDropDetail 单个引擎的声量下降详情。
 type ShareDropDetail struct {
-	Engine     models.EngineType `json:"engine"`
-	Previous   float64           `json:"previous"`
-	Current    float64           `json:"current"`
-	Delta      float64           `json:"delta"`
+	Engine   models.EngineType `json:"engine"`
+	Previous float64           `json:"previous"`
+	Current  float64           `json:"current"`
+	Delta    float64           `json:"delta"`
 }
 
 // PositionDegradeDetail 单个引擎的位置下滑详情。
 type PositionDegradeDetail struct {
-	Engine     models.EngineType `json:"engine"`
-	Previous   float64           `json:"previous"`
-	Current    float64           `json:"current"`
-	Delta      float64           `json:"delta"`
+	Engine   models.EngineType `json:"engine"`
+	Previous float64           `json:"previous"`
+	Current  float64           `json:"current"`
+	Delta    float64           `json:"delta"`
 }
 
 // Monitor 信号检测阈值常量。
@@ -69,17 +69,17 @@ const (
 
 // ScheduleConfig 单个品牌的定时审计配置。
 type ScheduleConfig struct {
-	BrandName    string   `json:"brand_name"`     // 品牌名（必须）
-	Profile      brand.BrandProfile `json:"profile"` // 品牌画像
-	Cron         string   `json:"cron"`           // cron 表达式（5 字段：分 时 日 月 周）
-	AlertDelta   float64  `json:"alert_delta"`    // BVS 波动阈值（默认 5 分）
-	WebhookURL   string   `json:"webhook_url"`    // 告警 webhook（可选）
-	Enabled      bool     `json:"enabled"`        // 是否启用
+	BrandName  string             `json:"brand_name"`  // 品牌名（必须）
+	Profile    brand.BrandProfile `json:"profile"`     // 品牌画像
+	Cron       string             `json:"cron"`        // cron 表达式（5 字段：分 时 日 月 周）
+	AlertDelta float64            `json:"alert_delta"` // BVS 波动阈值（默认 5 分）
+	WebhookURL string             `json:"webhook_url"` // 告警 webhook（可选）
+	Enabled    bool               `json:"enabled"`     // 是否启用
 }
 
 // AlertPayload 告警消息体。
 type AlertPayload struct {
-	Type      string  `json:"type"`       // "bvs_drop" / "bvs_rise" / "audit_error"
+	Type      string  `json:"type"` // "bvs_drop" / "bvs_rise" / "audit_error"
 	BrandName string  `json:"brand_name"`
 	OldScore  float64 `json:"old_score"`
 	NewScore  float64 `json:"new_score"`
@@ -306,8 +306,8 @@ func buildWebhookPayload(alert *AlertPayload) interface{} {
 // previous 为空时跳过需对比的信号（1-4），仅检测模型分歧（5）。
 func (s *Scheduler) Monitor(current, previous []brand.EngineStats) *MonitorResult {
 	result := &MonitorResult{
-		BrandName:  s.detectBrandName(current, previous),
-		CheckedAt:  time.Now(),
+		BrandName: s.detectBrandName(current, previous),
+		CheckedAt: time.Now(),
 	}
 
 	curByEngine := statsByEngine(current)
@@ -570,7 +570,7 @@ func splitComma(s string) []string {
 }
 
 func matchSingle(part string, val, min, max int) bool {
-	// 处理步长 / 
+	// 处理步长 /
 	step := 1
 	rangePart := part
 	for i := 0; i < len(part); i++ {

@@ -434,7 +434,7 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 		if snap, err := enrichWithChinaCheck(ctx, e.chinaCheck, brandName, kbCandidate); err == nil && snap != nil {
 			ccSnap = snap.Snapshot
 			ccSource = fmt.Sprintf("工商核验信息（国家企业信用信息公示系统 / SAMR，经由 China-Check MCP 查询）：%s（登记状态：%s），统一社会信用代码 %s，成立 %s，注册资本 %s，行业 %s，注册地址 %s",
-				firstNonEmpty(ccSnap.CompanyName, ccSnap.CompanyName),
+				firstNonEmpty(ccSnap.CompanyName, brandName),
 				ccSnap.RegistrationStatus,
 				ccSnap.CreditCode,
 				ccSnap.EstablishedDate,

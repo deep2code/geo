@@ -68,29 +68,55 @@ function emitAuthError(status: 401 | 403, path: string): void {
 
 /**
  * 统一设置/清除 API Bearer Token（登录/登出时调用）。
- * 存于 localStorage，页面刷新后仍然有效。
+ * P0-2：存于 sessionStorage——敏感凭据不落 localStorage，
+ * 关闭标签页即清除，降低 XSS 长期窃取与凭据残留风险。
+ * （刷新页面仍有效，因为刷新不结束会话。）
  */
 export const setApiAuthToken = (token: string | null): void => {
   if (!token) {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
+    sessionStorage.removeItem(AUTH_TOKEN_KEY)
     return
   }
-  localStorage.setItem(AUTH_TOKEN_KEY, token)
+  sessionStorage.setItem(AUTH_TOKEN_KEY, token)
 }
 
 /** 当前持有的 API Bearer Token（未设置返回空串）。 */
-export const getApiAuthToken = (): string => localStorage.getItem(AUTH_TOKEN_KEY) ?? ''
+export const getApiAuthToken = (): string => {
+  let tok = sessionStorage.getItem(AUTH_TOKEN_KEY)
+  if (!tok) {
+    // P0-2 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
+    const legacy = localStorage.getItem(AUTH_TOKEN_KEY)
+    if (legacy) {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, legacy)
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      tok = legacy
+    }
+  }
+  return tok ?? ''
+}
 
 /** 统一设置/清除管理员 Key（管理员登录/退出时调用）。 */
 export const setAdminKey = (key: string | null): void => {
   if (!key) {
-    localStorage.removeItem(ADMIN_KEY)
+    sessionStorage.removeItem(ADMIN_KEY)
     return
   }
-  localStorage.setItem(ADMIN_KEY, key)
+  sessionStorage.setItem(ADMIN_KEY, key)
 }
 
-export const getAdminKey = (): string => localStorage.getItem(ADMIN_KEY) ?? ''
+export const getAdminKey = (): string => {
+  let key = sessionStorage.getItem(ADMIN_KEY)
+  if (!key) {
+    // P0-2 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
+    const legacy = localStorage.getItem(ADMIN_KEY)
+    if (legacy) {
+      sessionStorage.setItem(ADMIN_KEY, legacy)
+      localStorage.removeItem(ADMIN_KEY)
+      key = legacy
+    }
+  }
+  return key ?? ''
+}
 
 export interface RequestOptions extends RequestInit {
   timeout?: number

@@ -15,7 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -326,7 +326,7 @@ LIMIT ?`, strings.Join(cond, " AND "))
 	}
 	for i := range out {
 		base := 50.0 - float64(offsetRank+i)*0.5
-		sim := float64(len(q)) / float64(maxInt(1, len(out[i].Name))) * 50
+		sim := float64(len(q)) / float64(max(1, len(out[i].Name))) * 50
 		out[i].Score = base + sim
 		if out[i].Score > 100 {
 			out[i].Score = 100
@@ -397,13 +397,6 @@ func normalizeFTScore(in []Company) {
 		}
 		in[i].Score = s
 	}
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // ---------- 导入 ----------
@@ -835,7 +828,7 @@ func (d *mysqlStore) Provinces(ctx context.Context) ([]string, error) {
 		}
 		out = append(out, p)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out, rows.Err()
 }
 

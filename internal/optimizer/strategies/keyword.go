@@ -10,9 +10,9 @@ import (
 // 自然融入主题关键词，避免堆砌，提升语义相关性。
 type KeywordStrategy struct{}
 
-func (s *KeywordStrategy) Name() string             { return "关键词优化" }
+func (s *KeywordStrategy) Name() string              { return "关键词优化" }
 func (s *KeywordStrategy) Type() models.StrategyType { return models.StrategyKeyword }
-func (s *KeywordStrategy) Effectiveness() float64   { return 0.10 }
+func (s *KeywordStrategy) Effectiveness() float64    { return 0.10 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准：关键词堆砌会降权，为负值）。
 func (s *KeywordStrategy) PWCBoost() float64 { return -8.7 }

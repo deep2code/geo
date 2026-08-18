@@ -8,10 +8,10 @@ import (
 
 // EEATBreakdown E-E-A-T 四维评分明细，各维度 0-100。
 type EEATBreakdown struct {
-	Experience       float64 `json:"experience"`
-	Expertise        float64 `json:"expertise"`
+	Experience        float64 `json:"experience"`
+	Expertise         float64 `json:"expertise"`
 	Authoritativeness float64 `json:"authoritativeness"`
-	Trustworthiness  float64 `json:"trustworthiness"`
+	Trustworthiness   float64 `json:"trustworthiness"`
 }
 
 // ScoreEEAT 计算 Google E-E-A-T 四维评分（Experience/Expertise/Authoritativeness/Trustworthiness）。

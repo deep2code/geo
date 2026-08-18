@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -15,7 +15,8 @@ import (
 //
 // 特性：
 //   - 每行一个 cacheEntry JSON，追加写入；加载时按 key 去重保留最新
-//   - 过期条目在 get 时懒删除，set 超量或 Compact() 时重写压缩
+//   - 过期条目在 get 时懒删除；删除累积到阈值或 set 超量/Compact() 时重写压缩，
+//     保证磁盘文件同步清理（P1-2：删而不持久会导致文件无限膨胀）
 //   - 并发安全（内部 RWMutex）
 type jsonlStore struct {
 	mu       sync.RWMutex
@@ -23,6 +24,9 @@ type jsonlStore struct {
 	items    map[string]cacheEntry
 	maxItems int
 	ttl      time.Duration
+
+	// P1-2：自上次重写以来懒删除的过期条目数，达到阈值触发磁盘重写。
+	purgedSinceCompact int
 }
 
 // 默认缓存参数。
@@ -30,6 +34,9 @@ const (
 	defaultTTL       = 30 * 24 * time.Hour
 	defaultMaxItems  = 10000
 	defaultCacheFile = "geo_chinacheck_cache.jsonl"
+
+	// compactAfterPurges 懒删除累计达到该数量后触发一次磁盘重写（清理残留行）。
+	compactAfterPurges = 100
 )
 
 // cacheEntry 单条缓存（序列化到 JSONL 每行）。
@@ -97,7 +104,7 @@ func searchKey(lang, query string, limit int) string {
 }
 
 func snapshotKeyByID(companyID string) string { return "p|" + companyID }
-func snapshotKeyByQuery(query string) string { return "q|" + query }
+func snapshotKeyByQuery(query string) string  { return "q|" + query }
 
 func (c *jsonlStore) GetSearch(lang, query string, limit int) (*SearchResult, bool) {
 	raw, ok := c.get(searchKey(lang, query, limit))
@@ -175,7 +182,16 @@ func (c *jsonlStore) get(key string) (json.RawMessage, bool) {
 	if !entry.ExpireAt.IsZero() && now.After(entry.ExpireAt) {
 		c.mu.Lock()
 		delete(c.items, key)
+		c.purgedSinceCompact++
+		needCompact := c.purgedSinceCompact >= compactAfterPurges
 		c.mu.Unlock()
+		// P1-2：内存删除必须同步落盘——过期行残留在 JSONL 中会随运行无限膨胀。
+		// 累积到阈值后整体重写文件；重写失败保留计数，下次 get/set 再试。
+		if needCompact {
+			if err := c.evictOldAndCompact(0); err != nil {
+				fmt.Fprintf(os.Stderr, "[chinacheck/jsonl 警告] 过期条目磁盘清理失败: %v\n", err)
+			}
+		}
 		return nil, false
 	}
 	return entry.Value, true
@@ -265,7 +281,7 @@ func (c *jsonlStore) evictOldAndCompact(overLimit int) error {
 	for k, v := range c.items {
 		all = append(all, kv{k, v})
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].ent.SavedAt.Before(all[j].ent.SavedAt) })
+	slices.SortFunc(all, func(a, b kv) int { return a.ent.SavedAt.Compare(b.ent.SavedAt) })
 	if overLimit > len(all) {
 		overLimit = len(all)
 	}
@@ -303,7 +319,12 @@ func (c *jsonlStore) evictOldAndCompact(overLimit int) error {
 		os.Remove(tmpPath)
 		return err
 	}
-	return os.Rename(tmpPath, c.filePath)
+	if err := os.Rename(tmpPath, c.filePath); err != nil {
+		return err
+	}
+	// P1-2：重写成功 = 磁盘已与内存一致，清空懒删除计数
+	c.purgedSinceCompact = 0
+	return nil
 }
 
 func (c *jsonlStore) Clear() error {

@@ -55,9 +55,11 @@ func (t Type) Fallback() Type {
 //   - timeout=10s            连接握手超时，避免 DNS/网络 hang
 //   - readTimeout=30s        单次读取超时，防 SQL 挂起
 //   - writeTimeout=30s       单次写入超时，防大事务/大导入卡死
-//   - parseTime + charset=utf8mb4 + loc=Local + tls=false
+//   - parseTime + charset=utf8mb4 + loc=Local + tls=preferred
 //
 // 已存在的同名参数不会被覆盖，方便用户自定义（例如企业生产 tls=true 场景）。
+// tls=preferred：若服务端支持 TLS 则加密传输；不支持时回退明文（兼容本地内网
+// 未启用 TLS 的 MySQL），比强制 tls=false 更安全。生产环境建议显式配置 tls=true。
 func NormalizeMySQLDSN(raw string) string {
 	if raw == "" {
 		return raw
@@ -69,7 +71,7 @@ func NormalizeMySQLDSN(raw string) string {
 		{"interpolateParams", "true"},
 		{"multiStatements", "true"},
 		{"maxAllowedPacket", "67108864"},
-		{"tls", "false"},
+		{"tls", "preferred"},
 		{"timeout", "10s"},
 		{"readTimeout", "30s"},
 		{"writeTimeout", "30s"},
@@ -153,4 +155,3 @@ func ConfigurePool(db *sql.DB, profile string) {
 		db.SetConnMaxIdleTime(10 * time.Minute)
 	}
 }
-

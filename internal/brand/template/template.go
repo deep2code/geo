@@ -15,8 +15,9 @@
 package template
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -24,45 +25,45 @@ import (
 type PlatformType string
 
 const (
-	PlatformTypeAIEngine   PlatformType = "ai_engine"    // 生成式引擎
-	PlatformTypeSocial     PlatformType = "social"       // 社交媒体
-	PlatformTypeContent    PlatformType = "content"      // 内容社区
+	PlatformTypeAIEngine PlatformType = "ai_engine" // 生成式引擎
+	PlatformTypeSocial   PlatformType = "social"    // 社交媒体
+	PlatformTypeContent  PlatformType = "content"   // 内容社区
 )
 
 // WritingStyle 写作风格。
 type WritingStyle string
 
 const (
-	StyleFormal    WritingStyle = "formal"     // 正式严谨
-	StyleLively    WritingStyle = "lively"     // 活泼亲切
-	StyleTechnical WritingStyle = "technical"  // 技术深度
-	StyleConcise   WritingStyle = "concise"    // 简洁直接
-	StyleNarrative WritingStyle = "narrative"  // 叙事故事
+	StyleFormal    WritingStyle = "formal"    // 正式严谨
+	StyleLively    WritingStyle = "lively"    // 活泼亲切
+	StyleTechnical WritingStyle = "technical" // 技术深度
+	StyleConcise   WritingStyle = "concise"   // 简洁直接
+	StyleNarrative WritingStyle = "narrative" // 叙事故事
 )
 
 // BrandPlacement 品牌植入策略。
 type BrandPlacement string
 
 const (
-	PlacementNatural      BrandPlacement = "natural"       // 自然提及
-	PlacementComparison   BrandPlacement = "comparison"    // 对比植入
-	PlacementAuthority    BrandPlacement = "authority"     // 权威背书
-	PlacementFirstPerson  BrandPlacement = "first_person"  // 第一人称体验
-	PlacementEducational  BrandPlacement = "educational"   // 教育式植入
+	PlacementNatural     BrandPlacement = "natural"      // 自然提及
+	PlacementComparison  BrandPlacement = "comparison"   // 对比植入
+	PlacementAuthority   BrandPlacement = "authority"    // 权威背书
+	PlacementFirstPerson BrandPlacement = "first_person" // 第一人称体验
+	PlacementEducational BrandPlacement = "educational"  // 教育式植入
 )
 
 // Template 平台内容模板。
 type Template struct {
-	Platform        string          `json:"platform"`         // 平台标识
-	Name            string          `json:"name"`             // 平台中文名
-	Type            PlatformType    `json:"type"`             // 平台类型
-	Style           WritingStyle    `json:"style"`            // 推荐写作风格
-	MinWords        int             `json:"min_words"`        // 建议最小字数
-	MaxWords        int             `json:"max_words"`        // 建议最大字数
-	Structure       []string        `json:"structure"`        // 内容结构建议（按段落）
-	BrandStrategy   BrandPlacement  `json:"brand_strategy"`   // 品牌植入策略
-	Tips            []string        `json:"tips"`             // 平台特有注意事项
-	PromptSuffix    string          `json:"prompt_suffix"`    // 生成内容时追加到 LLM prompt 的平台指令
+	Platform      string         `json:"platform"`       // 平台标识
+	Name          string         `json:"name"`           // 平台中文名
+	Type          PlatformType   `json:"type"`           // 平台类型
+	Style         WritingStyle   `json:"style"`          // 推荐写作风格
+	MinWords      int            `json:"min_words"`      // 建议最小字数
+	MaxWords      int            `json:"max_words"`      // 建议最大字数
+	Structure     []string       `json:"structure"`      // 内容结构建议（按段落）
+	BrandStrategy BrandPlacement `json:"brand_strategy"` // 品牌植入策略
+	Tips          []string       `json:"tips"`           // 平台特有注意事项
+	PromptSuffix  string         `json:"prompt_suffix"`  // 生成内容时追加到 LLM prompt 的平台指令
 }
 
 // registry 平台模板注册表。
@@ -80,10 +81,10 @@ func init() {
 // registerAIEngines 注册生成式引擎模板。
 func registerAIEngines() {
 	engines := []struct {
-		id      string
-		name    string
-		style   WritingStyle
-		place   BrandPlacement
+		id    string
+		name  string
+		style WritingStyle
+		place BrandPlacement
 	}{
 		{"chatgpt", "ChatGPT", StyleFormal, PlacementNatural},
 		{"perplexity", "Perplexity", StyleFormal, PlacementAuthority},
@@ -126,46 +127,46 @@ func registerSocialPlatforms() {
 	register(Template{
 		Platform: "reddit", Name: "Reddit", Type: PlatformTypeSocial, Style: StyleNarrative,
 		MinWords: 300, MaxWords: 1000,
-		Structure:       []string{"个人体验故事开头", "具体使用场景描述", "优缺点客观对比", "社区互动引导"},
-		BrandStrategy:   PlacementFirstPerson,
-		Tips:            []string{"Reddit 用户反感硬广，必须以真实体验口吻", "标题用问题式或分享式", "积极参与评论区互动"},
-		PromptSuffix:    "以 Reddit 用户第一人称分享真实体验，语气自然不做作，客观陈述优缺点。",
+		Structure:     []string{"个人体验故事开头", "具体使用场景描述", "优缺点客观对比", "社区互动引导"},
+		BrandStrategy: PlacementFirstPerson,
+		Tips:          []string{"Reddit 用户反感硬广，必须以真实体验口吻", "标题用问题式或分享式", "积极参与评论区互动"},
+		PromptSuffix:  "以 Reddit 用户第一人称分享真实体验，语气自然不做作，客观陈述优缺点。",
 	})
 	// 微博
 	register(Template{
 		Platform: "weibo", Name: "微博", Type: PlatformTypeSocial, Style: StyleLively,
 		MinWords: 100, MaxWords: 500,
-		Structure:       []string{"热点话题切入", "品牌自然植入", "互动话题/投票", "@相关账号扩散"},
-		BrandStrategy:   PlacementNatural,
-		Tips:            []string{"140 字内点明核心", "配图/视频提升曝光", "带上热门话题标签"},
-		PromptSuffix:    "微博风格，简洁活泼，140字内点明核心，带2-3个话题标签。",
+		Structure:     []string{"热点话题切入", "品牌自然植入", "互动话题/投票", "@相关账号扩散"},
+		BrandStrategy: PlacementNatural,
+		Tips:          []string{"140 字内点明核心", "配图/视频提升曝光", "带上热门话题标签"},
+		PromptSuffix:  "微博风格，简洁活泼，140字内点明核心，带2-3个话题标签。",
 	})
 	// Twitter/X
 	register(Template{
 		Platform: "twitter", Name: "Twitter/X", Type: PlatformTypeSocial, Style: StyleConcise,
 		MinWords: 50, MaxWords: 280,
-		Structure:       []string{"观点/金句开头", "品牌自然提及", "数据/链接支撑", "互动引导"},
-		BrandStrategy:   PlacementNatural,
-		Tips:            []string{"280字符限制", "线程(Thread)展开深度内容", "配图提升30%互动率"},
-		PromptSuffix:    "Twitter/X 风格，280字符以内，观点鲜明，配数据支撑。",
+		Structure:     []string{"观点/金句开头", "品牌自然提及", "数据/链接支撑", "互动引导"},
+		BrandStrategy: PlacementNatural,
+		Tips:          []string{"280字符限制", "线程(Thread)展开深度内容", "配图提升30%互动率"},
+		PromptSuffix:  "Twitter/X 风格，280字符以内，观点鲜明，配数据支撑。",
 	})
 	// 小红书
 	register(Template{
 		Platform: "xiaohongshu", Name: "小红书", Type: PlatformTypeSocial, Style: StyleLively,
 		MinWords: 200, MaxWords: 800,
-		Structure:       []string{"吸睛标题+封面", "个人体验故事", "干货要点(分点)", "互动引导+标签"},
-		BrandStrategy:   PlacementFirstPerson,
-		Tips:            []string{"标题决定点击率", "emoji 增加亲和力", "5-10个标签覆盖搜索", "首图必须精美"},
-		PromptSuffix:    "小红书种草风格，第一人称体验分享，标题吸睛，正文分点+emoji，结尾带标签。",
+		Structure:     []string{"吸睛标题+封面", "个人体验故事", "干货要点(分点)", "互动引导+标签"},
+		BrandStrategy: PlacementFirstPerson,
+		Tips:          []string{"标题决定点击率", "emoji 增加亲和力", "5-10个标签覆盖搜索", "首图必须精美"},
+		PromptSuffix:  "小红书种草风格，第一人称体验分享，标题吸睛，正文分点+emoji，结尾带标签。",
 	})
 	// YouTube
 	register(Template{
 		Platform: "youtube", Name: "YouTube", Type: PlatformTypeSocial, Style: StyleNarrative,
 		MinWords: 500, MaxWords: 2000,
-		Structure:       []string{"视频脚本：开场hook", "主体内容分段", "品牌产品演示", "结尾CTA+订阅引导"},
-		BrandStrategy:   PlacementFirstPerson,
-		Tips:            []string{"前15秒决定留存", "描述区放完整文案+时间戳", "字幕提升SEO与可访问性"},
-		PromptSuffix:    "YouTube 视频脚本风格，开场hook抓人，主体分段清晰，结尾CTA引导订阅。",
+		Structure:     []string{"视频脚本：开场hook", "主体内容分段", "品牌产品演示", "结尾CTA+订阅引导"},
+		BrandStrategy: PlacementFirstPerson,
+		Tips:          []string{"前15秒决定留存", "描述区放完整文案+时间戳", "字幕提升SEO与可访问性"},
+		PromptSuffix:  "YouTube 视频脚本风格，开场hook抓人，主体分段清晰，结尾CTA引导订阅。",
 	})
 }
 
@@ -175,37 +176,37 @@ func registerContentPlatforms() {
 	register(Template{
 		Platform: "zhihu", Name: "知乎", Type: PlatformTypeContent, Style: StyleFormal,
 		MinWords: 1000, MaxWords: 4000,
-		Structure:       []string{"专业观点开头", "逻辑论证(数据+案例)", "对比分析", "总结与建议"},
-		BrandStrategy:   PlacementEducational,
-		Tips:            []string{"知乎偏好专业深度内容", "引用论文/报告增强可信度", "回答已有热门问题获取流量"},
-		PromptSuffix:    "知乎专业回答风格，逻辑严密，数据支撑，1000字以上深度内容。",
+		Structure:     []string{"专业观点开头", "逻辑论证(数据+案例)", "对比分析", "总结与建议"},
+		BrandStrategy: PlacementEducational,
+		Tips:          []string{"知乎偏好专业深度内容", "引用论文/报告增强可信度", "回答已有热门问题获取流量"},
+		PromptSuffix:  "知乎专业回答风格，逻辑严密，数据支撑，1000字以上深度内容。",
 	})
 	// CSDN
 	register(Template{
 		Platform: "csdn", Name: "CSDN", Type: PlatformTypeContent, Style: StyleTechnical,
 		MinWords: 800, MaxWords: 3000,
-		Structure:       []string{"技术背景", "实现步骤(代码+注释)", "踩坑经验", "总结与最佳实践"},
-		BrandStrategy:   PlacementEducational,
-		Tips:            []string{"代码块完整可运行", "技术细节深度决定收藏率", "标题含关键词利于搜索"},
-		PromptSuffix:    "CSDN技术博客风格，代码+注释完整，技术深度，含踩坑经验。",
+		Structure:     []string{"技术背景", "实现步骤(代码+注释)", "踩坑经验", "总结与最佳实践"},
+		BrandStrategy: PlacementEducational,
+		Tips:          []string{"代码块完整可运行", "技术细节深度决定收藏率", "标题含关键词利于搜索"},
+		PromptSuffix:  "CSDN技术博客风格，代码+注释完整，技术深度，含踩坑经验。",
 	})
 	// 微信公众号
 	register(Template{
 		Platform: "wechat", Name: "微信公众号", Type: PlatformTypeContent, Style: StyleNarrative,
 		MinWords: 800, MaxWords: 2500,
-		Structure:       []string{"故事/热点引入", "品牌价值主张", "案例/数据支撑", "CTA关注/转发"},
-		BrandStrategy:   PlacementAuthority,
-		Tips:            []string{"标题决定打开率", "排版留白易读", "首图+尾部引导关注", "原创标识提升推荐"},
-		PromptSuffix:    "微信公众号风格，故事化开头，价值主张清晰，结尾引导关注转发。",
+		Structure:     []string{"故事/热点引入", "品牌价值主张", "案例/数据支撑", "CTA关注/转发"},
+		BrandStrategy: PlacementAuthority,
+		Tips:          []string{"标题决定打开率", "排版留白易读", "首图+尾部引导关注", "原创标识提升推荐"},
+		PromptSuffix:  "微信公众号风格，故事化开头，价值主张清晰，结尾引导关注转发。",
 	})
 	// 掘金
 	register(Template{
 		Platform: "juejin", Name: "掘金", Type: PlatformTypeContent, Style: StyleTechnical,
 		MinWords: 800, MaxWords: 3000,
-		Structure:       []string{"技术背景与目标", "方案设计与实现", "代码示例", "性能/效果对比"},
-		BrandStrategy:   PlacementEducational,
-		Tips:            []string{"前端/后端技术社区", "配图+代码提升可读性", "标题带技术栈关键词"},
-		PromptSuffix:    "掘金技术社区风格，方案设计清晰，代码示例完整，含效果对比。",
+		Structure:     []string{"技术背景与目标", "方案设计与实现", "代码示例", "性能/效果对比"},
+		BrandStrategy: PlacementEducational,
+		Tips:          []string{"前端/后端技术社区", "配图+代码提升可读性", "标题带技术栈关键词"},
+		PromptSuffix:  "掘金技术社区风格，方案设计清晰，代码示例完整，含效果对比。",
 	})
 }
 
@@ -228,7 +229,7 @@ func All() []Template {
 	for _, t := range registry {
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Platform < out[j].Platform })
+	slices.SortFunc(out, func(a, b Template) int { return cmp.Compare(a.Platform, b.Platform) })
 	return out
 }
 
@@ -240,7 +241,7 @@ func ByType(pt PlatformType) []Template {
 			out = append(out, t)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Platform < out[j].Platform })
+	slices.SortFunc(out, func(a, b Template) int { return cmp.Compare(a.Platform, b.Platform) })
 	return out
 }
 

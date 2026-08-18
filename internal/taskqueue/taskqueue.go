@@ -28,7 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 )
@@ -53,17 +53,17 @@ type Task struct {
 
 // TaskStatus 运行状态（只读，用于查询面板 / 进度 API）。
 type TaskStatus struct {
-	ID          string     `json:"id"`
-	Type        string     `json:"type"`
-	Queue       string     `json:"queue"`
-	State       string     `json:"state"` // pending / scheduled / running / success / failed / canceled / dead
-	RetryCount  int        `json:"retry_count"`
-	LastError   string     `json:"last_error,omitempty"`
-	EnqueuedAt  time.Time  `json:"enqueued_at"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	FinishedAt  *time.Time `json:"finished_at,omitempty"`
-	NextRunAt   *time.Time `json:"next_run_at,omitempty"` // for scheduled/cron
-	DurationMs  int64      `json:"duration_ms,omitempty"`
+	ID         string     `json:"id"`
+	Type       string     `json:"type"`
+	Queue      string     `json:"queue"`
+	State      string     `json:"state"` // pending / scheduled / running / success / failed / canceled / dead
+	RetryCount int        `json:"retry_count"`
+	LastError  string     `json:"last_error,omitempty"`
+	EnqueuedAt time.Time  `json:"enqueued_at"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"` // for scheduled/cron
+	DurationMs int64      `json:"duration_ms,omitempty"`
 }
 
 // HandlerFunc 业务执行函数。ctx 里可以注入 workspace、user、trace 信息等。
@@ -114,10 +114,10 @@ type memTask struct {
 // 适用于：单实例开发 / 单元测试 / Demo 环境。
 // 限制：重启后任务丢失；Cron 也仅在进程存续期生效。
 type MemoryBackend struct {
-	mu        sync.RWMutex
-	tasks     map[string]*memTask
-	byType    map[string][]string // type -> []id ordered by enqueue desc
-	handlers  map[string]HandlerFunc
+	mu       sync.RWMutex
+	tasks    map[string]*memTask
+	byType   map[string][]string // type -> []id ordered by enqueue desc
+	handlers map[string]HandlerFunc
 
 	workerCh chan *memTask
 
@@ -153,7 +153,7 @@ func (b *MemoryBackend) RegisterHandler(typ string, h HandlerFunc) {
 }
 
 // Enqueue 把任务入队；若有 ScheduledAt 则等延迟后再塞进 workerCh；Cron 不支持但静默接受
-//（首次按 now + 1s 执行并打印一次警告）。
+// （首次按 now + 1s 执行并打印一次警告）。
 func (b *MemoryBackend) Enqueue(_ context.Context, t *Task) (*TaskStatus, error) {
 	if t == nil || t.Type == "" {
 		return nil, fmt.Errorf("taskqueue/memory: task or task.Type empty")
@@ -299,7 +299,7 @@ func (b *MemoryBackend) ListByType(_ context.Context, typ string, limit int) ([]
 		out = append(out, mt.status)
 		mt.mu.Unlock()
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].EnqueuedAt.After(out[j].EnqueuedAt) })
+	slices.SortStableFunc(out, func(a, b TaskStatus) int { return b.EnqueuedAt.Compare(a.EnqueuedAt) })
 	return out, nil
 }
 

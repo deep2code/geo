@@ -55,13 +55,13 @@ type PlatformStat struct {
 
 // MonitorResult 一次社媒监控的完整结果。
 type MonitorResult struct {
-	BrandName      string        `json:"brand_name"`
-	TotalMentions  int           `json:"total_mentions"`
-	Positive       int           `json:"positive"`
-	Neutral        int           `json:"neutral"`
-	Negative       int           `json:"negative"`
-	SentimentScore float64       `json:"sentiment_score"` // -100 ~ 100
-	Mentions       []Mention     `json:"mentions"`
+	BrandName      string         `json:"brand_name"`
+	TotalMentions  int            `json:"total_mentions"`
+	Positive       int            `json:"positive"`
+	Neutral        int            `json:"neutral"`
+	Negative       int            `json:"negative"`
+	SentimentScore float64        `json:"sentiment_score"` // -100 ~ 100
+	Mentions       []Mention      `json:"mentions"`
 	Platforms      []PlatformStat `json:"platforms"`
 	// 各平台错误信息（便于前端展示降级原因）。
 	Errors map[string]string `json:"errors,omitempty"`
@@ -407,13 +407,13 @@ func (a *WeiboAdapter) Search(ctx context.Context, query string, limit int) ([]M
 		Ok   bool `json:"ok"`
 		Data struct {
 			Cards []struct {
-				CardType int    `json:"card_type"`
+				CardType int `json:"card_type"`
 				Mblog    *struct {
-					ID            int64  `json:"id"`
-					Text          string `json:"text"`
-					CreatedAt     string `json:"created_at"`
-					AttitudesCount int   `json:"attitudes_count"`
-					User          struct {
+					ID             int64  `json:"id"`
+					Text           string `json:"text"`
+					CreatedAt      string `json:"created_at"`
+					AttitudesCount int    `json:"attitudes_count"`
+					User           struct {
 						ScreenName string `json:"screen_name"`
 					} `json:"user"`
 				} `json:"mblog"`
@@ -505,7 +505,7 @@ func (a *YouTubeAdapter) Search(ctx context.Context, query string, limit int) ([
 	//   默认 http://www.w3.org/2005/Atom
 	//   yt    http://www.youtube.com/xml/schemas/2015
 	type atomEntry struct {
-		ID        string `xml:"id"`        // 形如 "yt:video:VIDEO_ID"
+		ID        string `xml:"id"` // 形如 "yt:video:VIDEO_ID"
 		Title     string `xml:"title"`
 		Published string `xml:"published"` // RFC3339
 		Link      struct {
@@ -516,7 +516,7 @@ func (a *YouTubeAdapter) Search(ctx context.Context, query string, limit int) ([
 		} `xml:"author"`
 	}
 	type atomFeed struct {
-		XMLName xml.Name   `xml:"feed"`
+		XMLName xml.Name    `xml:"feed"`
 		Entries []atomEntry `xml:"entry"`
 	}
 

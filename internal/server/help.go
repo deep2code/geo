@@ -1,8 +1,9 @@
 package server
 
 import (
+	"cmp"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -21,9 +22,9 @@ type OnboardingStep struct {
 	Step      int    `json:"step"`
 	Title     string `json:"title"`
 	Desc      string `json:"desc"`
-	Action    string `json:"action"`      // action 类型：create-brand/run-audit/view-report/setup-alert
-	Route     string `json:"route"`       // 前端路由
-	Completed bool   `json:"completed"`  // 是否已完成
+	Action    string `json:"action"`    // action 类型：create-brand/run-audit/view-report/setup-alert
+	Route     string `json:"route"`     // 前端路由
+	Completed bool   `json:"completed"` // 是否已完成
 }
 
 // 帮助文章内存存储（init 初始化，只读）。
@@ -31,8 +32,8 @@ var helpArticles []HelpArticle
 
 // 新手引导完成状态（内存存储，进程重启清空）。
 var (
-	onboardingMu       sync.Mutex
-	onboardingDone     = map[int]bool{}
+	onboardingMu   sync.Mutex
+	onboardingDone = map[int]bool{}
 )
 
 func init() {
@@ -120,9 +121,7 @@ func (s *Server) handleHelpArticles(w http.ResponseWriter, r *http.Request) {
 		list = append(list, a)
 	}
 	// 按 Order 升序
-	sort.Slice(list, func(i, j int) bool {
-		return list[i].Order < list[j].Order
-	})
+	slices.SortFunc(list, func(a, b HelpArticle) int { return cmp.Compare(a.Order, b.Order) })
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"total":    len(list),
 		"articles": list,
@@ -172,7 +171,7 @@ func (s *Server) handleHelpOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"total":     len(steps),
-		"completed":  completed,
+		"completed": completed,
 		"steps":     steps,
 	})
 }

@@ -13,10 +13,11 @@
 package uniqueness
 
 import (
+	"cmp"
 	"fmt"
 	"hash/fnv"
 	"math"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"unicode"
@@ -278,10 +279,10 @@ func CosineSimilarity(text1, text2 string) float64 {
 
 // SimilarityResult 相似度检测结果。
 type SimilarityResult struct {
-	MinHash      float64 `json:"minhash"`       // MinHash Jaccard 估计（0-1）
-	Cosine       float64 `json:"cosine"`        // 余弦相似度（0-1）
-	Combined     float64 `json:"combined"`      // 综合相似度（0-1），取两者加权平均
-	IsDuplicate  bool    `json:"is_duplicate"`  // 是否判定为重复
+	MinHash      float64 `json:"minhash"`        // MinHash Jaccard 估计（0-1）
+	Cosine       float64 `json:"cosine"`         // 余弦相似度（0-1）
+	Combined     float64 `json:"combined"`       // 综合相似度（0-1），取两者加权平均
+	IsDuplicate  bool    `json:"is_duplicate"`   // 是否判定为重复
 	MaxSimilarID string  `json:"max_similar_id"` // 最相似的内容 ID（空表示无匹配）
 }
 
@@ -312,8 +313,8 @@ type Entry struct {
 // 维护已生成内容的语料库，对新内容进行查重。
 // 使用 MinHash 签名 + 余弦向量的双索引，兼顾速度与精度。
 type Detector struct {
-	mu          sync.RWMutex
-	entries     map[string]*corpusEntry
+	mu                 sync.RWMutex
+	entries            map[string]*corpusEntry
 	duplicateThreshold float64
 }
 
@@ -459,7 +460,7 @@ func (d *Detector) FindAllDuplicates() []DuplicatePair {
 	for id := range d.entries {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	slices.Sort(ids)
 
 	for i := 0; i < len(ids); i++ {
 		for j := i + 1; j < len(ids); j++ {
@@ -477,9 +478,7 @@ func (d *Detector) FindAllDuplicates() []DuplicatePair {
 			}
 		}
 	}
-	sort.Slice(pairs, func(a, b int) bool {
-		return pairs[a].Similarity > pairs[b].Similarity
-	})
+	slices.SortFunc(pairs, func(a, b DuplicatePair) int { return cmp.Compare(b.Similarity, a.Similarity) })
 	return pairs
 }
 

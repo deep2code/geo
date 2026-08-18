@@ -183,11 +183,11 @@ func buildVerticalSchema(input SchemaGenInput, existing map[string]bool) []map[s
 			break
 		}
 		app := map[string]any{
-			"@context":           "https://schema.org",
-			"@type":              "SoftwareApplication",
-			"name":               profile.Name,
+			"@context":            "https://schema.org",
+			"@type":               "SoftwareApplication",
+			"name":                profile.Name,
 			"applicationCategory": "BusinessApplication",
-			"operatingSystem":    "Web",
+			"operatingSystem":     "Web",
 		}
 		if profile.Domain != "" {
 			app["url"] = normalizeURL(profile.Domain)
@@ -220,9 +220,9 @@ func buildVerticalSchema(input SchemaGenInput, existing map[string]bool) []map[s
 			}
 			if profile.Company.RegisteredAddress != "" {
 				lb["address"] = map[string]any{
-					"@type":          "PostalAddress",
-					"streetAddress":  profile.Company.RegisteredAddress,
-					"addressRegion":  profile.Company.Province,
+					"@type":         "PostalAddress",
+					"streetAddress": profile.Company.RegisteredAddress,
+					"addressRegion": profile.Company.Province,
 				}
 			}
 		}
@@ -250,11 +250,11 @@ func buildVerticalSchema(input SchemaGenInput, existing map[string]bool) []map[s
 		// 出版行业：WebSite 已生成，这里补充 Article 基础模板提示
 		if !existing["Article"] {
 			result = append(result, map[string]any{
-				"@context":    "https://schema.org",
-				"@type":       "Article",
-				"headline":    profile.Name + " - 内容模板",
-				"author":      map[string]any{"@type": "Organization", "name": profile.Name},
-				"publisher":   map[string]any{"@type": "Organization", "name": profile.Name},
+				"@context":  "https://schema.org",
+				"@type":     "Article",
+				"headline":  profile.Name + " - 内容模板",
+				"author":    map[string]any{"@type": "Organization", "name": profile.Name},
+				"publisher": map[string]any{"@type": "Organization", "name": profile.Name},
 			})
 		}
 	case "agency":

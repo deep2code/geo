@@ -50,7 +50,7 @@ FROM alpine:3.20
 LABEL org.opencontainers.image.title="MyGEO" \
       org.opencontainers.image.description="生成式引擎优化系统 (Generative Engine Optimization)" \
       org.opencontainers.image.source="https://github.com/deep2code/geo" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="MIT"
 
 # 依赖：ca-certificates (HTTPS)、tzdata (时区)、curl (HEALTHCHECK)、libcap (cap_net_bind_service 低端口)
 RUN apk add --no-cache ca-certificates tzdata curl libcap && \

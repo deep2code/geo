@@ -57,7 +57,7 @@ const AdminLogin: React.FC = () => {
       }
 
       // 1) 如果填了管理员 Key：先做一次校验（打到一个需要管理员权限的小接口：scheduler/status）。
-      //    避免把错误 key 写入 localStorage，然后其它接口 403 → 又跳回来，形成死循环。
+      //    避免把错误 key 写入 sessionStorage，然后其它接口 403 → 又跳回来，形成死循环。
       if (key) {
         try {
           await api.adminVerify(key)
@@ -112,7 +112,7 @@ const AdminLogin: React.FC = () => {
             🔐 {brandName} · 管理员登录
           </div>
           <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 13 }}>
-            {t('adminLogin.subtitle', '凭据仅保存在本机浏览器 localStorage；访问 /admin、/settings、调度器接口均会自动附带。')}
+            {t('adminLogin.subtitle', '凭据仅保存在本机浏览器会话存储（关闭标签页即清除）；访问 /admin、/settings、调度器接口均会自动附带。')}
           </div>
         </div>
 

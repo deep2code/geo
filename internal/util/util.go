@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -124,8 +125,8 @@ func robotsAllows(robotsTxt, bot, path string) bool {
 	}
 	lines := strings.Split(robotsTxt, "\n")
 	var (
-		inMyGroup  bool
-		inStarGroup bool
+		inMyGroup    bool
+		inStarGroup  bool
 		myDisallow   []string
 		starDisallow []string
 	)
@@ -363,4 +364,52 @@ func ValidateExternalURL(rawURL string) error {
 		return fmt.Errorf("拒绝访问内网地址 %q（SSRF 防护）", u.Host)
 	}
 	return nil
+}
+
+// ── 句子切分工具 ─────────────────────────────────────────────────────
+
+// sentenceSplitRe 匹配中英文句末标点（句号/感叹号/问号），捕获组含标点本身。
+var sentenceSplitRe = regexp.MustCompile(`([。！？!?])`)
+
+// SplitSentences 按中英文句末标点（。！？!?）切分单行为句子，保留标点在句尾。
+// 返回的句子拼接后与原行等价；空行返回 []string{""} 以保持"每行至少一个元素"的语义。
+func SplitSentences(line string) []string {
+	if line == "" {
+		return []string{""}
+	}
+	indices := sentenceSplitRe.FindAllStringSubmatchIndex(line, -1)
+	if len(indices) == 0 {
+		return []string{line}
+	}
+	var sentences []string
+	prev := 0
+	for _, idx := range indices {
+		// idx[2]:idx[3] 为捕获组（标点）的范围
+		end := idx[3]
+		sentences = append(sentences, line[prev:end])
+		prev = end
+	}
+	if prev < len(line) {
+		sentences = append(sentences, line[prev:])
+	}
+	return sentences
+}
+
+// CountSentences 统计内容中的句子数量：优先按句末标点计数；
+// 无标点时按非空行数兜底，两者皆无时返回 1。
+func CountSentences(content string) int {
+	matches := sentenceSplitRe.FindAllString(content, -1)
+	if len(matches) == 0 {
+		count := 0
+		for _, line := range strings.Split(content, "\n") {
+			if strings.TrimSpace(line) != "" {
+				count++
+			}
+		}
+		if count == 0 {
+			return 1
+		}
+		return count
+	}
+	return len(matches)
 }

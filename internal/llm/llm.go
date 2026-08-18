@@ -67,7 +67,7 @@ type ProviderStatus struct {
 //   - 遇到"已熔断（OpenUntil > now）"条目直接跳过；
 //   - 成功后把该 provider 的 consecutiveFails 清零；失败时累加并检查阈值。
 type Manager struct {
-	mu       sync.RWMutex // 保护 providers 列表（不保护 state，state 本身原子）
+	mu        sync.RWMutex // 保护 providers 列表（不保护 state，state 本身原子）
 	providers []Provider
 	states    map[*providerState]struct{} // 仅用于遍历统计（不是必须）
 
@@ -246,8 +246,8 @@ type StubProvider struct{}
 // NewStub 创建桩提供者。
 func NewStub() *StubProvider { return &StubProvider{} }
 
-func (s *StubProvider) Name() string      { return "stub" }
-func (s *StubProvider) Available() bool   { return false }
+func (s *StubProvider) Name() string    { return "stub" }
+func (s *StubProvider) Available() bool { return false }
 func (s *StubProvider) Rewrite(_ context.Context, _, content string) (string, error) {
 	return content, nil
 }

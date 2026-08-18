@@ -11,10 +11,11 @@ package knowledge
 
 import (
 	"bufio"
+	"cmp"
 	"embed"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -369,7 +370,7 @@ func (kb *Knowledge) Search(query string, topN int) []SearchResult {
 	for i, s := range votes {
 		arr = append(arr, kv{i, s})
 	}
-	sort.Slice(arr, func(i, j int) bool { return arr[i].score > arr[j].score })
+	slices.SortFunc(arr, func(a, b kv) int { return cmp.Compare(b.score, a.score) })
 	out := make([]SearchResult, 0, min(topN, len(arr)))
 	for k := 0; k < len(arr) && k < topN; k++ {
 		e := kb.entries[arr[k].i]

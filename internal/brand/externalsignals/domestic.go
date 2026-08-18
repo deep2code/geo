@@ -33,11 +33,11 @@ type DomesticSignalProvider interface {
 type DomesticSignal struct {
 	Provider     string        `json:"provider"`
 	Brand        string        `json:"brand"`
-	IndexScore   float64       `json:"index_score"`             // 指数分（0-100）
-	Trend        []float64     `json:"trend"`                   // 7日趋势
-	Mentions     int           `json:"mentions"`                // 提及量
-	Sentiment    float64       `json:"sentiment"`               // -1~1
-	TopKeywords  []string      `json:"top_keywords"`            // 热门关联词
+	IndexScore   float64       `json:"index_score"`  // 指数分（0-100）
+	Trend        []float64     `json:"trend"`        // 7日趋势
+	Mentions     int           `json:"mentions"`     // 提及量
+	Sentiment    float64       `json:"sentiment"`    // -1~1
+	TopKeywords  []string      `json:"top_keywords"` // 热门关联词
 	Demographics *Demographics `json:"demographics,omitempty"`
 	FetchedAt    time.Time     `json:"fetched_at"`
 	Source       string        `json:"source"` // "api" | "estimated"

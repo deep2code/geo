@@ -50,13 +50,13 @@ type Record struct {
 
 // Stats 历史库统计信息。
 type Stats struct {
-	Path      string `json:"path"`
-	Records   int64  `json:"records"`
-	Brands    int64  `json:"brands"`
-	FileSize  int64  `json:"file_size_bytes,omitempty"` // 文件型后端填充，服务型留空
-	OldestAt  int64  `json:"oldest_at,omitempty"`
-	NewestAt  int64  `json:"newest_at,omitempty"`
-	Backend   string `json:"backend,omitempty"` // 实际使用的后端类型（当前仅 mysql）
+	Path     string `json:"path"`
+	Records  int64  `json:"records"`
+	Brands   int64  `json:"brands"`
+	FileSize int64  `json:"file_size_bytes,omitempty"` // 文件型后端填充，服务型留空
+	OldestAt int64  `json:"oldest_at,omitempty"`
+	NewestAt int64  `json:"newest_at,omitempty"`
+	Backend  string `json:"backend,omitempty"` // 实际使用的后端类型（当前仅 mysql）
 }
 
 // Store 审计历史存储抽象接口。
@@ -75,6 +75,10 @@ type Store interface {
 	List(ctx context.Context, brandName string, limit, offset int) ([]Record, error)
 	// Latest 查询指定品牌最新一条审计记录（含完整 ReportJSON），无记录时返回 (nil,nil)。
 	Latest(ctx context.Context, brandName string) (*Record, error)
+	// LatestForBrands 一次查询多个品牌各自的最新记录（含完整 ReportJSON）。
+	// 供排行榜等"全品牌最新快照"场景使用，避免逐品牌 N+1 查询（P1-5）。
+	// 返回的每条记录属于传入列表中的某个品牌；无记录的品牌不会出现在结果中。
+	LatestForBrands(ctx context.Context, brandNames []string) ([]Record, error)
 	// GetByID 按 ID 取单条记录。
 	GetByID(ctx context.Context, id int64) (*Record, error)
 	// Brands 列出所有品牌名（用于下拉框）。

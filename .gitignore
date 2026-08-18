@@ -23,9 +23,15 @@ logs/
 *.out
 vendor/
 
-# 前端构建缓存
+# 前端构建缓存与依赖
+node_modules/
 *.tsbuildinfo
 web-app/dist-tsc-node/
+web-app/node_modules/
 
 # 本地待做/路线图，不上传 GitHub
 docs/roadmap.md
+
+.workbuddy/
+
+./DS_Store

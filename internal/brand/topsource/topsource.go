@@ -8,9 +8,10 @@
 package topsource
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -21,10 +22,10 @@ import (
 // SourceStat 单个引用源（按域名聚合）的统计信息。
 type SourceStat struct {
 	Domain       string  `json:"domain"`
-	MentionCount int     `json:"mention_count"`  // 引用该域名的 prompt 数（去重）
-	CoverageRate float64 `json:"coverage_rate"`  // 覆盖率：引用该域名的 prompt 占总 prompt 的百分比
-	BrandPresent bool    `json:"brand_present"`  // 品牌是否在该域名上出现（被提及或该域名即品牌官网）
-	Category     string  `json:"category"`       // review_site / blog / docs / social / news / video / other
+	MentionCount int     `json:"mention_count"` // 引用该域名的 prompt 数（去重）
+	CoverageRate float64 `json:"coverage_rate"` // 覆盖率：引用该域名的 prompt 占总 prompt 的百分比
+	BrandPresent bool    `json:"brand_present"` // 品牌是否在该域名上出现（被提及或该域名即品牌官网）
+	Category     string  `json:"category"`      // review_site / blog / docs / social / news / video / other
 }
 
 // AttributionReport Top Source 归因报告。
@@ -32,9 +33,9 @@ type AttributionReport struct {
 	BrandName       string       `json:"brand_name"`
 	TotalPrompts    int          `json:"total_prompts"`
 	TotalCitations  int          `json:"total_citations"`
-	TopSources      []SourceStat `json:"top_sources"`        // 所有被引用域名，按覆盖率降序
-	MissingSources  []SourceStat `json:"missing_sources"`    // 引用了竞品但品牌未曝光的域名
-	Recommendations []string     `json:"recommendations"`    // 针对 missing sources 的可执行建议
+	TopSources      []SourceStat `json:"top_sources"`     // 所有被引用域名，按覆盖率降序
+	MissingSources  []SourceStat `json:"missing_sources"` // 引用了竞品但品牌未曝光的域名
+	Recommendations []string     `json:"recommendations"` // 针对 missing sources 的可执行建议
 	AnalyzedAt      time.Time    `json:"analyzed_at"`
 }
 
@@ -216,17 +217,17 @@ func Analyze(brandName string, results []brand.PromptResult, brandDomain string)
 		})
 	}
 
-	// 排序：覆盖率降序 → 引擎数降序 → 域名升序（保证稳定）
-	sort.Slice(stats, func(i, j int) bool {
-		if stats[i].CoverageRate != stats[j].CoverageRate {
-			return stats[i].CoverageRate > stats[j].CoverageRate
+	// 排序：覆盖率降序 → 引擎数降序 → 域名升序（多级比较键构成全序，结果确定）
+	slices.SortFunc(stats, func(a, b SourceStat) int {
+		if c := cmp.Compare(b.CoverageRate, a.CoverageRate); c != 0 {
+			return c
 		}
-		ei := len(agg[stats[i].Domain].engines)
-		ej := len(agg[stats[j].Domain].engines)
-		if ei != ej {
-			return ei > ej
+		ei := len(agg[a.Domain].engines)
+		ej := len(agg[b.Domain].engines)
+		if c := cmp.Compare(ej, ei); c != 0 {
+			return c
 		}
-		return stats[i].Domain < stats[j].Domain
+		return cmp.Compare(a.Domain, b.Domain)
 	})
 
 	report.TopSources = stats

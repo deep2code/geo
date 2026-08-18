@@ -10,9 +10,9 @@ import (
 // 适当补充专业术语并给出简明解释，提升内容的专业度与可引用性。
 type TechnicalTermsStrategy struct{}
 
-func (s *TechnicalTermsStrategy) Name() string             { return "技术术语增强" }
+func (s *TechnicalTermsStrategy) Name() string              { return "技术术语增强" }
 func (s *TechnicalTermsStrategy) Type() models.StrategyType { return models.StrategyTechnicalTerms }
-func (s *TechnicalTermsStrategy) Effectiveness() float64   { return 0.20 }
+func (s *TechnicalTermsStrategy) Effectiveness() float64    { return 0.20 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *TechnicalTermsStrategy) PWCBoost() float64 { return 10.0 }

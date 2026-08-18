@@ -18,8 +18,9 @@ import (
 // 无 Chromium 或 chromedp 初始化失败时返回带降级指引的错误。
 //
 // 可选环境变量：
-//   GEO_PDF_WAIT_MS   页面渲染后等待毫秒数（默认 600，给 SVG 动画/字体加载留足时间）
-//   GEO_CHROME_PATH   自定义 Chromium 可执行文件路径（默认自动查找）
+//
+//	GEO_PDF_WAIT_MS   页面渲染后等待毫秒数（默认 600，给 SVG 动画/字体加载留足时间）
+//	GEO_CHROME_PATH   自定义 Chromium 可执行文件路径（默认自动查找）
 func GeneratePDF(ctx context.Context, html string) ([]byte, error) {
 	if html == "" {
 		return nil, fmt.Errorf("report: 空 HTML 无法生成 PDF")

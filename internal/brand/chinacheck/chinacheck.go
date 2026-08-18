@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -39,8 +40,10 @@ type Client struct {
 	httpClient *http.Client
 	cache      Cache // 可选：本地持久化缓存（nil 表示不缓存）
 
+	sessionMu sync.Mutex   // P1-1：保护懒初始化握手（ensureSession）
 	sessionID atomic.Value // string，首次 initialize 后填入
 	idSeq     atomic.Int64 // JSON-RPC request id 自增
+	flight    flightGroup  // P1-4：缓存 miss 合并（singleflight，防击穿）
 }
 
 // Option 配置选项。
@@ -113,73 +116,88 @@ type SearchResult struct {
 
 // CompanyHit 搜索列表中的单个命中。
 type CompanyHit struct {
-	CompanyID          string `json:"companyId"`
-	NameZh             string `json:"nameZh"`
-	NameTranslated     string `json:"nameTranslated"`
-	RegistrationNo     string `json:"registrationNo"` // 统一社会信用代码
-	EstablishedAt      string `json:"establishedAt"`  // YYYY-MM-DD
-	LegalPersonName    string `json:"legalPersonName"`
-	RegisteredCapital  string `json:"regCapital"`   // 如 "CNY 41,141,131,820"
-	CompanyType        string `json:"companyType"`  // 企业类型
-	Base               string `json:"base"`         // 省/地区
-	ConfidenceScore    float64 `json:"-"`           // 本地计算，非接口返回
+	CompanyID         string  `json:"companyId"`
+	NameZh            string  `json:"nameZh"`
+	NameTranslated    string  `json:"nameTranslated"`
+	RegistrationNo    string  `json:"registrationNo"` // 统一社会信用代码
+	EstablishedAt     string  `json:"establishedAt"`  // YYYY-MM-DD
+	LegalPersonName   string  `json:"legalPersonName"`
+	RegisteredCapital string  `json:"regCapital"`  // 如 "CNY 41,141,131,820"
+	CompanyType       string  `json:"companyType"` // 企业类型
+	Base              string  `json:"base"`        // 省/地区
+	ConfidenceScore   float64 `json:"-"`           // 本地计算，非接口返回
 }
 
 // Search 按名称 / 品牌 / 域名 / 统一社会信用代码 搜索公司。
 // 启用缓存时：先命中缓存（<1ms），否则走网络并将结果写入缓存。
+// P1-4：缓存未命中时同 key 并发请求通过 singleflight 合并，避免击穿打到外部 API。
 func (c *Client) Search(ctx context.Context, query string, limit int) (*SearchResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("查询词不能为空")
 	}
+	key := searchKey(c.language, query, limit)
 	// 缓存优先
 	if c.cache != nil {
 		if hit, ok := c.cache.GetSearch(c.language, query, limit); ok {
 			return hit, nil
 		}
 	}
-	args := map[string]interface{}{
-		"query":    query,
-		"language": c.language,
-	}
-	if limit > 0 {
-		args["limit"] = limit
-	}
-	var out SearchResult
-	if err := c.callTool(ctx, "search_chinese_company", args, &out); err != nil {
+	v, err := c.flight.Do(key, func() (interface{}, error) {
+		// 双检：等锁期间其他 goroutine 可能已回填缓存
+		if c.cache != nil {
+			if hit, ok := c.cache.GetSearch(c.language, query, limit); ok {
+				return hit, nil
+			}
+		}
+		args := map[string]interface{}{
+			"query":    query,
+			"language": c.language,
+		}
+		if limit > 0 {
+			args["limit"] = limit
+		}
+		var out SearchResult
+		if err := c.callTool(ctx, "search_chinese_company", args, &out); err != nil {
+			return nil, err
+		}
+		// 写缓存（错误忽略：缓存失败不影响查询结果）；空结果也写，
+		// 形成负缓存，避免不存在的品牌反复穿透网络。
+		if c.cache != nil {
+			_ = c.cache.SetSearch(c.language, query, limit, &out)
+		}
+		return &out, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	// 写缓存（错误忽略：缓存失败不影响查询结果）
-	if c.cache != nil {
-		_ = c.cache.SetSearch(c.language, query, limit, &out)
-	}
-	return &out, nil
+	return v.(*SearchResult), nil
 }
 
 // Snapshot 工商注册快照。
 type Snapshot struct {
-	CompanyName          string   `json:"companyName"`
-	LegalRepresentative  string   `json:"legalRepresentative"`
-	RegistrationStatus   string   `json:"registrationStatus"` // 在营/吊销/注销等
-	EstablishedDate      string   `json:"establishedDate"`    // YYYY-MM-DD
-	RegisteredCapital    string   `json:"registeredCapital"`
-	PaidInCapital        string   `json:"paidInCapital"`
-	CreditCode           string   `json:"creditCode"`         // 统一社会信用代码
-	RegistrationNumber   string   `json:"registrationNumber"`
-	OrganizationCode     string   `json:"organizationCode"`
-	TaxNumber            string   `json:"taxNumber"`
-	CompanyType          string   `json:"companyType"`
-	Industry             string   `json:"industry"`           // 所属行业
-	Province             string   `json:"province"`
-	RegisteredAddress    string   `json:"registeredAddress"`  // 注册地址
-	BusinessScope        string   `json:"businessScope"`      // 经营范围
-	StaffSize            string   `json:"staffSize"`
-	ApprovedDate         string   `json:"approvedDate"`
-	RegistrationAuth     string   `json:"registrationAuthority"`
-	BusinessTerm         string   `json:"businessTerm"`
-	FormerNames          []string `json:"formerNames"`
+	CompanyName         string   `json:"companyName"`
+	LegalRepresentative string   `json:"legalRepresentative"`
+	RegistrationStatus  string   `json:"registrationStatus"` // 在营/吊销/注销等
+	EstablishedDate     string   `json:"establishedDate"`    // YYYY-MM-DD
+	RegisteredCapital   string   `json:"registeredCapital"`
+	PaidInCapital       string   `json:"paidInCapital"`
+	CreditCode          string   `json:"creditCode"` // 统一社会信用代码
+	RegistrationNumber  string   `json:"registrationNumber"`
+	OrganizationCode    string   `json:"organizationCode"`
+	TaxNumber           string   `json:"taxNumber"`
+	CompanyType         string   `json:"companyType"`
+	Industry            string   `json:"industry"` // 所属行业
+	Province            string   `json:"province"`
+	RegisteredAddress   string   `json:"registeredAddress"` // 注册地址
+	BusinessScope       string   `json:"businessScope"`     // 经营范围
+	StaffSize           string   `json:"staffSize"`
+	ApprovedDate        string   `json:"approvedDate"`
+	RegistrationAuth    string   `json:"registrationAuthority"`
+	BusinessTerm        string   `json:"businessTerm"`
+	FormerNames         []string `json:"formerNames"`
 	// 可选顶层字段（工具返回的其他信息，我们忽略 report_options 等付费提示）
-	Disclaimer           string   `json:"disclaimer,omitempty"`
-	CompanyID            string   `json:"companyId,omitempty"`
+	Disclaimer string `json:"disclaimer,omitempty"`
+	CompanyID  string `json:"companyId,omitempty"`
 }
 
 // SnapshotResponse get_company_snapshot 外层响应。
@@ -191,9 +209,14 @@ type SnapshotResponse struct {
 
 // GetSnapshot 按公司 ID（优先，更精准）或查询词获取注册快照。
 // 启用缓存时：先命中缓存（<1ms），否则走网络并将结果写入缓存（双 key：ID + 查询词）。
+// P1-4：缓存未命中时同 key 并发请求通过 singleflight 合并。
 func (c *Client) GetSnapshot(ctx context.Context, companyID, query string) (*SnapshotResponse, error) {
 	if companyID == "" && strings.TrimSpace(query) == "" {
 		return nil, fmt.Errorf("company_id 或 query 至少提供一个")
+	}
+	key := snapshotKeyByID(companyID)
+	if companyID == "" {
+		key = snapshotKeyByQuery(query)
 	}
 	// 缓存优先
 	if c.cache != nil {
@@ -201,26 +224,38 @@ func (c *Client) GetSnapshot(ctx context.Context, companyID, query string) (*Sna
 			return hit, nil
 		}
 	}
-	args := map[string]interface{}{
-		"language": c.language,
-	}
-	if companyID != "" {
-		args["companyId"] = companyID
-	} else {
-		args["query"] = query
-	}
-	var out SnapshotResponse
-	if err := c.callTool(ctx, "get_company_snapshot", args, &out); err != nil {
+	v, err := c.flight.Do(key, func() (interface{}, error) {
+		// 双检：等锁期间其他 goroutine 可能已回填缓存
+		if c.cache != nil {
+			if hit, ok := c.cache.GetSnapshot(companyID, query); ok {
+				return hit, nil
+			}
+		}
+		args := map[string]interface{}{
+			"language": c.language,
+		}
+		if companyID != "" {
+			args["companyId"] = companyID
+		} else {
+			args["query"] = query
+		}
+		var out SnapshotResponse
+		if err := c.callTool(ctx, "get_company_snapshot", args, &out); err != nil {
+			return nil, err
+		}
+		if out.Snapshot != nil {
+			out.Snapshot.CompanyID = out.CompanyID
+		}
+		// 写缓存（缓存失败不影响结果）；空快照也写，形成负缓存
+		if c.cache != nil {
+			_ = c.cache.SetSnapshot(companyID, query, &out)
+		}
+		return &out, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	if out.Snapshot != nil {
-		out.Snapshot.CompanyID = out.CompanyID
-	}
-	// 写缓存（缓存失败不影响结果）
-	if c.cache != nil {
-		_ = c.cache.SetSnapshot(companyID, query, &out)
-	}
-	return &out, nil
+	return v.(*SnapshotResponse), nil
 }
 
 // ---------- JSON-RPC / MCP 底层 ----------
@@ -262,8 +297,19 @@ func (c *Client) callTool(ctx context.Context, tool string, args map[string]inte
 	return nil
 }
 
-// ensureSession 确保已完成 initialize 握手（幂等）。
+// ensureSession 确保已完成 initialize 握手（幂等，并发安全）。
+//
+// P1-1：原实现"读-判-写"无锁，并发请求会重复握手并互相覆盖 session。
+// 现在用 sessionMu 串行化握手，配合 double-check 避免重复 initialize；
+// notifications/initialized 改为同步发送（3s 短超时），不再 spawn 脱离
+// ctx 控制的 goroutine（原实现调用量大时会堆积且无法取消）。
 func (c *Client) ensureSession(ctx context.Context) error {
+	if sid, _ := c.sessionID.Load().(string); sid != "" {
+		return nil
+	}
+	c.sessionMu.Lock()
+	defer c.sessionMu.Unlock()
+	// double-check：等待锁期间可能已有别的 goroutine 完成握手
 	if sid, _ := c.sessionID.Load().(string); sid != "" {
 		return nil
 	}
@@ -314,15 +360,19 @@ func (c *Client) ensureSession(ctx context.Context) error {
 	}
 	c.sessionID.Store(sid)
 
-	// 发送 notifications/initialized（无 id，不期待响应）
+	// 发送 notifications/initialized（无 id，不期待响应）。
+	// P1-1：同步发送 + 3s 短超时兜底——best-effort 通知不值得为之泄漏 goroutine；
+	// 发送失败仅警告，不阻塞握手主流程（多数服务器不需要该通知）。
 	notif, _ := json.Marshal(map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
 	})
-	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL, bytes.NewReader(notif))
+	// WithoutCancel：通知属于会话建立的一部分，不受调用方 ctx 提前取消影响
+	notifCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	req2, err := http.NewRequestWithContext(notifCtx, http.MethodPost, c.baseURL, bytes.NewReader(notif))
 	if err != nil {
-		// 构造通知请求失败不阻塞握手主流程，仅跳过通知
-		return nil
+		return nil // 构造通知请求失败不阻塞握手主流程，仅跳过通知
 	}
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Accept", "application/json, text/event-stream")
@@ -330,15 +380,15 @@ func (c *Client) ensureSession(ctx context.Context) error {
 		req2.Header.Set("Mcp-Session-Id", sid)
 		req2.Header.Set("Mcp-Protocol-Version", protocolVer)
 	}
-	go func() {
-		// 不阻塞主流程：best-effort 通知。err/nil 都安全关闭 body。
-		r, err := c.httpClient.Do(req2)
-		if r != nil {
-			io.Copy(io.Discard, r.Body)
-			r.Body.Close()
-		}
-		_ = err
-	}()
+	r, err := c.httpClient.Do(req2)
+	if r != nil {
+		io.Copy(io.Discard, r.Body)
+		r.Body.Close()
+	}
+	if err != nil {
+		// best-effort：通知失败不影响会话可用
+		fmt.Printf("[chinacheck 警告] notifications/initialized 发送失败: %v\n", err)
+	}
 	return nil
 }
 
@@ -451,7 +501,7 @@ func (c *Client) readSSE(r io.Reader, out *json.RawMessage) error {
 	// 如果上面在 data: 行收集但没遇到空行，再兜底解析一次
 	if latest == nil && buf.Len() > 0 {
 		var candidate struct {
-			Result *json.RawMessage `json:"result"`
+			Result *json.RawMessage          `json:"result"`
 			Error  *struct{ Message string } `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(buf.String()), &candidate); err == nil {

@@ -39,11 +39,11 @@ type WebUICapturer interface {
 
 // WebUIResult Web UI 捕获结果。
 type WebUIResult struct {
-	Answer       string             // 渲染后的回答文本
-	Citations    []models.Citation  // UI 中展示的引用列表（含卡片标题、片段）
-	UISnapshot   string             // UI 快照的 JSON 字符串（布局/排名等结构化信息）
-	RenderedHTML string             // 渲染后的完整 HTML
-	CapturedAt   time.Time          // 捕获时间
+	Answer       string            // 渲染后的回答文本
+	Citations    []models.Citation // UI 中展示的引用列表（含卡片标题、片段）
+	UISnapshot   string            // UI 快照的 JSON 字符串（布局/排名等结构化信息）
+	RenderedHTML string            // 渲染后的完整 HTML
+	CapturedAt   time.Time         // 捕获时间
 }
 
 // WebUIConfig WebUI 适配器配置。
@@ -446,12 +446,12 @@ func NewMCPBrowserCapturer() *MCPBrowserCapturer {
 // Capture 通过 MCP 浏览器工具捕获 Web UI 响应（当前为桩实现）。
 //
 // 完整实现需宿主环境提供 MCP 浏览器工具并通过 run_mcp 调用：
-//   1. navigate_page 打开引擎 Web UI 入口
-//   2. 等待登录态就绪（fill 凭据或使用已保存会话）
-//   3. 定位输入框并 fill 查询文本
-//   4. 等待响应渲染完成（wait_for 选择器）
-//   5. take_snapshot 捕获 UI 快照，提取回答文本与引用卡片
-//   6. 将快照转换为 WebUIResult 返回
+//  1. navigate_page 打开引擎 Web UI 入口
+//  2. 等待登录态就绪（fill 凭据或使用已保存会话）
+//  3. 定位输入框并 fill 查询文本
+//  4. 等待响应渲染完成（wait_for 选择器）
+//  5. take_snapshot 捕获 UI 快照，提取回答文本与引用卡片
+//  6. 将快照转换为 WebUIResult 返回
 //
 // 当前未实际接入，返回集成指引错误。
 func (m *MCPBrowserCapturer) Capture(ctx context.Context, engine models.EngineType, query string) (*WebUIResult, error) {

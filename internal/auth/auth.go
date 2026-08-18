@@ -38,7 +38,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
-	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
 	"my-geo/internal/util"
 )
@@ -64,15 +63,16 @@ var AllRoles = []Role{RoleOwner, RoleAdmin, RoleMember, RoleViewer}
 type Permission string
 
 const (
-	PermViewReport      Permission = "report:view"       // 查看报告与历史
-	PermWriteAudit      Permission = "audit:write"       // 发起审计、生成报告
-	PermSendMail        Permission = "mail:send"         // 发送邮件/PDF
-	PermManageBrand     Permission = "brand:manage"      // 增删改品牌档案
-	PermManageWorkspace Permission = "workspace:manage"  // 编辑工作区设置
-	PermInviteMember    Permission = "member:invite"     // 邀请/加入成员
-	PermManageMember    Permission = "member:manage"     // 调整角色、移除成员
-	PermManageAdmin     Permission = "admin:manage"      // 平台级管理（系统用）
-	PermDeleteWorkspace Permission = "workspace:delete"  // 删除工作区（仅 Owner）
+	PermViewReport      Permission = "report:view"      // 查看报告与历史
+	PermWriteAudit      Permission = "audit:write"      // 发起审计、生成报告
+	PermSendMail        Permission = "mail:send"        // 发送邮件/PDF
+	PermManageBrand     Permission = "brand:manage"     // 增删改品牌档案
+	PermManageWorkspace Permission = "workspace:manage" // 编辑工作区设置
+	PermInviteMember    Permission = "member:invite"    // 邀请/加入成员
+	PermManageMember    Permission = "member:manage"    // 调整角色、移除成员
+	PermManageAdmin     Permission = "admin:manage"     // 平台级管理（系统用）
+	PermDeleteWorkspace Permission = "workspace:delete" // 删除工作区（仅 Owner）
+	PermManageData      Permission = "data:manage"      // 清理/重置数据（清空离线库/审计历史/缓存，仅 Owner/Admin）
 )
 
 // rolePermissions 角色 → 权限集映射。
@@ -80,11 +80,11 @@ var rolePermissions = map[Role]map[Permission]bool{
 	RoleOwner: permSet(
 		PermViewReport, PermWriteAudit, PermSendMail, PermManageBrand,
 		PermManageWorkspace, PermInviteMember, PermManageMember,
-		PermManageAdmin, PermDeleteWorkspace,
+		PermManageAdmin, PermDeleteWorkspace, PermManageData,
 	),
 	RoleAdmin: permSet(
 		PermViewReport, PermWriteAudit, PermSendMail, PermManageBrand,
-		PermManageWorkspace, PermInviteMember, PermManageMember,
+		PermManageWorkspace, PermInviteMember, PermManageMember, PermManageData,
 	),
 	RoleMember: permSet(
 		PermViewReport, PermWriteAudit, PermSendMail, PermManageBrand,
@@ -172,21 +172,21 @@ type AdminAuditLog struct {
 	ID        string            `json:"id"`
 	Timestamp time.Time         `json:"timestamp"`
 	ActorID   string            `json:"actor_id"`
-	Actor     string            `json:"actor"`      // 操作人邮箱
-	Action    string            `json:"action"`     // 事件标识
-	Target    string            `json:"target"`     // 被操作对象（用户ID/邮箱/品牌名/工作区ID）
-	Details   map[string]string `json:"details"`    // 附加字段
+	Actor     string            `json:"actor"`   // 操作人邮箱
+	Action    string            `json:"action"`  // 事件标识
+	Target    string            `json:"target"`  // 被操作对象（用户ID/邮箱/品牌名/工作区ID）
+	Details   map[string]string `json:"details"` // 附加字段
 	IP        string            `json:"ip"`
 	UserAgent string            `json:"user_agent"`
 }
 
 // TokenPair 登录 / 刷新接口返回的双令牌。
 type TokenPair struct {
-	AccessToken     string `json:"access_token"`
-	RefreshToken    string `json:"refresh_token"`
-	TokenType       string `json:"token_type"` // "Bearer"
-	ExpiresIn       int    `json:"expires_in"` // access token 过期秒数
-	RefreshExpires  int    `json:"refresh_expires_in"`
+	AccessToken    string `json:"access_token"`
+	RefreshToken   string `json:"refresh_token"`
+	TokenType      string `json:"token_type"` // "Bearer"
+	ExpiresIn      int    `json:"expires_in"` // access token 过期秒数
+	RefreshExpires int    `json:"refresh_expires_in"`
 }
 
 // ============================================================
@@ -194,19 +194,19 @@ type TokenPair struct {
 // ============================================================
 
 const (
-	accessTokenTTL  = 2 * time.Hour      // 访问令牌 2 小时
+	accessTokenTTL  = 2 * time.Hour       // 访问令牌 2 小时
 	refreshTokenTTL = 14 * 24 * time.Hour // 刷新令牌 14 天
 )
 
 type jwtClaims struct {
-	Sub         string `json:"sub"`          // 用户 ID
-	Email       string `json:"email"`        // 邮箱
+	Sub         string `json:"sub"`           // 用户 ID
+	Email       string `json:"email"`         // 邮箱
 	WorkspaceID string `json:"wid,omitempty"` // 工作区
 	Role        Role   `json:"role,omitempty"`
-	JTI         string `json:"jti"`          // Token ID（用于 revoke）
+	JTI         string `json:"jti"` // Token ID（用于 revoke）
 	Exp         int64  `json:"exp"`
 	Iat         int64  `json:"iat"`
-	Type        string `json:"typ"`          // "access" / "refresh"
+	Type        string `json:"typ"` // "access" / "refresh"
 }
 
 // getJWTSecret 从环境变量获取 JWT 密钥，缺省时每次启动生成一次性密钥。
@@ -219,6 +219,11 @@ func getJWTSecret() []byte {
 		buf := make([]byte, 32)
 		_, _ = io.ReadFull(rand.Reader, buf)
 		s = hex.EncodeToString(buf)
+	} else if len(s) < 32 {
+		// 显式配置但强度不足：明确告警（不阻断启动，避免破坏已有部署；
+		// 但安全审计时该警告必须被处理）。
+		slog.Warn("GEO_JWT_SECRET 长度不足 32 字节，签名强度偏弱，建议重新生成：" +
+			"export GEO_JWT_SECRET=$(openssl rand -hex 32)")
 	}
 	return []byte(s)
 }
@@ -234,7 +239,7 @@ func jwtSecret() []byte {
 }
 
 // base64URL 基于 RawURLEncoding 的编解码（JWT 规范）。
-func b64uEncode(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
+func b64uEncode(b []byte) string          { return base64.RawURLEncoding.EncodeToString(b) }
 func b64uDecode(s string) ([]byte, error) { return base64.RawURLEncoding.DecodeString(s) }
 
 // hmacSHA256 标准库实现 HMAC-SHA256。
@@ -300,8 +305,12 @@ func parseJWT(token string) (jwtClaims, error) {
 	if err := json.Unmarshal(cb, &c); err != nil {
 		return jwtClaims{}, fmt.Errorf("jwt: claims 解析: %w", err)
 	}
-	// 过期检查（1 分钟宽容期）
-	if c.Exp > 0 && time.Now().Unix() > c.Exp+60 {
+	// 过期检查（1 分钟宽容期）。强制要求 exp 存在：
+	// 缺少 exp 的 token 一律视为无效，杜绝"无过期时间"的永久令牌。
+	if c.Exp <= 0 {
+		return jwtClaims{}, errors.New("jwt: 缺少过期时间")
+	}
+	if time.Now().Unix() > c.Exp+60 {
 		return jwtClaims{}, errors.New("jwt: 已过期")
 	}
 	return c, nil
@@ -320,11 +329,13 @@ func hmacEqual(a, b []byte) bool {
 }
 
 // ============================================================
-// 4. 密码哈希（PBKDF2 + SHA-256 + 16 字节盐 + 120K 迭代）
+// 4. 密码哈希（PBKDF2 + SHA-256 + 16 字节盐 + 310K 迭代）
+//    OWASP 建议 PBKDF2-HMAC-SHA256 ≥ 310,000 次迭代（2023+）。
+//    verifyPassword 从存储串读取迭代数，旧哈希自动兼容。
 // ============================================================
 
 const (
-	pbkdf2Iters   = 120_000
+	pbkdf2Iters   = 310_000
 	pbkdf2SaltLen = 16
 	pbkdf2KeyLen  = 32
 )
@@ -534,16 +545,39 @@ type Store struct {
 }
 
 // defaultAuthDSN 默认 MySQL 连接串。
-func defaultAuthDSN() string {
-	if d := config.Env("GEO_AUTH_MYSQL_DSN", ""); d != "" {
-		return d
+// 注意：账号体系默认不启用（GEO_AUTH_ENABLED=false）；一旦显式启用就必须
+// 配置 GEO_AUTH_MYSQL_DSN，绝不静默回退到弱口令默认值（防扫描爆破）。
+func defaultAuthDSN() (string, error) {
+	d := strings.TrimSpace(os.Getenv("GEO_AUTH_MYSQL_DSN"))
+	if d != "" {
+		return d, nil
 	}
-	return "geo_auth:geo_auth_pass@tcp(127.0.0.1:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local"
+	return "", errors.New("启用账号体系（GEO_AUTH_ENABLED=true）必须配置 GEO_AUTH_MYSQL_DSN，例如 geo:pass@tcp(127.0.0.1:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local")
+}
+
+// maskDSN 把 DSN 里的密码替换成 ***，避免在日志/响应中泄露凭据。
+// user:pass@tcp(host:3306)/db -> user:***@tcp(host:3306)/db
+func maskDSN(dsn string) string {
+	if dsn == "" {
+		return ""
+	}
+	if at := strings.LastIndexByte(dsn, '@'); at > 0 {
+		prefix := dsn[:at]
+		suffix := dsn[at:]
+		if colon := strings.IndexByte(prefix, ':'); colon > 0 {
+			return prefix[:colon+1] + "***" + suffix
+		}
+	}
+	return dsn
 }
 
 // OpenStore 打开/创建账号数据库。
 func OpenStore() (*Store, error) {
-	dsn := dbprovider.NormalizeMySQLDSN(defaultAuthDSN())
+	rawDSN, err := defaultAuthDSN()
+	if err != nil {
+		return nil, err
+	}
+	dsn := dbprovider.NormalizeMySQLDSN(rawDSN)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open auth db: %w", err)
@@ -761,7 +795,7 @@ func (s *Store) UpdateLastLogin(userID string) error {
 	return err
 }
 
-// UpdatePassword 改密码。
+// UpdatePassword 改密码（同时吊销该用户全部 refresh token，防止旧会话续期）。
 func (s *Store) UpdatePassword(userID, newPassword string) error {
 	if len(newPassword) < 8 {
 		return errors.New("密码至少 8 位")
@@ -772,8 +806,19 @@ func (s *Store) UpdatePassword(userID, newPassword string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err = s.db.Exec("UPDATE users SET password_hash=? WHERE id=?", h, userID)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("UPDATE users SET password_hash=? WHERE id=?", h, userID); err != nil {
+		return err
+	}
+	// 改密即吊销该用户所有 refresh token，杜绝旧 token 继续换新会话
+	if _, err := tx.Exec("DELETE FROM refresh_tokens WHERE user_id=?", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // VerifyPassword 校验密码（找不到用户或不匹配返回 false）。
@@ -945,24 +990,40 @@ func (s *Store) QueryAuditLog(action string, limit, offset int) ([]AdminAuditLog
 
 // Service 封装鉴权业务逻辑，供 HTTP handler 调用。
 type Service struct {
-	store    *Store
-	enabled  bool // 是否启用账号体系（GEO_AUTH_ENABLED=true）
+	store   *Store
+	enabled bool // 是否启用账号体系（GEO_AUTH_ENABLED=true）
+
+	// 登录失败防护：按规范化邮箱计数，连续失败达上限后临时锁定（防暴力破解）
+	loginMu    sync.Mutex
+	loginFails map[string]loginFailState
 }
+
+// loginFailState 登录失败状态。
+type loginFailState struct {
+	count int   // 连续失败次数
+	until int64 // 锁定截止时间（Unix 秒，0=未锁定）
+}
+
+const (
+	maxLoginFails   = 5       // 连续失败次数上限
+	loginLockWindow = 15 * 60 // 锁定时长（秒）
+	loginFailWindow = 10 * 60 // 失败计数窗口（秒）
+)
 
 // NewService 构建认证服务。
 func NewService() (*Service, error) {
 	enabled := strings.EqualFold(strings.TrimSpace(os.Getenv("GEO_AUTH_ENABLED")), "true")
 	if !enabled {
 		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED=true）。仍使用 GEO_API_KEY / GEO_ADMIN_KEY 鉴权。")
-		return &Service{store: nil, enabled: false}, nil
+		return &Service{store: nil, enabled: false, loginFails: map[string]loginFailState{}}, nil
 	}
 	st, err := OpenStore()
 	if err != nil {
 		return nil, err
 	}
 	_ = st.CleanupExpiredRefresh()
-	slog.Info("账号体系已启用", slog.String("db_path", st.Path()))
-	return &Service{store: st, enabled: true}, nil
+	slog.Info("账号体系已启用", slog.String("db", maskDSN(st.Path())))
+	return &Service{store: st, enabled: true, loginFails: map[string]loginFailState{}}, nil
 }
 
 // Enabled 账号体系是否启用。
@@ -985,13 +1046,54 @@ func (svc *Service) Login(email, password, workspaceID string, ip, ua string) (*
 	if svc.store == nil {
 		return nil, nil, nil, errors.New("账号体系未启用")
 	}
+	// 暴力破解防护：连续失败达上限后临时锁定
+	key := strings.ToLower(strings.TrimSpace(email))
+	now := time.Now().Unix()
+	svc.loginMu.Lock()
+	st, exists := svc.loginFails[key]
+	if exists {
+		if st.until > now {
+			svc.loginMu.Unlock()
+			slog.Warn("登录尝试被临时锁定", slog.String("email", key), slog.String("ip", ip))
+			return nil, nil, nil, errors.New("失败次数过多，账号已临时锁定，请稍后再试")
+		}
+		// 锁定已过期，重置计数
+		if now-st.until > loginFailWindow {
+			delete(svc.loginFails, key)
+		}
+	}
+	svc.loginMu.Unlock()
+
 	u, ok, err := svc.store.VerifyPassword(email, password)
 	if err != nil {
-		return nil, nil, nil, err
+		// 数据库层错误：记录详情，响应仅给通用信息，避免泄露内部细节
+		slog.Error("登录校验失败", slog.String("email", key), slog.String("ip", ip), slog.String("err", err.Error()))
+		return nil, nil, nil, errors.New("登录失败，请稍后重试")
 	}
 	if !ok || u == nil {
+		svc.loginMu.Lock()
+		cur := svc.loginFails[key]
+		// 计数窗口内才累计；超窗重置
+		if cur.count > 0 && now-cur.until > loginFailWindow {
+			cur = loginFailState{}
+		}
+		cur.count++
+		if cur.count >= maxLoginFails {
+			cur.until = now + loginLockWindow
+			cur.count = 0
+			slog.Warn("登录失败次数过多，触发临时锁定", slog.String("email", key), slog.String("ip", ip))
+		} else {
+			cur.until = now
+		}
+		svc.loginFails[key] = cur
+		svc.loginMu.Unlock()
 		return nil, nil, nil, errors.New("邮箱或密码错误")
 	}
+	// 登录成功：清除失败计数
+	svc.loginMu.Lock()
+	delete(svc.loginFails, key)
+	svc.loginMu.Unlock()
+
 	_ = svc.store.UpdateLastLogin(u.ID)
 	u.LastLoginAt = time.Now()
 	_ = svc.store.AppendAuditLog(&AdminAuditLog{
@@ -1083,7 +1185,8 @@ func (svc *Service) Refresh(rawRefresh string, ip, ua string) (*TokenPair, *User
 	}
 	c, err := parseJWT(rawRefresh)
 	if err != nil {
-		return nil, nil, errors.New("刷新令牌无效: " + err.Error())
+		// 不返回签名/解析细节，避免帮助攻击者探测
+		return nil, nil, errors.New("刷新令牌无效")
 	}
 	if c.Type != "refresh" {
 		return nil, nil, errors.New("令牌类型错误（非 refresh）")
@@ -1095,12 +1198,21 @@ func (svc *Service) Refresh(rawRefresh string, ip, ua string) (*TokenPair, *User
 	if !active {
 		return nil, nil, errors.New("刷新令牌已失效")
 	}
-	// 吊销旧 refresh
-	_ = svc.store.RevokeRefreshToken(c.JTI, c.Sub)
+	// 吊销旧 refresh（失败则拒绝本次刷新，防止被盗 token 无限重放）
+	if err := svc.store.RevokeRefreshToken(c.JTI, c.Sub); err != nil {
+		slog.Error("吊销旧刷新令牌失败", slog.String("jti", c.JTI), slog.String("user", c.Sub), slog.String("err", err.Error()))
+		return nil, nil, errors.New("刷新失败，请稍后重试")
+	}
 
 	u, err := svc.store.GetUserByID(c.Sub)
 	if err != nil || u == nil {
-		return nil, nil, errors.New("用户不存在")
+		slog.Error("刷新令牌对应用户不存在", slog.String("user", c.Sub), slog.String("err", func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return "not found"
+		}()))
+		return nil, nil, errors.New("刷新失败，请稍后重试")
 	}
 	role := c.Role
 	if role == "" && c.WorkspaceID != "" {
@@ -1160,9 +1272,9 @@ type AuthNResponse struct {
 type MiddlewareConfig struct {
 	Svc *Service
 	// LegacyAPIKey: 保留的向后兼容——账号体系未启用时通过 GEO_API_KEY 鉴权
-	LegacyAPIKey    string
+	LegacyAPIKey string
 	// PublicPaths 公开路径（跳过鉴权）
-	PublicPaths     map[string]bool
+	PublicPaths map[string]bool
 }
 
 // WithAuthN 鉴权中间件（认证）。
@@ -1239,8 +1351,10 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 }
 
 // isServerPublicPath 全局公开路径（保持与 middleware.go 一致）。
+// 探活端点必须放行，否则启用 API Key 后 K8s/云平台探活会 401 误判宕机。
 func isServerPublicPath(path string) bool {
-	return path == "/" || path == "/api/v1/health" || path == "/api/v1/ready"
+	return path == "/" || path == "/api/v1/health" || path == "/api/v1/ready" ||
+		path == "/healthz" || path == "/readyz"
 }
 
 // RequirePermissionMiddleware 返回权限检查（授权）中间件。

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"my-geo/internal/models"
+	"my-geo/internal/util"
 )
 
 // CiteSourcesStrategy 引用来源增强策略。
@@ -48,7 +49,7 @@ func (s *CiteSourcesStrategy) Preprocess(content string, req *models.Optimizatio
 	// 按中文句号/英文句点/换行切分并逐句处理
 	lines := strings.Split(content, "\n")
 	for li, line := range lines {
-		sentences := splitSentences(line)
+		sentences := util.SplitSentences(line)
 		for i, sen := range sentences {
 			if digitRe.MatchString(sen) && !hasCitationRe.MatchString(sen) {
 				sentences[i] = sen + "[来源：待补充]"
@@ -101,7 +102,6 @@ func (s *CiteSourcesStrategy) Postprocess(content string, req *models.Optimizati
 var (
 	citeBracketSpaceRe = regexp.MustCompile(`\]\s+\[`)
 	multiNewlineRe     = regexp.MustCompile(`\n{3,}`)
-	sentenceSplitRe    = regexp.MustCompile(`([。！？!?])`)
 	digitRe            = regexp.MustCompile(`\d`)
 )
 
@@ -111,28 +111,4 @@ func safeContent(req *models.OptimizationRequest) string {
 		return ""
 	}
 	return req.Content
-}
-
-// splitSentences 按中英文句末标点（。！？!?）切分单行为句子，
-// 切分后保留标点在句尾。返回的句子拼接后与原行等价。
-func splitSentences(line string) []string {
-	if line == "" {
-		return []string{""}
-	}
-	indices := sentenceSplitRe.FindAllStringSubmatchIndex(line, -1)
-	if len(indices) == 0 {
-		return []string{line}
-	}
-	var sentences []string
-	prev := 0
-	for _, idx := range indices {
-		// idx[2]:idx[3] 为捕获组（标点）的范围
-		end := idx[3]
-		sentences = append(sentences, line[prev:end])
-		prev = end
-	}
-	if prev < len(line) {
-		sentences = append(sentences, line[prev:])
-	}
-	return sentences
 }

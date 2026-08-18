@@ -1,8 +1,9 @@
 package brand
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,10 +58,10 @@ func (r *Reporter) Build(profile BrandProfile, results []PromptResult, stats []E
 func appendVerticalRecommendations(actions []ActionItem, recs []vertical.Recommendation) []ActionItem {
 	for _, rec := range recs {
 		actions = append(actions, ActionItem{
-			Priority:   rec.Priority,
-			Category:   rec.Category,
-			Title:      rec.Title,
-			Detail:     rec.Detail,
+			Priority: rec.Priority,
+			Category: rec.Category,
+			Title:    rec.Title,
+			Detail:   rec.Detail,
 		})
 	}
 	return actions
@@ -103,9 +104,7 @@ func (r *Reporter) findContentGaps(results []PromptResult, profile BrandProfile)
 		gaps = append(gaps, *g)
 	}
 	// 按竞品数量降序（竞品越多，说明该 prompt 竞争越激烈，品牌缺席越严重）
-	sort.Slice(gaps, func(i, j int) bool {
-		return len(gaps[i].CompetitorNamed) > len(gaps[j].CompetitorNamed)
-	})
+	slices.SortFunc(gaps, func(a, b ContentGap) int { return cmp.Compare(len(b.CompetitorNamed), len(a.CompetitorNamed)) })
 	return gaps
 }
 
@@ -139,7 +138,7 @@ func (r *Reporter) calcCompetitorSOV(results []PromptResult, profile BrandProfil
 		}
 		sovs = append(sovs, sov)
 	}
-	sort.Slice(sovs, func(i, j int) bool { return sovs[i].MentionCount > sovs[j].MentionCount })
+	slices.SortFunc(sovs, func(a, b CompetitorSOV) int { return cmp.Compare(b.MentionCount, a.MentionCount) })
 	return sovs
 }
 
@@ -188,11 +187,11 @@ func (r *Reporter) generateActions(profile BrandProfile, stats []EngineStats, ga
 			tasks = append(tasks, fmt.Sprintf("针对「%s」创建内容（当前竞品 %s 已被 AI 推荐）", g.Prompt, strings.Join(g.CompetitorNamed, "、")))
 		}
 		actions = append(actions, ActionItem{
-			Priority:    "high",
-			Category:    "content",
-			Title:       "抢占高意图查询的内容缺口",
-			Detail:      fmt.Sprintf("发现 %d 个高意图查询中竞品被提及而品牌缺席，这是最直接的流量流失点。运营应优先针对这些查询创作 GEO 优化内容。", len(gaps)),
-			Tasks:       tasks,
+			Priority:       "high",
+			Category:       "content",
+			Title:          "抢占高意图查询的内容缺口",
+			Detail:         fmt.Sprintf("发现 %d 个高意图查询中竞品被提及而品牌缺席，这是最直接的流量流失点。运营应优先针对这些查询创作 GEO 优化内容。", len(gaps)),
+			Tasks:          tasks,
 			ExpectedImpact: "预计提及率提升 10-25%",
 		})
 	}
@@ -207,11 +206,11 @@ func (r *Reporter) generateActions(profile BrandProfile, stats []EngineStats, ga
 			tasks = append(tasks, fmt.Sprintf("在 %s 上提及率仅 %.0f%%，重点优化该引擎偏好内容（查看策略推荐）", we.Engine, we.MentionRate))
 		}
 		actions = append(actions, ActionItem{
-			Priority:    "high",
-			Category:    "engine",
-			Title:       "补强弱表现引擎",
-			Detail:      fmt.Sprintf("品牌在 %s 上可见度偏低，不同引擎检索机制差异巨大（Perplexity 引用率约 13%%，ChatGPT 仅 0.59%%），需针对性优化。", strings.Join(names, "、")),
-			Tasks:       tasks,
+			Priority:       "high",
+			Category:       "engine",
+			Title:          "补强弱表现引擎",
+			Detail:         fmt.Sprintf("品牌在 %s 上可见度偏低，不同引擎检索机制差异巨大（Perplexity 引用率约 13%%，ChatGPT 仅 0.59%%），需针对性优化。", strings.Join(names, "、")),
+			Tasks:          tasks,
 			ExpectedImpact: "预计该引擎提及率提升 15-30%",
 		})
 	}

@@ -29,9 +29,9 @@ type DimDelta struct {
 	Label          string  `json:"label"`
 	Previous       float64 `json:"previous"`
 	Current        float64 `json:"current"`
-	Delta          float64 `json:"delta"`      // current - previous
-	Direction      string  `json:"direction"`  // up/down/stable
-	Severity       string  `json:"severity"`   // critical/warning/info/none（仅回归方向升级）
+	Delta          float64 `json:"delta"`     // current - previous
+	Direction      string  `json:"direction"` // up/down/stable
+	Severity       string  `json:"severity"`  // critical/warning/info/none（仅回归方向升级）
 	HigherIsBetter bool    `json:"higher_is_better"`
 }
 

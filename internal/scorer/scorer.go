@@ -10,6 +10,72 @@ import (
 	"my-geo/internal/models"
 )
 
+// 评分维度满分上限，四维合计 100 分。
+const (
+	maxCitabilityScore = 40.0 // 可引用性信号
+	maxStructureScore  = 30.0 // 结构信号
+	maxQualityScore    = 20.0 // 内容质量
+	maxNegativeScore   = 10.0 // 负向信号（扣分制）
+)
+
+// 可引用性信号各信号权重（参考策略效果系数）。
+const (
+	weightQuotation      = 8.0
+	weightStatistics     = 7.0
+	weightCiteSources    = 7.0
+	weightFluency        = 6.0
+	weightAuthoritative  = 5.0
+	weightTechnicalTerms = 4.0
+	weightUniqueWords    = 3.0
+)
+
+// 结构信号各信号权重。
+const (
+	weightHeadingHierarchy  = 8.0
+	weightFrontLoading      = 7.0
+	weightLists             = 5.0
+	weightDefinitionOpening = 5.0
+	weightTables            = 3.0
+	weightFAQ               = 2.0
+)
+
+// 内容质量评分参数。
+const (
+	qualityFullWordMin    = 300  // 词数达标（拿满分）下限
+	qualityFullWordMax    = 2000 // 词数达标上限
+	qualityPartialWordMin = 100  // 词数部分得分下限
+	qualityFullScore      = 8.0  // 词数达标得分
+	qualityPartialScore   = 5.0  // 词数部分得分
+	qualityFloorScore     = 2.0  // 有词即得的最低分
+	evergreenScoreWeight  = 12.0 // 常青度（0-100）折合权重
+)
+
+// 负向信号扣分参数。
+const (
+	negativePenaltyPerSignal = 2.5 // 每个负向信号扣分
+	negativeFullSignals      = 4   // 达到该数量扣满本维度
+)
+
+// EstimateVisibility 可见度预估参数。
+const (
+	positionScoreDivisor  = 100.0 // 评分 → 0-1 位置分
+	citationFreqBaseDiv   = 20.0  // 评分 → 基准引用频率
+	citationFreqBoost     = 5.0   // 每个策略带来的引用频率提升
+	citationOrderBase     = 10    // 引用次序基准
+	citationOrderDiv      = 12    // 评分 → 引用次序改善幅度
+	semanticSimilarityDiv = 2.0   // 策略提升折算进语义相似度
+)
+
+// EstimateUtility 效用预估参数。
+const (
+	utilityHighQuality    = 0.9  // 高质量（有引用来源/无负向信号）
+	utilityLowQuality     = 0.5  // 低质量（无引用来源）
+	keypointCoverageDiv   = 5.0  // 结构信号数 → 关键点覆盖率
+	utilityQualityFloor   = 0.3  // 回答质量下限
+	utilityQualityPenalty = 0.15 // 每个负向信号的回答质量扣分
+	utilityDimensionCount = 3.0  // 效用指标维度数（求均值）
+)
+
 // Scorer 评分引擎。
 type Scorer struct {
 	analyzer AnalysisProvider
@@ -43,33 +109,33 @@ func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models
 	// 可引用性信号（满分 40）
 	citScore, citDetail := scoreCitability(a.CitabilitySignals)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
-		Category: "citability", Score: citScore, MaxScore: 40, Detail: citDetail,
+		Category: "citability", Score: citScore, MaxScore: maxCitabilityScore, Detail: citDetail,
 	})
 
 	// 结构信号（满分 30）
 	struScore, struDetail := scoreStructure(a.StructureSignals)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
-		Category: "structure", Score: struScore, MaxScore: 30, Detail: struDetail,
+		Category: "structure", Score: struScore, MaxScore: maxStructureScore, Detail: struDetail,
 	})
 
 	// 内容质量（满分 20）—— 基于词数与常青度
 	qualityScore := scoreQuality(a)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
-		Category: "quality", Score: qualityScore, MaxScore: 20,
+		Category: "quality", Score: qualityScore, MaxScore: maxQualityScore,
 	})
 
 	// 负向信号扣分（满分 10）
-	negScore := 10.0 - float64(len(a.NegativeSignals))*2.5
+	negScore := maxNegativeScore - float64(len(a.NegativeSignals))*negativePenaltyPerSignal
 	if negScore < 0 {
 		negScore = 0
 	}
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
-		Category: "negative_penalty", Score: negScore, MaxScore: 10,
+		Category: "negative_penalty", Score: negScore, MaxScore: maxNegativeScore,
 	})
 
 	total := citScore + struScore + qualityScore + negScore
-	if total > 100 {
-		total = 100
+	if total > maxCitabilityScore+maxStructureScore+maxQualityScore+maxNegativeScore {
+		total = maxCitabilityScore + maxStructureScore + maxQualityScore + maxNegativeScore
 	}
 	return total, breakdowns
 }
@@ -78,13 +144,13 @@ func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models
 func scoreCitability(signals map[string]bool) (float64, string) {
 	// 每个信号权重不同（参考效果系数）
 	weights := map[string]float64{
-		"quotation":       8,
-		"statistics":      7,
-		"cite_sources":    7,
-		"fluency":         6,
-		"authoritative":   5,
-		"technical_terms": 4,
-		"unique_words":    3,
+		"quotation":       weightQuotation,
+		"statistics":      weightStatistics,
+		"cite_sources":    weightCiteSources,
+		"fluency":         weightFluency,
+		"authoritative":   weightAuthoritative,
+		"technical_terms": weightTechnicalTerms,
+		"unique_words":    weightUniqueWords,
 	}
 	var score float64
 	for sig, w := range weights {
@@ -92,8 +158,8 @@ func scoreCitability(signals map[string]bool) (float64, string) {
 			score += w
 		}
 	}
-	if score > 40 {
-		score = 40
+	if score > maxCitabilityScore {
+		score = maxCitabilityScore
 	}
 	return score, ""
 }
@@ -101,12 +167,12 @@ func scoreCitability(signals map[string]bool) (float64, string) {
 // scoreStructure 结构评分。
 func scoreStructure(signals map[string]bool) (float64, string) {
 	weights := map[string]float64{
-		"heading_hierarchy":    8,
-		"front_loading":        7,
-		"lists":                5,
-		"definition_openings":  5,
-		"tables":               3,
-		"faq":                  2,
+		"heading_hierarchy":   weightHeadingHierarchy,
+		"front_loading":       weightFrontLoading,
+		"lists":               weightLists,
+		"definition_openings": weightDefinitionOpening,
+		"tables":              weightTables,
+		"faq":                 weightFAQ,
 	}
 	var score float64
 	for sig, w := range weights {
@@ -114,8 +180,8 @@ func scoreStructure(signals map[string]bool) (float64, string) {
 			score += w
 		}
 	}
-	if score > 30 {
-		score = 30
+	if score > maxStructureScore {
+		score = maxStructureScore
 	}
 	return score, ""
 }
@@ -123,19 +189,19 @@ func scoreStructure(signals map[string]bool) (float64, string) {
 // scoreQuality 内容质量评分。
 func scoreQuality(a *models.ContentAnalysis) float64 {
 	var score float64
-	// 词数：100-2000 词区间得分高
+	// 词数：300-2000 词区间得分高
 	switch {
-	case a.WordCount >= 300 && a.WordCount <= 2000:
-		score += 8
-	case a.WordCount >= 100:
-		score += 5
+	case a.WordCount >= qualityFullWordMin && a.WordCount <= qualityFullWordMax:
+		score += qualityFullScore
+	case a.WordCount >= qualityPartialWordMin:
+		score += qualityPartialScore
 	case a.WordCount > 0:
-		score += 2
+		score += qualityFloorScore
 	}
 	// 常青度
-	score += float64(a.EvergreenScore) / 100 * 12
-	if score > 20 {
-		score = 20
+	score += float64(a.EvergreenScore) / 100 * evergreenScoreWeight
+	if score > maxQualityScore {
+		score = maxQualityScore
 	}
 	return score
 }
@@ -145,7 +211,7 @@ func scoreQuality(a *models.ContentAnalysis) float64 {
 // 使用 Princeton 论文的策略效果系数累加预估提升。
 func (s *Scorer) EstimateVisibility(scoreBefore float64, applied []models.StrategyType) models.VisibilityMetrics {
 	visibility := models.VisibilityMetrics{
-		PositionScore: scoreBefore / 100,
+		PositionScore: scoreBefore / positionScoreDivisor,
 	}
 	// 累加策略效果
 	var improvement float64
@@ -153,10 +219,10 @@ func (s *Scorer) EstimateVisibility(scoreBefore float64, applied []models.Strate
 		improvement += config.StrategyEffectiveness[st]
 	}
 	// 预估引用频率（基于评分与提升）
-	visibility.CitationFrequency = int(scoreBefore/20 + improvement*5)
-	visibility.CitationOrder = max(1, 10-int(scoreBefore/12))
-	visibility.RelativeCitationScore = scoreBefore/100 + improvement
-	visibility.SemanticSimilarity = min(1.0, scoreBefore/100+improvement/2)
+	visibility.CitationFrequency = int(scoreBefore/citationFreqBaseDiv + improvement*citationFreqBoost)
+	visibility.CitationOrder = max(1, citationOrderBase-int(scoreBefore/citationOrderDiv))
+	visibility.RelativeCitationScore = scoreBefore/positionScoreDivisor + improvement
+	visibility.SemanticSimilarity = min(1.0, scoreBefore/positionScoreDivisor+improvement/semanticSimilarityDiv)
 	visibility.OverallScore = min(100.0, scoreBefore*(1+improvement))
 	return visibility
 }
@@ -168,9 +234,9 @@ func (s *Scorer) EstimateUtility(analysis *models.ContentAnalysis) models.Utilit
 	var m models.UtilityMetrics
 	// 引用质量：有真实引用来源则高
 	if analysis.CitabilitySignals["cite_sources"] {
-		m.CitationQuality = 0.9
+		m.CitationQuality = utilityHighQuality
 	} else {
-		m.CitationQuality = 0.5
+		m.CitationQuality = utilityLowQuality
 	}
 	// 关键点覆盖：有结构化内容则高
 	keypoints := 0
@@ -179,15 +245,13 @@ func (s *Scorer) EstimateUtility(analysis *models.ContentAnalysis) models.Utilit
 			keypoints++
 		}
 	}
-	m.KeypointCoverage = min(1.0, float64(keypoints)/5)
+	m.KeypointCoverage = min(1.0, float64(keypoints)/keypointCoverageDiv)
 	// 回答质量：无负向信号则高
 	if len(analysis.NegativeSignals) == 0 {
-		m.ResponseQuality = 0.9
+		m.ResponseQuality = utilityHighQuality
 	} else {
-		m.ResponseQuality = max(0.3, 0.9-float64(len(analysis.NegativeSignals))*0.15)
+		m.ResponseQuality = max(utilityQualityFloor, utilityHighQuality-float64(len(analysis.NegativeSignals))*utilityQualityPenalty)
 	}
-	m.OverallScore = (m.CitationQuality + m.KeypointCoverage + m.ResponseQuality) / 3
+	m.OverallScore = (m.CitationQuality + m.KeypointCoverage + m.ResponseQuality) / utilityDimensionCount
 	return m
 }
-
-

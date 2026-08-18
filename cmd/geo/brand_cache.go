@@ -17,11 +17,12 @@ import (
 // newBrandCacheCmd 创建 brand-cache 子命令：China-Check MCP 本地缓存管理。
 //
 // 子命令：
-//   stats                查看缓存统计（条目数、文件大小、TTL 等）
-//   clear                清空缓存
-//   compact              压缩/去重缓存文件（剔除过期条目）
-//   import -f list.txt   按品牌/公司名清单批量预热缓存（每行一个查询词，支持 # 注释）
-//   import --queries "腾讯,阿里,字节"  直接传逗号分隔的查询词
+//
+//	stats                查看缓存统计（条目数、文件大小、TTL 等）
+//	clear                清空缓存
+//	compact              压缩/去重缓存文件（剔除过期条目）
+//	import -f list.txt   按品牌/公司名清单批量预热缓存（每行一个查询词，支持 # 注释）
+//	import --queries "腾讯,阿里,字节"  直接传逗号分隔的查询词
 func newBrandCacheCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "brand-cache",
@@ -64,7 +65,7 @@ func newBrandCacheStatsCmd() *cobra.Command {
 			fmt.Println(" China-Check MCP 本地缓存统计")
 			fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 			fmt.Printf(" 文件路径:   %s\n", st.File)
-			fmt.Printf(" 条目数量:   %d / %d (%.0f%%)\n", st.Count, st.MaxItems, float64(st.Count)/float64(maxInt(1, st.MaxItems))*100)
+			fmt.Printf(" 条目数量:   %d / %d (%.0f%%)\n", st.Count, st.MaxItems, float64(st.Count)/float64(max(1, st.MaxItems))*100)
 			fmt.Printf(" 单条 TTL:   %d 小时 (%.0f 天)\n", st.TTLSeconds/3600, float64(st.TTLSeconds)/86400)
 			fmt.Printf(" 文件大小:   %s\n", humanBytes(st.FileSizeByte))
 			return nil
@@ -309,13 +310,6 @@ func collectImportQueries(cmd *cobra.Command) ([]string, error) {
 		}
 	}
 	return out, nil
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // humanBytes 把字节数格式化成易读字符串（1 KB / 2.3 MB / 5 GB）。

@@ -784,7 +784,7 @@ graph TB
         LS["localseo/audit POST"]
         ES["externalsignals/report POST"]
         AR["autorewriter/* POST"]
-        RD["readiness/ci-gate GET"]
+        RD["readiness/ci-gate POST"]
     end
 
     subgraph 商业化["💼 商业化与交付 /api/v1/"]

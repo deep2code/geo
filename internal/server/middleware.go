@@ -185,11 +185,15 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 		Svc:          s.authSvc,
 		LegacyAPIKey: apiKey, // GEO_API_KEY 作为账号体系未启用时的回退
 		PublicPaths: map[string]bool{
-			"/":             true,
-			"/legal/bot":    true,
-			"/robots.txt":   true,
-			"/index.html":   true,
-			"/favicon.ico":  true,
+			"/":              true,
+			"/legal/bot":     true,
+			"/robots.txt":    true,
+			"/index.html":    true,
+			"/favicon.ico":   true,
+			"/healthz":       true, // 探活端点必须公开，避免鉴权误判宕机
+			"/readyz":        true,
+			"/api/v1/health": true,
+			"/api/v1/ready":  true,
 		},
 	}
 	return s.recovery(
@@ -243,6 +247,7 @@ func (s *Server) withAIGeneratedHeaders(h http.Handler) http.Handler {
 // corsOrigins 为 nil 时：
 //   - 本地开发（localhost/127.0.0.1）允许跨域
 //   - 生产环境默认拒绝跨域（安全姿态：deny by default）
+//
 // corsOrigins 非 nil 时：校验 Origin 白名单。
 func (s *Server) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -324,29 +329,7 @@ func isWriteMethod(method string) bool {
 		method == http.MethodDelete
 }
 
-// ===== 鉴权 =====
-
-// withAuth API Key 鉴权中间件。
-// 未配置 GEO_API_KEY 时跳过鉴权（向后兼容）；配置后除白名单路径外需 Bearer token。
-func (s *Server) withAuth(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if apiKey == "" || isPublicPath(r.URL.Path) {
-			h.ServeHTTP(w, r)
-			return
-		}
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimSpace(auth[7:]) != apiKey {
-			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "未授权：无效或缺失的 API Key"})
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
-}
-
-// isPublicPath 判断路径是否为公开路径（无需鉴权）。
-func isPublicPath(path string) bool {
-	return path == "/" || path == "/api/v1/health" || path == "/api/v1/ready"
-}
+// ===== 错误响应结构 =====
 
 // ErrorResponse 统一错误响应结构。
 type ErrorResponse struct {
@@ -431,11 +414,12 @@ func (tb *tokenBucket) allow() bool {
 }
 
 // rateLimiter 多级令牌桶限流器（按 IP 维度）。
+// 用读写锁：读路径（已存在的桶）完全并发，仅首次创建新桶与周期清理走写锁。
 type rateLimiter struct {
-	mu             sync.Mutex
-	globalBuckets  map[string]*tokenBucket // IP → 全局桶
-	expBuckets     map[string]*tokenBucket // IP → 昂贵接口桶
-	lastCleanup    time.Time
+	mu            sync.RWMutex
+	globalBuckets map[string]*tokenBucket // IP → 全局桶
+	expBuckets    map[string]*tokenBucket // IP → 昂贵接口桶
+	lastCleanup   time.Time
 }
 
 var globalLimiter = newRateLimiter()
@@ -449,41 +433,55 @@ func newRateLimiter() *rateLimiter {
 }
 
 // getGlobalBucket 获取或创建 IP 的全局令牌桶（惰性创建）。
+// 快路径 RLock 命中即返回；未命中才升级写锁 double-check 后创建。
 func (rl *rateLimiter) getGlobalBucket(ip string) *tokenBucket {
+	rl.mu.RLock()
+	b, ok := rl.globalBuckets[ip]
+	rl.mu.RUnlock()
+	if ok {
+		return b
+	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	rl.cleanup()
-	b, ok := rl.globalBuckets[ip]
-	if !ok {
-		b = &tokenBucket{
-			tokens:   float64(rlConfig.globalPerSec),
-			lastTime: time.Now(),
-			rate:     float64(rlConfig.globalPerSec),
-			burst:    rlConfig.globalPerSec,
-		}
-		rl.globalBuckets[ip] = b
+	if b, ok = rl.globalBuckets[ip]; ok {
+		return b
 	}
+	b = &tokenBucket{
+		tokens:   float64(rlConfig.globalPerSec),
+		lastTime: time.Now(),
+		rate:     float64(rlConfig.globalPerSec),
+		burst:    rlConfig.globalPerSec,
+	}
+	rl.globalBuckets[ip] = b
+	rl.cleanup()
 	return b
 }
 
 // getExpensiveBucket 获取或创建 IP 的昂贵接口令牌桶。
 func (rl *rateLimiter) getExpensiveBucket(ip string) *tokenBucket {
+	rl.mu.RLock()
+	b, ok := rl.expBuckets[ip]
+	rl.mu.RUnlock()
+	if ok {
+		return b
+	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	b, ok := rl.expBuckets[ip]
-	if !ok {
-		b = &tokenBucket{
-			tokens:   float64(rlConfig.expensivePerSec),
-			lastTime: time.Now(),
-			rate:     float64(rlConfig.expensivePerSec),
-			burst:    rlConfig.expensivePerSec,
-		}
-		rl.expBuckets[ip] = b
+	if b, ok = rl.expBuckets[ip]; ok {
+		return b
 	}
+	b = &tokenBucket{
+		tokens:   float64(rlConfig.expensivePerSec),
+		lastTime: time.Now(),
+		rate:     float64(rlConfig.expensivePerSec),
+		burst:    rlConfig.expensivePerSec,
+	}
+	rl.expBuckets[ip] = b
 	return b
 }
 
 // cleanup 定期清理过期桶（超过 10 分钟未使用的 IP 条目）。
+// 仅在写锁路径内调用（新桶创建时触发），内部自带 10 分钟窗口节流。
 func (rl *rateLimiter) cleanup() {
 	if time.Since(rl.lastCleanup) < 10*time.Minute {
 		return
@@ -804,9 +802,10 @@ func stripPort(addr string) string {
 // 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被任意客户端伪造绕过限流/WAF。
 //
 // 解析策略（仅在 RemoteAddr 可信时）：
-//   X-Forwarded-For: "client, proxy1, proxy2, ..." — 取第一个非可信代理的地址作为真实客户端。
-//   退而求其次：X-Real-IP。
-//   最后：RemoteAddr 本身。
+//
+//	X-Forwarded-For: "client, proxy1, proxy2, ..." — 取第一个非可信代理的地址作为真实客户端。
+//	退而求其次：X-Real-IP。
+//	最后：RemoteAddr 本身。
 func clientIP(r *http.Request) string {
 	remoteIP := stripPort(r.RemoteAddr)
 

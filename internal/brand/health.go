@@ -1,6 +1,9 @@
 package brand
 
-import "sort"
+import (
+	"cmp"
+	"slices"
+)
 
 // BuildSeverityIssues 基于 BVS 7 维 + E-E-A-T 4 维得分生成健康问题清单。
 //
@@ -9,10 +12,10 @@ import "sort"
 // 仅返回 Medium 及以上问题（Low 级别视为健康，不列入清单避免噪声）。
 func BuildSeverityIssues(bd ScoreBreakdown) []HealthIssue {
 	dims := []struct {
-		name     string
-		score    float64
-		impact   string
-		fix      string
+		name   string
+		score  float64
+		impact string
+		fix    string
 	}{
 		{"内容质量", bd.ContentQuality,
 			"内容被 AI 引擎引用的频率与质量不足，直接影响品牌在 AI 回答中的曝光。",
@@ -67,12 +70,11 @@ func BuildSeverityIssues(bd ScoreBreakdown) []HealthIssue {
 	}
 
 	// 按严重级别排序：Critical → High → Medium → Low，同级按得分升序
-	sort.SliceStable(issues, func(i, j int) bool {
-		si, sj := severityOrder(issues[i].Severity), severityOrder(issues[j].Severity)
-		if si != sj {
-			return si < sj
+	slices.SortStableFunc(issues, func(a, b HealthIssue) int {
+		if c := cmp.Compare(severityOrder(a.Severity), severityOrder(b.Severity)); c != 0 {
+			return c
 		}
-		return issues[i].Score < issues[j].Score
+		return cmp.Compare(a.Score, b.Score)
 	})
 	return issues
 }

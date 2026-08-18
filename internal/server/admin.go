@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,17 +46,18 @@ type Announcement struct {
 
 // 公告内存存储（进程重启清空，可接受）。
 var (
-	announcementsMu  sync.Mutex
-	announcements    []Announcement
-	announcementSeq  int64
-	tenantStatusMu   sync.Mutex
-	tenantStatusMap  = map[string]string{} // 租户 ID → 状态（覆盖模拟默认值）
+	announcementsMu sync.Mutex
+	announcements   []Announcement
+	announcementSeq int64
+	tenantStatusMu  sync.Mutex
+	tenantStatusMap = map[string]string{} // 租户 ID → 状态（覆盖模拟默认值）
 )
 
 // checkAdminKey 校验管理员请求头。
 // ⚠️ 未配置 GEO_ADMIN_KEY 时拒绝访问（生产默认安全）。
 // 开发/本地 Demo 需要管理员接口时，务必显式配置：
-//   export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
+//
+//	export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
 func (s *Server) checkAdminKey(r *http.Request) bool {
 	key := strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY"))
 	if key == "" {
@@ -91,7 +92,7 @@ func (s *Server) buildMockTenants(ctx context.Context) []TenantInfo {
 		return []TenantInfo{}
 	}
 	brands, _ := s.brandEngine.HistoryDB().Brands(ctx)
-	sort.Strings(brands)
+	slices.Sort(brands)
 	plans := []string{"free", "pro", "enterprise"}
 	statuses := []string{"active", "active", "active", "suspended", "expired"}
 	now := time.Now()
@@ -337,12 +338,10 @@ func (s *Server) handleAdminAnnouncements(w http.ResponseWriter, r *http.Request
 		copy(list, announcements)
 		announcementsMu.Unlock()
 		// 倒序：最新的在前
-		sort.Slice(list, func(i, j int) bool {
-			return list[i].CreatedAt.After(list[j].CreatedAt)
-		})
+		slices.SortFunc(list, func(a, b Announcement) int { return b.CreatedAt.Compare(a.CreatedAt) })
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"total":          len(list),
-			"announcements":  list,
+			"total":         len(list),
+			"announcements": list,
 		})
 	case http.MethodPost:
 		var body struct {
@@ -442,11 +441,11 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"go_version":      runtime.Version(),
+		"go_version":     runtime.Version(),
 		"goroutines":     runtime.NumGoroutine(),
-		"uptime_seconds":  int64(uptime.Seconds()),
-		"uptime":          uptime.String(),
-		"started_at":       serverStartTime,
+		"uptime_seconds": int64(uptime.Seconds()),
+		"uptime":         uptime.String(),
+		"started_at":     serverStartTime,
 		"memory": map[string]interface{}{
 			"alloc_bytes":       ms.Alloc,
 			"total_alloc_bytes": ms.TotalAlloc,

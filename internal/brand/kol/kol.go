@@ -8,9 +8,10 @@
 package kol
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"my-geo/internal/brand"
@@ -32,9 +33,9 @@ type KOLReport struct {
 	BrandName       string       `json:"brand_name"`
 	TotalCitations  int          `json:"total_citations"`
 	TotalSources    int          `json:"total_sources"`
-	TopSources      []SourceStat `json:"top_sources"`      // 按引用次数排序（Top 20）
-	ByDomain        []SourceStat `json:"by_domain"`        // 按域名聚合的完整列表
-	Recommendations []string     `json:"recommendations"`  // 推荐操作（每条对应一个 Top 源）
+	TopSources      []SourceStat `json:"top_sources"`     // 按引用次数排序（Top 20）
+	ByDomain        []SourceStat `json:"by_domain"`       // 按域名聚合的完整列表
+	Recommendations []string     `json:"recommendations"` // 推荐操作（每条对应一个 Top 源）
 }
 
 // topN TopSources 返回的数量上限。
@@ -127,11 +128,11 @@ func AnalyzeWithCompetitors(brandName string, results []brand.PromptResult, comp
 	}
 
 	// 按 CitationCount 降序排序（相同时按 Domain 升序保证稳定）
-	sort.Slice(stats, func(i, j int) bool {
-		if stats[i].CitationCount != stats[j].CitationCount {
-			return stats[i].CitationCount > stats[j].CitationCount
+	slices.SortFunc(stats, func(a, b SourceStat) int {
+		if c := cmp.Compare(b.CitationCount, a.CitationCount); c != 0 {
+			return c
 		}
-		return stats[i].Domain < stats[j].Domain
+		return cmp.Compare(a.Domain, b.Domain)
 	})
 
 	// ByDomain：完整域名聚合列表
@@ -240,6 +241,6 @@ func sortedKeys(m map[string]bool) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }

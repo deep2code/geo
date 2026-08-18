@@ -13,6 +13,7 @@ package knowledge
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,7 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -282,9 +283,7 @@ func (s *LocalTFIDFStore) Search(query string, topK int) []VectorSearchResult {
 	}
 
 	// 排序取 topK
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].score > results[j].score
-	})
+	slices.SortFunc(results, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
 
 	out := make([]VectorSearchResult, 0, min(topK, len(results)))
 	for k := 0; k < len(results) && k < topK; k++ {
@@ -366,12 +365,15 @@ type embeddingRequest struct {
 	Input []string `json:"input"`
 }
 
+// embeddingData 单条向量结果（具名类型，便于排序复用）。
+type embeddingData struct {
+	Embedding []float32 `json:"embedding"`
+	Index     int       `json:"index"`
+}
+
 // embeddingResponse OpenAI embeddings API 响应体
 type embeddingResponse struct {
-	Data []struct {
-		Embedding []float32 `json:"embedding"`
-		Index     int       `json:"index"`
-	} `json:"data"`
+	Data  []embeddingData `json:"data"`
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
@@ -437,9 +439,7 @@ func (e *OpenAIEmbedding) EmbedBatch(ctx context.Context, texts []string) ([][]f
 	}
 
 	// 按 index 排序保证顺序与输入一致
-	sort.Slice(er.Data, func(i, j int) bool {
-		return er.Data[i].Index < er.Data[j].Index
-	})
+	slices.SortFunc(er.Data, func(a, b embeddingData) int { return cmp.Compare(a.Index, b.Index) })
 	out := make([][]float32, 0, len(er.Data))
 	for _, d := range er.Data {
 		out = append(out, d.Embedding)
@@ -561,9 +561,7 @@ func (h *HybridVectorStore) searchByEmbedding(query string, topK int) []VectorSe
 		score := dot / (qNorm * d.norm)
 		results = append(results, scored{i, score})
 	}
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].score > results[j].score
-	})
+	slices.SortFunc(results, func(a, b scored) int { return cmp.Compare(b.score, a.score) })
 	out := make([]VectorSearchResult, 0, min(topK, len(results)))
 	for k := 0; k < len(results) && k < topK; k++ {
 		d := &h.embeddedDocs[results[k].idx]

@@ -52,10 +52,10 @@ func LinkVertical(profile BrandProfile, breakdown ScoreBreakdown, bvs float64) V
 // profileToVerticalMap 将 BrandProfile 转换为 vertical.Detect 所需的 map。
 func profileToVerticalMap(profile BrandProfile) map[string]interface{} {
 	m := map[string]interface{}{
-		"industry":  profile.Industry,
-		"category":  profile.Category,
-		"domain":    profile.Domain,
-		"products":  toInterfaceSlice(profile.Products),
+		"industry": profile.Industry,
+		"category": profile.Category,
+		"domain":   profile.Domain,
+		"products": toInterfaceSlice(profile.Products),
 	}
 	if profile.Company != nil {
 		companyMap := map[string]interface{}{

@@ -24,7 +24,7 @@ import (
 type Document struct {
 	ID       string            `json:"id"`
 	Content  string            `json:"content"`
-	Source   string            `json:"source"`   // 来源：manual/file/url/faq/kb
+	Source   string            `json:"source"` // 来源：manual/file/url/faq/kb
 	Title    string            `json:"title,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 }

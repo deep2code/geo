@@ -12,17 +12,17 @@ import (
 type ModuleKind string
 
 const (
-	ModuleOfflineCompanies  ModuleKind = "offline_companies"
-	ModuleAuditHistory      ModuleKind = "audit_history"
-	ModuleChinaCheckCache   ModuleKind = "chinacheck_cache"
+	ModuleOfflineCompanies ModuleKind = "offline_companies"
+	ModuleAuditHistory     ModuleKind = "audit_history"
+	ModuleChinaCheckCache  ModuleKind = "chinacheck_cache"
 )
 
 // moduleConfig：各模块的 DSN 环境变量。
 // 所有模块默认后端 = TypeMySQL。
 var moduleConfig = map[ModuleKind]struct {
-	typeEnv string // *_DB_TYPE / *_CACHE_TYPE（保留兼容，值必须为 mysql 或 redis）
-	dsnEnv  string // *_MYSQL_DSN（优先）
-	oldPathEnv string // 兼容 *_DB_PATH / *_CACHE_PATH（若值形如 user:pass@tcp(...) 视为 DSN 直接用）
+	typeEnv     string // *_DB_TYPE / *_CACHE_TYPE（保留兼容，值必须为 mysql 或 redis）
+	dsnEnv      string // *_MYSQL_DSN（优先）
+	oldPathEnv  string // 兼容 *_DB_PATH / *_CACHE_PATH（若值形如 user:pass@tcp(...) 视为 DSN 直接用）
 	defaultType Type
 }{
 	ModuleOfflineCompanies: {

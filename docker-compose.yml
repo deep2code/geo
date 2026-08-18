@@ -20,7 +20,8 @@ services:
       # 可选：放置建库/建表 SQL 脚本到 ./deploy/initdb/ 下自动执行
       # - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
     ports:
-      - "${GEO_MYSQL_PORT:-3306}:3306"
+      # 仅绑定本机，避免数据库端口暴露公网（应用容器经内部网络访问）
+      - "127.0.0.1:${GEO_MYSQL_PORT:-3306}:3306"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${GEO_MYSQL_ROOT_PASSWORD:-geoRootPass}"]
       interval: 10s
@@ -42,7 +43,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "${GEO_REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${GEO_REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -64,11 +65,11 @@ services:
       - .env
     environment:
       - TZ=Asia/Shanghai
-      # MySQL DSN（指向 compose 内的 mysql 服务）
-      - GEO_OFFLINE_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_HISTORY_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_AUTH_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_CHINACHECK_MYSQL_DSN=geo:geoPass@tcp(mysql:3306)/geo_chinacheck?parseTime=true&charset=utf8mb4&loc=Local
+      # MySQL DSN（指向 compose 内的 mysql 服务，密码与上方 MYSQL_PASSWORD 同一变量）
+      - GEO_OFFLINE_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_HISTORY_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_AUTH_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_CHINACHECK_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_chinacheck?parseTime=true&charset=utf8mb4&loc=Local
       # Redis（指向 compose 内的 redis 服务）
       - GEO_CHINACHECK_CACHE_TYPE=mysql
       # - GEO_CHINACHECK_CACHE_TYPE=redis
@@ -81,7 +82,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
       interval: 30s
       timeout: 5s
       retries: 3

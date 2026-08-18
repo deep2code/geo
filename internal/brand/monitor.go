@@ -18,8 +18,8 @@ import (
 // 设计参考 ai-brand-monitor-mcp 与 oneglanse 的多引擎并行查询。
 type Monitor struct {
 	adapters       map[models.EngineType]adapter.Adapter
-	maxConcurrency int              // 并行查询的最大并发数（默认 5）
-	roiTracker     *roi.Tracker     // 可选：token 用量与成本追踪
+	maxConcurrency int          // 并行查询的最大并发数（默认 5）
+	roiTracker     *roi.Tracker // 可选：token 用量与成本追踪
 }
 
 const defaultMaxConcurrency = 5

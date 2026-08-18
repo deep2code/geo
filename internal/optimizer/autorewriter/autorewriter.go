@@ -8,12 +8,15 @@
 package autorewriter
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
+
+	"my-geo/internal/util"
 )
 
 // 预编译正则表达式。
@@ -30,8 +33,6 @@ var (
 	authoritativeMarkerRe = regexp.MustCompile(`研究表明|专家指出|根据.*?研究|权威|证实|表明`)
 	// 结论句引导词
 	conclusionRe = regexp.MustCompile(`(总之|综上|因此|由此可见|可以得出|结论是|总而言之|可见|综上所述|这意味着)`)
-	// 句末标点切分
-	sentenceSplitRe = regexp.MustCompile(`([。！？!?])`)
 	// 规则行解析
 	ruleLineRe = regexp.MustCompile(`(?i)^\s*RULE:\s*(.+)$`)
 	// 百分比
@@ -47,7 +48,7 @@ var (
 // Rule 表示一条可执行的 GEO 优化规则。
 type Rule struct {
 	ID          string  `json:"id"`
-	Category    string  `json:"category"`  // citation / structure / fluency / authority / statistics
+	Category    string  `json:"category"` // citation / structure / fluency / authority / statistics
 	Description string  `json:"description"`
 	Priority    float64 `json:"priority"`  // 0-1，越高表示影响越大
 	Source      string  `json:"source"`    // "princeton" / "autogeo_extracted" / "manual"
@@ -57,8 +58,8 @@ type Rule struct {
 // RuleSet 规则集合。
 type RuleSet struct {
 	Rules     []Rule    `json:"rules"`
-	Engine    string    `json:"engine"`    // 规则提取自哪个引擎
-	Domain    string    `json:"domain"`    // 内容领域
+	Engine    string    `json:"engine"` // 规则提取自哪个引擎
+	Domain    string    `json:"domain"` // 内容领域
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -466,9 +467,7 @@ func buildRewritePrompt(req *RewriteRequest) string {
 	// 按 priority 降序排序规则
 	sorted := make([]Rule, len(req.Rules))
 	copy(sorted, req.Rules)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Priority > sorted[j].Priority
-	})
+	slices.SortFunc(sorted, func(a, b Rule) int { return cmp.Compare(b.Priority, a.Priority) })
 	for i, rule := range sorted {
 		b.WriteString(fmt.Sprintf("%d. [%s] %s (预估提升 %.1f%%)\n",
 			i+1, rule.Category, rule.Description, rule.PWCBoost))
@@ -497,9 +496,7 @@ func ruleBasedRewrite(content string, rules []Rule) (string, []Rule) {
 	// 按 priority 降序应用
 	sorted := make([]Rule, len(rules))
 	copy(sorted, rules)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Priority > sorted[j].Priority
-	})
+	slices.SortFunc(sorted, func(a, b Rule) int { return cmp.Compare(b.Priority, a.Priority) })
 
 	for _, rule := range sorted {
 		next, changed := applyRuleBased(out, rule)
@@ -568,7 +565,7 @@ func appendCitationPlaceholder(content string) string {
 	lines := strings.Split(content, "\n")
 	var b strings.Builder
 	for li, line := range lines {
-		sentences := splitSentences(line)
+		sentences := util.SplitSentences(line)
 		for i, sen := range sentences {
 			if hasDigitRe.MatchString(sen) && !hasCitationRe.MatchString(sen) {
 				sentences[i] = sen + "[来源：待补充]"
@@ -587,7 +584,7 @@ func wrapConclusions(content string) string {
 	lines := strings.Split(content, "\n")
 	changed := false
 	for i, line := range lines {
-		sentences := splitSentences(line)
+		sentences := util.SplitSentences(line)
 		for j, sen := range sentences {
 			if conclusionRe.MatchString(sen) && !strings.HasPrefix(sen, "「") {
 				sentences[j] = "「" + sen + "」"
@@ -680,21 +677,7 @@ func extractKeyTerms(content string) []string {
 
 // countSentences 统计句子数量。
 func countSentences(content string) int {
-	matches := sentenceSplitRe.FindAllString(content, -1)
-	if len(matches) == 0 {
-		// 无句末标点，按非空行统计
-		count := 0
-		for _, line := range strings.Split(content, "\n") {
-			if strings.TrimSpace(line) != "" {
-				count++
-			}
-		}
-		if count == 0 {
-			return 1
-		}
-		return count
-	}
-	return len(matches)
+	return util.CountSentences(content)
 }
 
 // calcClarity 计算文本清晰度 (0-1)。
@@ -789,35 +772,7 @@ func parseFloatSafe(s string) float64 {
 	return f
 }
 
-// clamp 将数值限制在 [min, max] 区间。
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
-// splitSentences 按句末标点切分，保留标点在句尾。
-func splitSentences(line string) []string {
-	if line == "" {
-		return []string{""}
-	}
-	indices := sentenceSplitRe.FindAllStringSubmatchIndex(line, -1)
-	if len(indices) == 0 {
-		return []string{line}
-	}
-	var sentences []string
-	prev := 0
-	for _, idx := range indices {
-		end := idx[3]
-		sentences = append(sentences, line[prev:end])
-		prev = end
-	}
-	if prev < len(line) {
-		sentences = append(sentences, line[prev:])
-	}
-	return sentences
+// clamp 将数值限制在 [lo, hi] 区间（内置 min/max 泛型，Go 1.21+）。
+func clamp(v, lo, hi float64) float64 {
+	return max(lo, min(v, hi))
 }

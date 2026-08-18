@@ -5,15 +5,16 @@ import (
 	"strings"
 
 	"my-geo/internal/models"
+	"my-geo/internal/util"
 )
 
 // QuotationStrategy 引用语增强策略。
 // 为关键观点补充权威引用语（引号包裹的直接引述），效果系数最高 (+41%)。
 type QuotationStrategy struct{}
 
-func (s *QuotationStrategy) Name() string             { return "引用语增强" }
+func (s *QuotationStrategy) Name() string              { return "引用语增强" }
 func (s *QuotationStrategy) Type() models.StrategyType { return models.StrategyQuotation }
-func (s *QuotationStrategy) Effectiveness() float64   { return 0.41 }
+func (s *QuotationStrategy) Effectiveness() float64    { return 0.41 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *QuotationStrategy) PWCBoost() float64 { return 37.1 }
@@ -36,7 +37,7 @@ func (s *QuotationStrategy) Preprocess(content string, req *models.OptimizationR
 		if trimmed == "" {
 			continue
 		}
-		sentences := splitSentences(line)
+		sentences := util.SplitSentences(line)
 		for j, sen := range sentences {
 			if conclusionRe.MatchString(sen) {
 				sentences[j] = sen + "[关键结论]"

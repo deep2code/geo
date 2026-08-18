@@ -34,7 +34,7 @@ type NAPInfo struct {
 
 // NAPEntry 单个目录上"找到的" NAP 记录及其与基准的匹配结果。
 type NAPEntry struct {
-	Source  string `json:"source"`  // google/gaode/baidu/yelp/dianping
+	Source  string `json:"source"` // google/gaode/baidu/yelp/dianping
 	Name    string `json:"name"`
 	Address string `json:"address"`
 	Phone   string `json:"phone"`
@@ -57,8 +57,8 @@ type GMBProfile struct {
 	Photos        int      `json:"photos"`
 	Reviews       int      `json:"reviews"`
 	AvgRating     float64  `json:"avg_rating"`
-	Posts         int      `json:"posts"`      // 近期发帖数
-	QA            int      `json:"qa"`         // 已回答的 Q&A 数
+	Posts         int      `json:"posts"` // 近期发帖数
+	QA            int      `json:"qa"`    // 已回答的 Q&A 数
 	BusinessHours bool     `json:"business_hours"`
 	Description   bool     `json:"description"`
 	Categories    []string `json:"categories"`
@@ -259,14 +259,14 @@ func checkGMBProfile(ctx context.Context, brandName string) GMBProfile {
 
 	// 模拟：假定品牌已认领 GBP，但资料处于"未优化"的典型状态
 	profile.Claimed = true
-	profile.Description = false      // 商家描述常见缺失
-	profile.BusinessHours = true     // 营业时间通常已填
-	profile.Categories = []string{}  // 模拟未设置业务类别
-	profile.Photos = 3               // 照片数量不足
-	profile.Reviews = 5              // 评价数量不足
-	profile.AvgRating = 4.2          // 模拟平均评分
-	profile.Posts = 0                // 近期无发帖
-	profile.QA = 0                   // 无 Q&A 互动
+	profile.Description = false     // 商家描述常见缺失
+	profile.BusinessHours = true    // 营业时间通常已填
+	profile.Categories = []string{} // 模拟未设置业务类别
+	profile.Photos = 3              // 照片数量不足
+	profile.Reviews = 5             // 评价数量不足
+	profile.AvgRating = 4.2         // 模拟平均评分
+	profile.Posts = 0               // 近期无发帖
+	profile.QA = 0                  // 无 Q&A 互动
 
 	// 收集缺失字段
 	var missing []string

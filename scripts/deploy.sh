@@ -60,6 +60,11 @@ check_env_file() {
         warn "未找到 .env 文件，从模板创建..."
         cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
         info "已创建 .env，请按需编辑: $PROJECT_DIR/.env"
+        warn "⚠ 模板包含默认弱密码（geoPass），生产环境务必修改后重启！"
+    fi
+    # 检测默认弱密码：拒绝带默认口令上线
+    if grep -qE 'geoPass' "$PROJECT_DIR/.env" 2>/dev/null; then
+        warn "⚠ .env 中仍存在默认弱密码（geoPass），生产部署前请修改: GEO_*_MYSQL_DSN / GEO_MYSQL_PASSWORD"
     fi
 }
 
@@ -120,12 +125,19 @@ deploy_binary() {
     sudo mkdir -p "${INSTALL_DIR}"
     sudo cp "bin/${BINARY_NAME}-linux-amd64" "${INSTALL_DIR}/${BINARY_NAME}"
     sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+    # 低端口绑定能力（仅当端口 <1024 时非 root 需要）
+    if (( SERVICE_PORT < 1024 )); then
+        sudo setcap cap_net_bind_service=+ep "${INSTALL_DIR}/${BINARY_NAME}"
+    fi
 
     if [[ -f "$PROJECT_DIR/.env" ]]; then
         sudo cp "$PROJECT_DIR/.env" "${INSTALL_DIR}/.env"
     fi
 
-    step "创建 systemd 服务"
+    step "创建 systemd 服务（非 root 运行）"
+    # 创建专用系统用户（幂等），最小权限原则
+    sudo id geo &>/dev/null || sudo useradd --system --no-create-home --home-dir "${INSTALL_DIR}" --shell /usr/sbin/nologin geo
+    sudo chown -R geo:geo "${INSTALL_DIR}"
     cat <<EOF | sudo tee /etc/systemd/system/geo.service >/dev/null
 [Unit]
 Description=GEO Generative Engine Optimization Service
@@ -133,7 +145,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=geo
+Group=geo
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
 ExecStart=${INSTALL_DIR}/${BINARY_NAME} serve -p ${SERVICE_PORT}
@@ -141,6 +154,8 @@ Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

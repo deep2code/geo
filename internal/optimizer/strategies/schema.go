@@ -12,9 +12,9 @@ import (
 // 若请求含 Enterprise 信息，则额外生成 Organization schema。
 type SchemaStrategy struct{}
 
-func (s *SchemaStrategy) Name() string             { return "JSON-LD结构化数据" }
+func (s *SchemaStrategy) Name() string              { return "JSON-LD结构化数据" }
 func (s *SchemaStrategy) Type() models.StrategyType { return models.StrategySchema }
-func (s *SchemaStrategy) Effectiveness() float64   { return 0.30 }
+func (s *SchemaStrategy) Effectiveness() float64    { return 0.30 }
 
 // PWCBoost 返回理论 PWC 增益百分比（工程扩展策略：结构化数据提升 AI 可读性与引用率）。
 func (s *SchemaStrategy) PWCBoost() float64 { return 14.0 }

@@ -11,9 +11,9 @@ import (
 // 将核心结论放在开头首段（TL;DR 风格），提升关键信息的位置得分。
 type AnswerFirstStrategy struct{}
 
-func (s *AnswerFirstStrategy) Name() string             { return "结论前置" }
+func (s *AnswerFirstStrategy) Name() string              { return "结论前置" }
 func (s *AnswerFirstStrategy) Type() models.StrategyType { return models.StrategyAnswerFirst }
-func (s *AnswerFirstStrategy) Effectiveness() float64   { return 0.24 }
+func (s *AnswerFirstStrategy) Effectiveness() float64    { return 0.24 }
 
 // PWCBoost 返回理论 PWC 增益百分比（工程扩展策略：答案前置提升位置权重，PWC = position-adjusted）。
 func (s *AnswerFirstStrategy) PWCBoost() float64 { return 25.0 }

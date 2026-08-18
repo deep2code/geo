@@ -7,6 +7,11 @@ dist/
 .env.local
 *.log
 
+# 前端依赖与构建产物（避免拖入本地 node_modules 覆盖容器内 npm ci 产物）
+web-app/node_modules/
+web-app/dist/
+web-app/.vite/
+
 # Git
 .git
 .gitignore
@@ -17,6 +22,19 @@ dist/
 *.swp
 *.swo
 
+# 测试与覆盖
+*.test
+*.out
+coverage/
+
 # 文档与示例（不影响运行）
 *.md
 examples/
+
+# 不参与镜像构建的目录
+integrations/
+scripts/
+.github/
+deploy/
+docs/
+web-app/tests/

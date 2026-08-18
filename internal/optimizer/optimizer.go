@@ -82,7 +82,7 @@ func (o *Optimizer) Optimize(ctx context.Context, req *models.OptimizationReques
 			Strategy: strat.Type(), Applied: true,
 			Improvement: strat.Effectiveness(),
 			PWCBoost:    strat.PWCBoost(),
-			Detail: fmt.Sprintf("预处理%s", map[bool]string{true: "已调整", false: "无变更"}[changed]),
+			Detail:      fmt.Sprintf("预处理%s", map[bool]string{true: "已调整", false: "无变更"}[changed]),
 		})
 	}
 

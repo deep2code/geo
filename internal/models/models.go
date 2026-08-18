@@ -56,22 +56,22 @@ const (
 	StrategyUniqueWords    StrategyType = "unique_words"    // 独特词汇
 	StrategyTechnicalTerms StrategyType = "technical_terms" // 技术术语
 	// 扩展工程化策略
-	StrategyStructure   StrategyType = "structure"   // 结构化
-	StrategyFAQ         StrategyType = "faq"         // 问答生成
-	StrategySchema      StrategyType = "schema"      // JSON-LD
+	StrategyStructure   StrategyType = "structure"    // 结构化
+	StrategyFAQ         StrategyType = "faq"          // 问答生成
+	StrategySchema      StrategyType = "schema"       // JSON-LD
 	StrategyAnswerFirst StrategyType = "answer_first" // 结论前置
 )
 
 // OptimizationRequest 优化请求。
 type OptimizationRequest struct {
-	Content        string        `json:"content"`
-	URL            string        `json:"url,omitempty"`
-	Title          string        `json:"title,omitempty"`
-	TargetEngines  []EngineType  `json:"target_engines,omitempty"`
-	DomainType     DomainType    `json:"domain_type,omitempty"`
-	Strategies     []StrategyType `json:"strategies,omitempty"`
-	Enterprise     *Enterprise   `json:"enterprise,omitempty"`
-	Language       string        `json:"language,omitempty"` // 默认 zh
+	Content       string         `json:"content"`
+	URL           string         `json:"url,omitempty"`
+	Title         string         `json:"title,omitempty"`
+	TargetEngines []EngineType   `json:"target_engines,omitempty"`
+	DomainType    DomainType     `json:"domain_type,omitempty"`
+	Strategies    []StrategyType `json:"strategies,omitempty"`
+	Enterprise    *Enterprise    `json:"enterprise,omitempty"`
+	Language      string         `json:"language,omitempty"` // 默认 zh
 }
 
 // Enterprise 企业信息，用于品牌实体一致性增强。
@@ -83,31 +83,31 @@ type Enterprise struct {
 
 // OptimizationResponse 优化响应。
 type OptimizationResponse struct {
-	OptimizedContent string             `json:"optimized_content"`
-	ScoreBefore      float64            `json:"score_before"`
-	ScoreAfter       float64            `json:"score_after"`
-	GeoScore         VisibilityMetrics  `json:"geo_score"`
-	UtilityScore     UtilityMetrics     `json:"utility_score"`
+	OptimizedContent  string            `json:"optimized_content"`
+	ScoreBefore       float64           `json:"score_before"`
+	ScoreAfter        float64           `json:"score_after"`
+	GeoScore          VisibilityMetrics `json:"geo_score"`
+	UtilityScore      UtilityMetrics    `json:"utility_score"`
 	AppliedStrategies []StrategyResult  `json:"applied_strategies"`
-	Recommendations  []Recommendation   `json:"recommendations,omitempty"`
-	GeneratedAssets  *GeneratedAssets   `json:"generated_assets,omitempty"`
+	Recommendations   []Recommendation  `json:"recommendations,omitempty"`
+	GeneratedAssets   *GeneratedAssets  `json:"generated_assets,omitempty"`
 }
 
 // StrategyResult 单个策略执行结果。
 type StrategyResult struct {
-	Strategy  StrategyType `json:"strategy"`
-	Applied   bool         `json:"applied"`
-	Improvement float64    `json:"improvement"` // 评分提升
-	PWCBoost  float64      `json:"pwc_boost"`   // 理论 PWC 增益百分比
-	Detail    string       `json:"detail,omitempty"`
+	Strategy    StrategyType `json:"strategy"`
+	Applied     bool         `json:"applied"`
+	Improvement float64      `json:"improvement"` // 评分提升
+	PWCBoost    float64      `json:"pwc_boost"`   // 理论 PWC 增益百分比
+	Detail      string       `json:"detail,omitempty"`
 }
 
 // StrategyInfo 策略元信息（供 API 列表展示）。
 type StrategyInfo struct {
-	Type        StrategyType `json:"type"`
-	Name        string       `json:"name"`
-	Effectiveness float64    `json:"effectiveness"`
-	PWCBoost    float64      `json:"pwc_boost"` // 理论 PWC 增益百分比
+	Type          StrategyType `json:"type"`
+	Name          string       `json:"name"`
+	Effectiveness float64      `json:"effectiveness"`
+	PWCBoost      float64      `json:"pwc_boost"` // 理论 PWC 增益百分比
 }
 
 // Recommendation 优化建议。
@@ -119,8 +119,8 @@ type Recommendation struct {
 
 // GeneratedAssets 生成的结构化资产。
 type GeneratedAssets struct {
-	JSONLD     string `json:"json_ld,omitempty"`
-	LLMsTxt    string `json:"llms_txt,omitempty"`
+	JSONLD      string `json:"json_ld,omitempty"`
+	LLMsTxt     string `json:"llms_txt,omitempty"`
 	LLMsFullTxt string `json:"llms_full_txt,omitempty"`
 }
 
@@ -128,41 +128,41 @@ type GeneratedAssets struct {
 //
 // V(d) = PositionScore × Relevance 的聚合。
 type VisibilityMetrics struct {
-	CitationFrequency       int     `json:"citation_frequency"`         // 引用次数
-	CitationOrder           int     `json:"citation_order"`             // 引用排名(1=最佳)
-	PositionScore           float64 `json:"position_score"`            // 位置得分
-	TokenCount              int     `json:"token_count"`               // 被引用token数
-	SemanticSimilarity      float64 `json:"semantic_similarity"`       // 语义相似度
-	RelativeCitationScore   float64 `json:"relative_citation_score"`   // 相对引用得分
-	OverallScore            float64 `json:"overall_score"`             // 综合GEO得分
+	CitationFrequency     int     `json:"citation_frequency"`      // 引用次数
+	CitationOrder         int     `json:"citation_order"`          // 引用排名(1=最佳)
+	PositionScore         float64 `json:"position_score"`          // 位置得分
+	TokenCount            int     `json:"token_count"`             // 被引用token数
+	SemanticSimilarity    float64 `json:"semantic_similarity"`     // 语义相似度
+	RelativeCitationScore float64 `json:"relative_citation_score"` // 相对引用得分
+	OverallScore          float64 `json:"overall_score"`           // 综合GEO得分
 }
 
 // UtilityMetrics 效用指标（来自 AutoGEO），保证优化不破坏 AI 回答质量。
 type UtilityMetrics struct {
-	CitationQuality   float64 `json:"citation_quality"`
-	KeypointCoverage  float64 `json:"keypoint_coverage"`
-	ResponseQuality   float64 `json:"response_quality"`
-	OverallScore      float64 `json:"overall_score"`
+	CitationQuality  float64 `json:"citation_quality"`
+	KeypointCoverage float64 `json:"keypoint_coverage"`
+	ResponseQuality  float64 `json:"response_quality"`
+	OverallScore     float64 `json:"overall_score"`
 }
 
 // ContentAnalysis 内容分析结果，包含各类 GEO 信号检测。
 type ContentAnalysis struct {
-	URL           string         `json:"url,omitempty"`
-	RawText       string         `json:"raw_text"`
-	WordCount     int            `json:"word_count"`
-	CitabilitySignals  map[string]bool `json:"citability_signals"`
-	StructureSignals   map[string]bool `json:"structure_signals"`
-	NegativeSignals    []string        `json:"negative_signals,omitempty"`
-	EvergreenScore     int             `json:"evergreen_score"`
-	AnalyzedAt         time.Time       `json:"analyzed_at"`
+	URL               string          `json:"url,omitempty"`
+	RawText           string          `json:"raw_text"`
+	WordCount         int             `json:"word_count"`
+	CitabilitySignals map[string]bool `json:"citability_signals"`
+	StructureSignals  map[string]bool `json:"structure_signals"`
+	NegativeSignals   []string        `json:"negative_signals,omitempty"`
+	EvergreenScore    int             `json:"evergreen_score"`
+	AnalyzedAt        time.Time       `json:"analyzed_at"`
 }
 
 // Citation AI 引擎回答中的引用。
 type Citation struct {
-	URL       string  `json:"url"`
-	Title     string  `json:"title,omitempty"`
-	Snippet   string  `json:"snippet,omitempty"`
-	Position  int     `json:"position"` // 在参考资料中的位置
+	URL      string `json:"url"`
+	Title    string `json:"title,omitempty"`
+	Snippet  string `json:"snippet,omitempty"`
+	Position int    `json:"position"` // 在参考资料中的位置
 }
 
 // TokenUsage 单次 API 调用的 token 用量。
@@ -187,11 +187,11 @@ type EngineResponse struct {
 
 // AIEnginePreset AI 引擎预设偏好。
 type AIEnginePreset struct {
-	Engine           EngineType `json:"engine"`
-	PreferredStrategies []StrategyType `json:"preferred_strategies"`
-	MaxTokens         int       `json:"max_tokens"`
-	Temperature       float64   `json:"temperature"`
-	Weights           map[string]float64 `json:"weights"` // 各信号权重
+	Engine              EngineType         `json:"engine"`
+	PreferredStrategies []StrategyType     `json:"preferred_strategies"`
+	MaxTokens           int                `json:"max_tokens"`
+	Temperature         float64            `json:"temperature"`
+	Weights             map[string]float64 `json:"weights"` // 各信号权重
 }
 
 // ScoreBreakdown 评分明细。

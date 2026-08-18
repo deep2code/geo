@@ -10,9 +10,9 @@ import (
 // 用通俗易懂的语言改写内容，面向普通读者，降低理解门槛。
 type EasyUnderstandStrategy struct{}
 
-func (s *EasyUnderstandStrategy) Name() string             { return "易懂性优化" }
+func (s *EasyUnderstandStrategy) Name() string              { return "易懂性优化" }
 func (s *EasyUnderstandStrategy) Type() models.StrategyType { return models.StrategyEasyUnderstand }
-func (s *EasyUnderstandStrategy) Effectiveness() float64   { return 0.15 }
+func (s *EasyUnderstandStrategy) Effectiveness() float64    { return 0.15 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *EasyUnderstandStrategy) PWCBoost() float64 { return 5.5 }

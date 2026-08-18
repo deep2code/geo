@@ -382,12 +382,12 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"image":           0.05,
 		}
 		return &VerticalConfig{
-			Vertical:    v,
-			Label:       "SaaS/软件",
-			Description: "软件即服务/云平台，强调 Schema/JSON-LD、API 文档与定价页的可引用性。",
+			Vertical:     v,
+			Label:        "SaaS/软件",
+			Description:  "软件即服务/云平台，强调 Schema/JSON-LD、API 文档与定价页的可引用性。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
-				PreScoreChecks:         []CheckFunc{saasPreCheck},
+				PreScoreChecks: []CheckFunc{saasPreCheck},
 				PostScoreRecommendations: []RecFunc{
 					func(profile map[string]interface{}, score float64) []Recommendation {
 						return RecommendationsFor(v, score)
@@ -407,12 +407,12 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"local_seo":       0.30,
 		}
 		return &VerticalConfig{
-			Vertical:    v,
-			Label:       "本地服务",
-			Description: "线下门店/本地服务商，强调 NAP 一致性、GMB 完备度与本地引用。",
+			Vertical:     v,
+			Label:        "本地服务",
+			Description:  "线下门店/本地服务商，强调 NAP 一致性、GMB 完备度与本地引用。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
-				PreScoreChecks:         []CheckFunc{localPreCheck},
+				PreScoreChecks: []CheckFunc{localPreCheck},
 				PostScoreRecommendations: []RecFunc{
 					func(profile map[string]interface{}, score float64) []Recommendation {
 						return RecommendationsFor(v, score)
@@ -432,12 +432,12 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"image":           0.05,
 		}
 		return &VerticalConfig{
-			Vertical:    v,
-			Label:       "电商",
-			Description: "在线零售/电商，强调产品 Schema、Google Shopping 与评价结构化数据。",
+			Vertical:     v,
+			Label:        "电商",
+			Description:  "在线零售/电商，强调产品 Schema、Google Shopping 与评价结构化数据。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
-				PreScoreChecks:         []CheckFunc{ecommercePreCheck},
+				PreScoreChecks: []CheckFunc{ecommercePreCheck},
 				PostScoreRecommendations: []RecFunc{
 					func(profile map[string]interface{}, score float64) []Recommendation {
 						return RecommendationsFor(v, score)
@@ -457,12 +457,12 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"image":           0.05,
 		}
 		return &VerticalConfig{
-			Vertical:    v,
-			Label:       "媒体/出版",
-			Description: "媒体/出版/内容站，强调内容深度、E-E-A-T 与 Article 结构化数据。",
+			Vertical:     v,
+			Label:        "媒体/出版",
+			Description:  "媒体/出版/内容站，强调内容深度、E-E-A-T 与 Article 结构化数据。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
-				PreScoreChecks:         []CheckFunc{publisherPreCheck},
+				PreScoreChecks: []CheckFunc{publisherPreCheck},
 				PostScoreRecommendations: []RecFunc{
 					func(profile map[string]interface{}, score float64) []Recommendation {
 						return RecommendationsFor(v, score)
@@ -482,12 +482,12 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"image":           0.05,
 		}
 		return &VerticalConfig{
-			Vertical:    v,
-			Label:       "代理/咨询",
-			Description: "代理/咨询/服务公司，强调权威信号、案例研究与客户证言。",
+			Vertical:     v,
+			Label:        "代理/咨询",
+			Description:  "代理/咨询/服务公司，强调权威信号、案例研究与客户证言。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
-				PreScoreChecks:         []CheckFunc{agencyPreCheck},
+				PreScoreChecks: []CheckFunc{agencyPreCheck},
 				PostScoreRecommendations: []RecFunc{
 					func(profile map[string]interface{}, score float64) []Recommendation {
 						return RecommendationsFor(v, score)
@@ -508,9 +508,9 @@ func buildConfig(v Vertical) *VerticalConfig {
 			"image":           0.05,
 		}
 		return &VerticalConfig{
-			Vertical:    VerticalUnknown,
-			Label:       "未识别",
-			Description: "未识别行业的默认配置，采用通用 BVS 维度权重。",
+			Vertical:     VerticalUnknown,
+			Label:        "未识别",
+			Description:  "未识别行业的默认配置，采用通用 BVS 维度权重。",
 			ScoreWeights: w,
 			Hooks: AuditHooks{
 				PostScoreRecommendations: []RecFunc{

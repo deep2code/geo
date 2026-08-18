@@ -10,9 +10,9 @@ import (
 // 将弱化措辞替换为权威表述，并增加权威机构与专家背书。
 type AuthoritativeStrategy struct{}
 
-func (s *AuthoritativeStrategy) Name() string             { return "权威语气增强" }
+func (s *AuthoritativeStrategy) Name() string              { return "权威语气增强" }
 func (s *AuthoritativeStrategy) Type() models.StrategyType { return models.StrategyAuthoritative }
-func (s *AuthoritativeStrategy) Effectiveness() float64   { return 0.25 }
+func (s *AuthoritativeStrategy) Effectiveness() float64    { return 0.25 }
 
 // PWCBoost 返回理论 PWC 增益百分比（Princeton GEO 论文基准）。
 func (s *AuthoritativeStrategy) PWCBoost() float64 { return 15.0 }

@@ -5,10 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/netip"
+	"os"
 	"strings"
+	"sync"
 	"time"
 )
+
+// writeInternalError 内部错误：日志记录详情，响应仅给通用信息（防泄露 DSN/SQL/路径等内部细节）。
+func writeInternalError(w http.ResponseWriter, action string, err error) {
+	slog.Error("auth 内部错误", slog.String("action", action), slog.String("err", err.Error()))
+	writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: "内部错误，请稍后重试", Code: "INTERNAL"})
+}
 
 // ============================================================
 // 请求 / 响应结构
@@ -47,8 +57,8 @@ type changePasswordRequest struct {
 }
 
 type loginResponse struct {
-	Tokens     TokenPair          `json:"tokens"`
-	User       *User              `json:"user"`
+	Tokens     TokenPair           `json:"tokens"`
+	User       *User               `json:"user"`
 	Workspaces []WorkspaceWithRole `json:"workspaces"`
 }
 
@@ -76,20 +86,96 @@ func readJSON(r *http.Request, v any) error {
 	return nil
 }
 
-// requestIP 兼容：从 X-Forwarded-For 最后一个地址或 RemoteAddr 取。
-func requestIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := strings.Split(fwd, ",")
-		ip := strings.TrimSpace(parts[len(parts)-1])
-		if ip != "" {
-			return ip
+// ---- 可信代理与真实客户端 IP ----
+//
+// 与 server 中间件策略一致：仅当 RemoteAddr 属于 GEO_TRUSTED_PROXIES
+// 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被任意客户端伪造
+// 绕过审计/限流。auth 包内独立实现（不可反向依赖 server 包）。
+
+var (
+	trustedProxyOnce sync.Once
+	trustedProxyNets []netip.Prefix
+)
+
+// trustedProxies 解析 GEO_TRUSTED_PROXIES（逗号分隔的 IP/CIDR）。
+func trustedProxies() []netip.Prefix {
+	trustedProxyOnce.Do(func() {
+		raw := strings.TrimSpace(os.Getenv("GEO_TRUSTED_PROXIES"))
+		if raw == "" {
+			return
+		}
+		for _, part := range strings.Split(raw, ",") {
+			p := strings.TrimSpace(part)
+			if p == "" {
+				continue
+			}
+			if !strings.Contains(p, "/") {
+				if addr, err := netip.ParseAddr(p); err == nil {
+					trustedProxyNets = append(trustedProxyNets, netip.PrefixFrom(addr, addr.BitLen()))
+				}
+				continue
+			}
+			if prefix, err := netip.ParsePrefix(p); err == nil {
+				trustedProxyNets = append(trustedProxyNets, prefix)
+			}
+		}
+	})
+	return trustedProxyNets
+}
+
+func isTrustedProxy(ipStr string) bool {
+	if ipStr == "" {
+		return false
+	}
+	addr, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return false
+	}
+	for _, p := range trustedProxies() {
+		if p.Contains(addr) {
+			return true
 		}
 	}
-	remote := r.RemoteAddr
-	if idx := strings.LastIndex(remote, ":"); idx > 0 {
-		return remote[:idx]
+	return false
+}
+
+func stripPort(hostport string) string {
+	if strings.HasPrefix(hostport, "[") { // [::1]:8080
+		if i := strings.LastIndex(hostport, "]"); i > 0 {
+			return hostport[1:i]
+		}
 	}
-	return remote
+	if i := strings.LastIndex(hostport, ":"); i > 0 {
+		// 避免无端口的 IPv6 字面被误切
+		if !strings.Contains(hostport[i+1:], ":") {
+			return hostport[:i]
+		}
+	}
+	return hostport
+}
+
+// requestIP 获取真实客户端 IP（仅信任来自可信代理的转发头）。
+func requestIP(r *http.Request) string {
+	remoteIP := stripPort(r.RemoteAddr)
+	if !isTrustedProxy(remoteIP) {
+		return remoteIP
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		for i := range parts {
+			ip := strings.TrimSpace(parts[i])
+			if ip == "" {
+				continue
+			}
+			if !isTrustedProxy(ip) {
+				return ip
+			}
+		}
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	return remoteIP
 }
 
 func requestUA(r *http.Request) string {
@@ -130,7 +216,7 @@ func (h HandlerSet) Register(w http.ResponseWriter, r *http.Request) {
 	// 首用户直接创建。
 	hasUsers, err := h.Svc.Store().HasUsers()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: err.Error()})
+		writeInternalError(w, "register.has_users", err)
 		return
 	}
 	if hasUsers {
@@ -154,7 +240,7 @@ func (h HandlerSet) Register(w http.ResponseWriter, r *http.Request) {
 	wss, _ := h.Svc.Store().ListWorkspacesWithRole(u.ID)
 	pair, err := h.Svc.issueTokenPair(u, ws.ID, RoleOwner)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: "签发令牌失败: " + err.Error()})
+		writeInternalError(w, "register.issue_token", err)
 		return
 	}
 	_ = h.Svc.Store().UpdateLastLogin(u.ID)
@@ -254,14 +340,14 @@ func (h HandlerSet) Me(w http.ResponseWriter, r *http.Request) {
 	}
 	wss, err := h.Svc.Store().ListWorkspacesWithRole(u.ID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: err.Error()})
+		writeInternalError(w, "me.list_workspaces", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user":        u,
-		"workspaces":  wss,
+		"user":         u,
+		"workspaces":   wss,
 		"workspace_id": WorkspaceIDFromContext(r.Context()),
-		"role":        RoleFromContext(r.Context()),
+		"role":         RoleFromContext(r.Context()),
 	})
 }
 
@@ -381,7 +467,7 @@ func (h HandlerSet) AddMember(w http.ResponseWriter, r *http.Request) {
 	// 查找目标用户（不存在则后续走邀请邮件流程；当前版本需先注册）
 	target, err := h.Svc.Store().GetUserByEmail(req.Email)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: err.Error()})
+		writeInternalError(w, "member.get_user", err)
 		return
 	}
 	if target == nil {
@@ -393,11 +479,11 @@ func (h HandlerSet) AddMember(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().Unix()
 	_, e := h.Svc.Store().db.Exec(
-		`INSERT OR IGNORE INTO memberships(user_id,workspace_id,role,joined_at) VALUES(?,?,?,?)`,
+		`INSERT IGNORE INTO memberships(user_id,workspace_id,role,joined_at) VALUES(?,?,?,?)`,
 		target.ID, wid, string(req.Role), now,
 	)
 	if e != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: e.Error()})
+		writeInternalError(w, "member.add", e)
 		return
 	}
 	actor := UserFromContext(r.Context())
@@ -458,7 +544,7 @@ func (h HandlerSet) ChangeRole(w http.ResponseWriter, r *http.Request) {
 		"UPDATE memberships SET role=? WHERE user_id=? AND workspace_id=?",
 		string(req.Role), req.UserID, wid,
 	); e != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: e.Error()})
+		writeInternalError(w, "member.change_role", e)
 		return
 	}
 	actor := UserFromContext(r.Context())
@@ -509,7 +595,7 @@ func (h HandlerSet) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		"DELETE FROM memberships WHERE user_id=? AND workspace_id=?",
 		req.UserID, wid,
 	); e != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: e.Error()})
+		writeInternalError(w, "member.remove", e)
 		return
 	}
 	actor := UserFromContext(r.Context())
@@ -552,7 +638,7 @@ func (h HandlerSet) AdminAuditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	logs, err := h.Svc.Store().QueryAuditLog(action, limit, offset)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: err.Error()})
+		writeInternalError(w, "audit_log.query", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "count": len(logs), "limit": limit, "offset": offset})

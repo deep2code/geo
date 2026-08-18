@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -324,7 +324,7 @@ func (c *mysqlCacheStore) compactLocked() error {
 	if len(keys) == 0 {
 		return nil
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 	const batch = 500
 	for i := 0; i < len(keys); i += batch {
 		end := i + batch
