@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"my-geo/internal/dbprovider"
+	"my-geo/internal/migrate"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -25,7 +26,7 @@ type mysqlCacheStore struct {
 	ttl      time.Duration
 }
 
-const defaultMySQLDSN = "geo_cache:geo_cache_pass@tcp(127.0.0.1:3306)/geo_cache?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci&tls=false"
+const defaultMySQLDSN = "geo_cache:geo_cache_pass@tcp(127.0.0.1:3306)/geo_cache?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 func resolveDSN(filePath string) string {
 	if filePath != "" {
@@ -72,45 +73,12 @@ func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
 	return c, nil
 }
 
-func isDuplicateSchemaError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "duplicate key name") {
-		return true
-	}
-	if strings.Contains(msg, "already exists") {
-		return true
-	}
-	return false
-}
-
-func (c *mysqlCacheStore) runDDL(ddl string) error {
-	_, err := c.db.Exec(ddl)
-	if isDuplicateSchemaError(err) {
-		return nil
-	}
-	return err
-}
-
 func (c *mysqlCacheStore) initSchema() error {
-	createTable := `CREATE TABLE IF NOT EXISTS chinacheck_cache (
-		cache_key VARCHAR(512) PRIMARY KEY,
-		value MEDIUMBLOB NOT NULL,
-		saved_at BIGINT NOT NULL,
-		expire_at BIGINT NULL
-	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-	if err := c.runDDL(createTable); err != nil {
-		return fmt.Errorf("chinacheck/mysql: create table failed: %w", err)
-	}
-	idxExpire := `CREATE INDEX idx_expire ON chinacheck_cache(expire_at)`
-	if err := c.runDDL(idxExpire); err != nil {
-		return fmt.Errorf("chinacheck/mysql: create idx_expire failed: %w", err)
-	}
-	idxSaved := `CREATE INDEX idx_saved ON chinacheck_cache(saved_at)`
-	if err := c.runDDL(idxSaved); err != nil {
-		return fmt.Errorf("chinacheck/mysql: create idx_saved failed: %w", err)
+	// 应用版本化迁移（schema 统一由 internal/migrate 管理）。
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := migrate.Migrate(ctx, c.db, "chinacheck"); err != nil {
+		return fmt.Errorf("chinacheck/mysql: schema init failed: %w", err)
 	}
 	return nil
 }

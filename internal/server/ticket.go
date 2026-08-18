@@ -3,11 +3,13 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"my-geo/internal/httputil"
 )
 
 // Ticket 工单。
@@ -153,17 +155,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	categoryFilter := strings.TrimSpace(r.URL.Query().Get("category"))
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page <= 0 {
-		page = 1
-	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	page, limit := httputil.PageLimit(r, 20, 100)
 	// 收集所有工单
 	var tickets []*Ticket
 	ticketStore.Range(func(_, v any) bool {
@@ -177,14 +169,10 @@ func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 		tickets = append(tickets, t)
 		return true
 	})
-	// 按创建时间倒序
-	for i := 0; i < len(tickets)-1; i++ {
-		for j := i + 1; j < len(tickets); j++ {
-			if tickets[i].CreatedAt.Before(tickets[j].CreatedAt) {
-				tickets[i], tickets[j] = tickets[j], tickets[i]
-			}
-		}
-	}
+	// 按创建时间倒序（新→旧）
+	slices.SortFunc(tickets, func(a, b *Ticket) int {
+		return b.CreatedAt.Compare(a.CreatedAt)
+	})
 	total := len(tickets)
 	start := (page - 1) * limit
 	if start > total {

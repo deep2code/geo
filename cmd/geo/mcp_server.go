@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
 	"my-geo/internal/brand/mcpserver"
+	"my-geo/internal/config"
 	"my-geo/internal/server"
 )
 
@@ -54,14 +56,16 @@ func newMCPServerCmd() *cobra.Command {
 			}
 
 			// 启动 MCP Server
-			srv := mcpserver.New(brandEngine, geoEngine, ":"+port)
-			fmt.Printf("MCP Server listening on http://localhost:%s/mcp\n", port)
-			fmt.Println("工具列表：")
-			fmt.Println("  geo_brand_audit       品牌可见度审计")
-			fmt.Println("  geo_optimize_content  内容 GEO 优化")
-			fmt.Println("  geo_search_companies  离线工商库搜索")
-			fmt.Println("  geo_chinacheck        实时工商核验")
-			fmt.Println("  geo_readiness_audit   AI 可见度就绪审计")
+			// 鉴权：配置 GEO_MCP_API_KEY 后远程客户端需携带 Bearer / X-API-Key；
+			// 未配置时仅允许本机回环地址访问（MCP 客户端通常运行在 localhost）。
+			apiKey := config.Env("GEO_MCP_API_KEY", "")
+			srv := mcpserver.New(brandEngine, geoEngine, ":"+port, apiKey)
+			if apiKey == "" {
+				slog.Warn("GEO_MCP_API_KEY 未配置，MCP Server 仅允许本机访问；远程调用请设置该环境变量")
+			}
+			slog.Info("MCP Server 已启动",
+				slog.String("addr", "http://localhost:"+port+"/mcp"),
+				slog.Bool("auth", apiKey != ""))
 			return srv.Start()
 		},
 	}

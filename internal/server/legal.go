@@ -194,7 +194,7 @@ func randShortID() string {
 // GET /api/v1/legal/data-access
 func (s *Server) handleLegalDataAccess(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	_ = s.recordDataRightsEvent("access", r) // 占位：保留审计日志
@@ -208,7 +208,7 @@ func (s *Server) handleLegalDataAccess(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/legal/data-export
 func (s *Server) handleLegalDataExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	_ = s.recordDataRightsEvent("export", r)
@@ -222,7 +222,7 @@ func (s *Server) handleLegalDataExport(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/legal/data-delete（语义化：产生副作用用 POST）。
 func (s *Server) handleLegalDataDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 POST"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	_ = s.recordDataRightsEvent("delete", r)
@@ -249,7 +249,7 @@ func (s *Server) recordDataRightsEvent(action string, r *http.Request) error {
 // GET /api/v1/meta/compliance
 func (s *Server) handleMetaCompliance(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	out := map[string]any{

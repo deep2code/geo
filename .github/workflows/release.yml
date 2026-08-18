@@ -85,9 +85,10 @@ jobs:
         env:
           VERSION: ${{ steps.tag.outputs.version }}
           COMMIT: ${{ github.sha }}
-          BUILD_AT: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
         run: |
           mkdir -p dist
+          # GitHub Actions env 块不支持命令替换，BUILD_AT 需在 shell 内求值
+          BUILD_AT=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
           LDFLAGS="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}"
 
           # 定义目标平台

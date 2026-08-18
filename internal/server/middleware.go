@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"my-geo/internal/auth"
+	"my-geo/internal/httputil"
 	"my-geo/internal/util"
 )
 
@@ -27,58 +27,9 @@ import (
 //   - GEO_TRUSTED_PROXIES：可信代理列表（逗号分隔的 IP/CIDR）。设置后 X-Forwarded-For 仅在
 //     RemoteAddr 属于可信代理时才解析；否则直接用 RemoteAddr，避免 IP 伪造绕过限流/WAF。
 var (
-	corsOrigins    = parseCORSOrigins()
-	apiKey         = strings.TrimSpace(os.Getenv("GEO_API_KEY"))
-	trustedProxies = parseTrustedProxies() // 可信代理（CIDR + 具体 IP）
+	corsOrigins = parseCORSOrigins()
+	apiKey      = strings.TrimSpace(os.Getenv("GEO_API_KEY"))
 )
-
-// parseTrustedProxies 解析 GEO_TRUSTED_PROXIES 为 CIDR 列表；未设置时默认信任
-// 常见私有/回环子网（本机单机部署 + VPC Nginx Ingress/Cloudflare LB 常见场景）。
-// 环境变量示例：GEO_TRUSTED_PROXIES="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1,::1,fc00::/7"
-func parseTrustedProxies() []*net.IPNet {
-	var nets []*net.IPNet
-	raw := strings.TrimSpace(os.Getenv("GEO_TRUSTED_PROXIES"))
-	if raw == "" {
-		// 默认信任：回环 + 私有子网。企业生产应显式精确配置。
-		raw = "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7"
-	}
-	for _, p := range strings.Split(raw, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		// 支持纯 IP（自动加 /32 或 /128）
-		if !strings.Contains(p, "/") {
-			if strings.Contains(p, ":") {
-				p = p + "/128"
-			} else {
-				p = p + "/32"
-			}
-		}
-		_, n, err := net.ParseCIDR(p)
-		if err != nil {
-			slog.Warn("GEO_TRUSTED_PROXIES 跳过非法条目",
-				slog.String("entry", p), slog.String("error", err.Error()))
-			continue
-		}
-		nets = append(nets, n)
-	}
-	return nets
-}
-
-// isTrustedProxy 检查一个 IP 是否属于可信代理列表。
-func isTrustedProxy(ipStr string) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-	}
-	for _, n := range trustedProxies {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
 
 func parseCORSOrigins() map[string]bool {
 	raw := strings.TrimSpace(os.Getenv("GEO_CORS_ORIGINS"))
@@ -777,68 +728,9 @@ func (s *Server) withGzip(h http.Handler) http.Handler {
 
 // ===== 工具函数 =====
 
-// stripPort 从 "IP:port" / "[IPv6]:port" 中提取裸 IP。
-func stripPort(addr string) string {
-	if addr == "" {
-		return ""
-	}
-	// IPv6 带括号
-	if strings.HasPrefix(addr, "[") {
-		if i := strings.LastIndex(addr, "]:"); i > 0 {
-			return addr[1:i]
-		}
-		return addr
-	}
-	if i := strings.LastIndex(addr, ":"); i > 0 {
-		// 避免 IPv6 字面（无端口无括号）被误切
-		if !strings.Contains(addr[i+1:], ":") {
-			return addr[:i]
-		}
-	}
-	return addr
-}
-
-// clientIP 获取真实客户端 IP，默认仅当 RemoteAddr 属于可信代理（GEO_TRUSTED_PROXIES）
-// 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被任意客户端伪造绕过限流/WAF。
-//
-// 解析策略（仅在 RemoteAddr 可信时）：
-//
-//	X-Forwarded-For: "client, proxy1, proxy2, ..." — 取第一个非可信代理的地址作为真实客户端。
-//	退而求其次：X-Real-IP。
-//	最后：RemoteAddr 本身。
-func clientIP(r *http.Request) string {
-	remoteIP := stripPort(r.RemoteAddr)
-
-	// RemoteAddr 不在可信代理列表：直接拒绝相信任何转发头
-	if !isTrustedProxy(remoteIP) {
-		return remoteIP
-	}
-
-	// 优先 X-Forwarded-For：从左到右，第一个"不在可信代理"的即真实客户端
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := strings.Split(fwd, ",")
-		for i := range parts {
-			ip := strings.TrimSpace(parts[i])
-			if ip == "" {
-				continue
-			}
-			if !isTrustedProxy(ip) {
-				return ip
-			}
-		}
-		// 所有段都在可信代理（极少数多层 LB），取第一个
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-
-	// 其次 X-Real-IP（Nginx 常见）
-	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
-		return real
-	}
-
-	return remoteIP
-}
+// clientIP 获取真实客户端 IP（实现见 httputil：仅信任 GEO_TRUSTED_PROXIES
+// 才解析 X-Forwarded-For / X-Real-IP，避免 IP 伪造绕过限流/WAF）。
+func clientIP(r *http.Request) string { return httputil.ClientIP(r) }
 
 // envInt 读取整型环境变量，未设置或解析失败返回 fallback。
 func envInt(key string, fallback int) int {

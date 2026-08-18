@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -35,10 +36,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	_ "github.com/go-sql-driver/mysql"
 
 	"my-geo/internal/dbprovider"
+	"my-geo/internal/migrate"
 	"my-geo/internal/util"
 )
 
@@ -142,6 +145,9 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	LastLoginAt  time.Time `json:"last_login_at,omitempty"`
 	Verified     bool      `json:"verified"`
+	// TokenVersion 会话版本号：改密 / 管理员手动吊销时 +1，
+	// 使该用户此前签发的全部 JWT access token 立即失效。
+	TokenVersion int64 `json:"-"`
 }
 
 // Workspace 工作区（多租户隔离边界）。
@@ -207,6 +213,7 @@ type jwtClaims struct {
 	Exp         int64  `json:"exp"`
 	Iat         int64  `json:"iat"`
 	Type        string `json:"typ"` // "access" / "refresh"
+	V           int64  `json:"v"`   // 用户 token 版本号（改密/手动吊销后 +1，旧 token 立即失效）
 }
 
 // getJWTSecret 从环境变量获取 JWT 密钥，缺省时每次启动生成一次性密钥。
@@ -467,76 +474,6 @@ func RequirePermission(ctx context.Context, p Permission) error {
 // 6. MySQL Store
 // ============================================================
 
-const authSchema = `
-CREATE TABLE IF NOT EXISTS users (
-    id            VARCHAR(64) PRIMARY KEY,
-    email         VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    display_name  VARCHAR(255) NOT NULL DEFAULT '',
-    created_at    BIGINT NOT NULL,
-    last_login_at BIGINT NOT NULL DEFAULT 0,
-    verified      TINYINT(1) NOT NULL DEFAULT 0
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS workspaces (
-    id         VARCHAR(64) PRIMARY KEY,
-    name       VARCHAR(255) NOT NULL,
-    created_at BIGINT NOT NULL,
-    owner_id   VARCHAR(64) NOT NULL,
-    plan       VARCHAR(255) NOT NULL DEFAULT 'free'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS memberships (
-    user_id      VARCHAR(64) NOT NULL,
-    workspace_id VARCHAR(64) NOT NULL,
-    role         VARCHAR(255) NOT NULL,
-    joined_at    BIGINT NOT NULL,
-    PRIMARY KEY (user_id, workspace_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_memberships_user ON memberships(user_id);
-CREATE INDEX idx_memberships_ws ON memberships(workspace_id);
-
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    jti          VARCHAR(64) PRIMARY KEY,
-    user_id      VARCHAR(64) NOT NULL,
-    workspace_id VARCHAR(64),
-    expires_at   BIGINT NOT NULL,
-    created_at   BIGINT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_refresh_user ON refresh_tokens(user_id);
-
-CREATE TABLE IF NOT EXISTS admin_audit_log (
-    id           VARCHAR(64) PRIMARY KEY,
-    timestamp    BIGINT NOT NULL,
-    actor_id     VARCHAR(64),
-    actor        VARCHAR(255),
-    action       VARCHAR(255) NOT NULL,
-    target       VARCHAR(255),
-    details_json TEXT,
-    ip           VARCHAR(255),
-    user_agent   TEXT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-CREATE INDEX idx_audit_time ON admin_audit_log(timestamp DESC);
-CREATE INDEX idx_audit_action ON admin_audit_log(action);
-`
-
-// runDDL 执行 DDL 语句；对重复索引名/已存在错误静默跳过。
-func runDDL(db *sql.DB, ddl string) error {
-	_, err := db.Exec(ddl)
-	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "Duplicate key name") ||
-			strings.Contains(msg, "already exists") ||
-			strings.Contains(msg, "Duplicate column name") {
-			return nil
-		}
-		return err
-	}
-	return nil
-}
-
 // Store 账号/权限持久化（MySQL 实现）。
 type Store struct {
 	mu  sync.RWMutex
@@ -595,61 +532,11 @@ func OpenStore() (*Store, error) {
 		return nil, fmt.Errorf("set mysql session: %w", err)
 	}
 
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS users (
-			id            VARCHAR(64) PRIMARY KEY,
-			email         VARCHAR(255) NOT NULL UNIQUE,
-			password_hash VARCHAR(255) NOT NULL,
-			display_name  VARCHAR(255) NOT NULL DEFAULT '',
-			created_at    BIGINT NOT NULL,
-			last_login_at BIGINT NOT NULL DEFAULT 0,
-			verified      TINYINT(1) NOT NULL DEFAULT 0
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-		`CREATE TABLE IF NOT EXISTS workspaces (
-			id         VARCHAR(64) PRIMARY KEY,
-			name       VARCHAR(255) NOT NULL,
-			created_at BIGINT NOT NULL,
-			owner_id   VARCHAR(64) NOT NULL,
-			plan       VARCHAR(255) NOT NULL DEFAULT 'free'
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-		`CREATE TABLE IF NOT EXISTS memberships (
-			user_id      VARCHAR(64) NOT NULL,
-			workspace_id VARCHAR(64) NOT NULL,
-			role         VARCHAR(255) NOT NULL,
-			joined_at    BIGINT NOT NULL,
-			PRIMARY KEY (user_id, workspace_id),
-			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-		`CREATE INDEX idx_memberships_user ON memberships(user_id)`,
-		`CREATE INDEX idx_memberships_ws ON memberships(workspace_id)`,
-		`CREATE TABLE IF NOT EXISTS refresh_tokens (
-			jti          VARCHAR(64) PRIMARY KEY,
-			user_id      VARCHAR(64) NOT NULL,
-			workspace_id VARCHAR(64),
-			expires_at   BIGINT NOT NULL,
-			created_at   BIGINT NOT NULL
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-		`CREATE INDEX idx_refresh_user ON refresh_tokens(user_id)`,
-		`CREATE TABLE IF NOT EXISTS admin_audit_log (
-			id           VARCHAR(64) PRIMARY KEY,
-			timestamp    BIGINT NOT NULL,
-			actor_id     VARCHAR(64),
-			actor        VARCHAR(255),
-			action       VARCHAR(255) NOT NULL,
-			target       VARCHAR(255),
-			details_json TEXT,
-			ip           VARCHAR(255),
-			user_agent   TEXT
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-		`CREATE INDEX idx_audit_time ON admin_audit_log(timestamp DESC)`,
-		`CREATE INDEX idx_audit_action ON admin_audit_log(action)`,
-	}
-	for _, s := range stmts {
-		if err := runDDL(db, s); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("init auth schema: %w", err)
-		}
+	// 应用版本化迁移（schema 统一由 internal/migrate 管理，失败即报错，
+	// 不再吞掉"已存在"类错误——迁移按版本记录，天然幂等）。
+	if _, err := migrate.Migrate(ctx, db, "auth"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init auth schema: %w", err)
 	}
 	return &Store{dsn: dsn, db: db}, nil
 }
@@ -681,8 +568,8 @@ func (s *Store) CreateUser(email, password, displayName, workspaceName string) (
 	if !strings.Contains(email, "@") {
 		return nil, nil, errors.New("邮箱格式非法")
 	}
-	if len(password) < 8 {
-		return nil, nil, errors.New("密码至少 8 位")
+	if err := validatePasswordStrength(password); err != nil {
+		return nil, nil, err
 	}
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -751,7 +638,7 @@ func (s *Store) GetUserByEmail(email string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.scanUser(s.db.QueryRow(
-		"SELECT id,email,password_hash,display_name,created_at,last_login_at,verified FROM users WHERE email=?",
+		"SELECT id,email,password_hash,display_name,created_at,last_login_at,verified,token_version FROM users WHERE email=?",
 		email,
 	))
 }
@@ -761,7 +648,7 @@ func (s *Store) GetUserByID(id string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.scanUser(s.db.QueryRow(
-		"SELECT id,email,password_hash,display_name,created_at,last_login_at,verified FROM users WHERE id=?",
+		"SELECT id,email,password_hash,display_name,created_at,last_login_at,verified,token_version FROM users WHERE id=?",
 		id,
 	))
 }
@@ -772,7 +659,7 @@ func (s *Store) scanUser(row *sql.Row) (*User, error) {
 		createdAt, lastLogin int64
 		verified             int
 	)
-	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &createdAt, &lastLogin, &verified)
+	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &createdAt, &lastLogin, &verified, &u.TokenVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -795,10 +682,11 @@ func (s *Store) UpdateLastLogin(userID string) error {
 	return err
 }
 
-// UpdatePassword 改密码（同时吊销该用户全部 refresh token，防止旧会话续期）。
+// UpdatePassword 改密码（同时吊销该用户全部会话：refresh token 删除 +
+// token_version +1 使已签发的 access token 立即失效）。
 func (s *Store) UpdatePassword(userID, newPassword string) error {
-	if len(newPassword) < 8 {
-		return errors.New("密码至少 8 位")
+	if err := validatePasswordStrength(newPassword); err != nil {
+		return err
 	}
 	h, err := hashPassword(newPassword)
 	if err != nil {
@@ -811,7 +699,7 @@ func (s *Store) UpdatePassword(userID, newPassword string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec("UPDATE users SET password_hash=? WHERE id=?", h, userID); err != nil {
+	if _, err := tx.Exec("UPDATE users SET password_hash=?, token_version=token_version+1 WHERE id=?", h, userID); err != nil {
 		return err
 	}
 	// 改密即吊销该用户所有 refresh token，杜绝旧 token 继续换新会话
@@ -819,6 +707,53 @@ func (s *Store) UpdatePassword(userID, newPassword string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// RevokeUserTokens 手动吊销某用户的全部会话（管理员封禁/安全事件处置）：
+// token_version +1 使所有已签发 access token 立即失效，同时清空 refresh token。
+func (s *Store) RevokeUserTokens(userID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("UPDATE users SET token_version=token_version+1 WHERE id=?", userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM refresh_tokens WHERE user_id=?", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// validatePasswordStrength 密码强度策略（OWASP 2023 建议）：
+//   - 长度 8–128（上限防止超长密码拖慢 PBKDF2 计算，构成 CPU DoS）
+//   - 至少含一个字母与一个数字（拒绝纯数字 / 纯字母弱口令）
+func validatePasswordStrength(pw string) error {
+	if pw == "" {
+		return errors.New("密码不能为空")
+	}
+	if len(pw) < 8 {
+		return errors.New("密码至少 8 位")
+	}
+	if len(pw) > 128 {
+		return errors.New("密码长度不能超过 128 位")
+	}
+	hasLetter, hasDigit := false, false
+	for _, r := range pw {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		}
+		if unicode.IsDigit(r) {
+			hasDigit = true
+		}
+	}
+	if !hasLetter || !hasDigit {
+		return errors.New("密码需同时包含字母和数字")
+	}
+	return nil
 }
 
 // VerifyPassword 校验密码（找不到用户或不匹配返回 false）。
@@ -1148,6 +1083,7 @@ func (svc *Service) issueTokenPair(u *User, wid string, role Role) (*TokenPair, 
 		Iat:         now.Unix(),
 		Exp:         now.Add(accessTokenTTL).Unix(),
 		Type:        "access",
+		V:           u.TokenVersion,
 	})
 	if err != nil {
 		return nil, err
@@ -1296,7 +1232,8 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 					return
 				}
 				auth := r.Header.Get("Authorization")
-				if strings.HasPrefix(auth, "Bearer ") && strings.TrimSpace(auth[7:]) == cfg.LegacyAPIKey {
+				if strings.HasPrefix(auth, "Bearer ") && subtle.ConstantTimeCompare(
+					[]byte(strings.TrimSpace(auth[7:])), []byte(cfg.LegacyAPIKey)) == 1 {
 					h.ServeHTTP(w, r)
 					return
 				}
@@ -1339,6 +1276,12 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			u, err := cfg.Svc.Store().GetUserByID(c.Sub)
 			if err != nil || u == nil {
 				writeErr(w, http.StatusUnauthorized, "用户不存在", "AUTH_USER_NOT_FOUND")
+				return
+			}
+			// 会话版本校验：改密/手动吊销后 token_version 递增，
+			// 旧 access token（v 小于当前版本）立即失效。
+			if c.V != u.TokenVersion {
+				writeErr(w, http.StatusUnauthorized, "登录状态已失效，请重新登录", "AUTH_TOKEN_REVOKED")
 				return
 			}
 			// 注入 context

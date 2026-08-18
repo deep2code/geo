@@ -22,37 +22,12 @@ import (
 	"unicode"
 
 	"my-geo/internal/dbprovider"
+	"my-geo/internal/migrate"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const defaultMySQLDSN = "geo_offline:geo_offline_pass@tcp(127.0.0.1:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci&tls=false&multiStatements=true"
-
-const (
-	sqlCompaniesTable = `
-CREATE TABLE IF NOT EXISTS companies (
-	id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-	name                VARCHAR(255) NOT NULL,
-	code                VARCHAR(32),
-	established_date    VARCHAR(32),
-	industry            VARCHAR(255),
-	legal_rep           VARCHAR(255),
-	registered_capital  VARCHAR(128),
-	business_scope      MEDIUMTEXT,
-	province            VARCHAR(255),
-	city                VARCHAR(255),
-	district            VARCHAR(255),
-	address             VARCHAR(255),
-	status              VARCHAR(64),
-	created_at          BIGINT NOT NULL,
-	updated_at          BIGINT NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-
-	sqlIdxCode     = `CREATE UNIQUE INDEX idx_companies_code ON companies(code)`
-	sqlIdxProvince = `CREATE INDEX idx_companies_province ON companies(province)`
-	sqlIdxCity     = `CREATE INDEX idx_companies_city ON companies(city)`
-	sqlFtNameScope = `CREATE FULLTEXT INDEX ft_companies_name_scope ON companies(name, business_scope, legal_rep, address) WITH PARSER ngram`
-)
+const defaultMySQLDSN = "geo_offline:geo_offline_pass@tcp(127.0.0.1:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 // Company 数据库中的一条工商注册记录。
 type Company struct {
@@ -87,21 +62,6 @@ type mysqlStore struct {
 	db   *sql.DB
 }
 
-func runDDL(ctx context.Context, db *sql.DB, ddl string) error {
-	_, err := db.ExecContext(ctx, ddl)
-	if err == nil {
-		return nil
-	}
-	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "duplicate key name") ||
-		strings.Contains(msg, "already exists") ||
-		strings.Contains(msg, "duplicate column name") ||
-		strings.Contains(msg, "exists") && strings.Contains(msg, "index") {
-		return nil
-	}
-	return err
-}
-
 // Open 打开/创建 MySQL 离线工商数据库并完成 schema 初始化。
 // 保持原签名兼容：path 若非空视为 MySQL DSN（兼容）；否则读 env GEO_OFFLINE_MYSQL_DSN，缺省为内置默认。
 func Open(path string) (OfflineStore, error) {
@@ -130,17 +90,10 @@ func Open(path string) (OfflineStore, error) {
 		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)
 	}
 
-	for _, ddl := range []string{
-		sqlCompaniesTable,
-		sqlIdxCode,
-		sqlIdxProvince,
-		sqlIdxCity,
-		sqlFtNameScope,
-	} {
-		if err := runDDL(ctx, sqldb, ddl); err != nil {
-			_ = sqldb.Close()
-			return nil, fmt.Errorf("初始化 schema 失败: %w", err)
-		}
+	// 应用版本化迁移（schema 统一由 internal/migrate 管理）。
+	if _, err := migrate.Migrate(ctx, sqldb, "offline"); err != nil {
+		_ = sqldb.Close()
+		return nil, fmt.Errorf("初始化 schema 失败: %w", err)
 	}
 
 	return &mysqlStore{path: dsn, db: sqldb}, nil

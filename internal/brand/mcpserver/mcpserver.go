@@ -17,11 +17,20 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"my-geo/internal/brand"
@@ -40,6 +49,12 @@ const (
 	serverVersion = "1.0.0"
 	// maxBodyBytes 单次请求体读取上限（8MB，与 chinacheck 客户端一致）。
 	maxBodyBytes = 8 << 20
+	// sessionTTL MCP session 无活动过期时间（与 REST 侧会话生命周期一致）。
+	sessionTTL = 30 * time.Minute
+	// mcpRatePerSec 每 IP 每秒请求上限（令牌桶速率）。
+	mcpRatePerSec = 20.0
+	// mcpRateBurst 每 IP 突发上限。
+	mcpRateBurst = 40
 )
 
 // Server MCP Server，独立的 HTTP 服务，暴露 GEO 能力给 MCP 客户端。
@@ -49,24 +64,221 @@ type Server struct {
 	brandEngine *brand.Engine // 品牌可见度引擎（可为 nil，对应工具返回错误）
 	geoEngine   *geo.Engine   // GEO 内容优化引擎（可为 nil，对应工具返回错误）
 	addr        string        // 监听地址，如 ":9090"
+	apiKey      string        // 可选 API Key；为空时仅允许本机回环地址访问
+
+	httpServer *http.Server // 底层 HTTP 服务（优雅关闭用）
+	mu         sync.Mutex   // 保护 sessions
+	sessions   map[string]time.Time // sessionID → 最近活跃时间
 }
 
 // New 创建 MCP Server。
 //
 // brandEngine / geoEngine 可为 nil，对应的工具调用会返回友好的错误提示。
-func New(brandEngine *brand.Engine, geoEngine *geo.Engine, addr string) *Server {
+// apiKey 为空时，仅允许本机（127.0.0.1/::1）访问；非空时要求请求携带
+// `Authorization: Bearer <key>` 或 `X-API-Key: <key>`。
+func New(brandEngine *brand.Engine, geoEngine *geo.Engine, addr, apiKey string) *Server {
 	return &Server{
 		brandEngine: brandEngine,
 		geoEngine:   geoEngine,
 		addr:        addr,
+		apiKey:      apiKey,
+		sessions:    map[string]time.Time{},
 	}
 }
 
-// Start 启动 MCP HTTP 服务（阻塞调用）。
+// Start 启动 MCP HTTP 服务（阻塞调用，收到 SIGINT/SIGTERM 时优雅退出）。
+//
+// 给在途请求最多 30 秒收尾；handler 链含 panic recovery、鉴权与限流。
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.ServeHTTP)
-	return http.ListenAndServe(s.addr, mux)
+	s.httpServer = &http.Server{
+		Addr:              s.addr,
+		Handler:           s.withRecovery(s.withAuth(s.withRateLimit(mux))),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      120 * time.Second, // 审计可能耗时较长
+		IdleTimeout:       120 * time.Second,
+	}
+	// 监听退出信号
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// goroutine 启动服务
+	errCh := make(chan error, 1)
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+	// 等待信号或服务异常退出
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		slog.Info("收到退出信号，MCP Server 开始优雅关闭", slog.String("timeout", "30s"))
+	}
+	// 优雅关闭：给在途请求 30s
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Warn("MCP Server 优雅关闭失败", slog.Any("error", err))
+	}
+	return nil
+}
+
+// withRecovery 捕获 handler panic，避免拖垮整个进程。
+func (s *Server) withRecovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				slog.Error("MCP handler panic",
+					slog.Any("panic", rec),
+					slog.String("method", r.Method),
+					slog.String("path", r.URL.Path),
+					slog.String("remote", r.RemoteAddr))
+				http.Error(w, "内部错误", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// withAuth 鉴权：配置了 apiKey 则要求 Bearer / X-API-Key 匹配；
+// 未配置则仅允许本机回环地址访问（MCP 客户端通常部署在 localhost）。
+func (s *Server) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey != "" {
+			provided := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if provided == r.Header.Get("Authorization") {
+				provided = r.Header.Get("X-API-Key")
+			}
+			if provided == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(s.apiKey)) != 1 {
+				slog.Warn("MCP 鉴权失败", slog.String("remote", r.RemoteAddr), slog.String("path", r.URL.Path))
+				http.Error(w, "未授权", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil || !isLoopback(host) {
+			slog.Warn("MCP 远程访问被拒绝（未配置 GEO_MCP_API_KEY）",
+				slog.String("remote", r.RemoteAddr), slog.String("path", r.URL.Path))
+			http.Error(w, "禁止访问：远程调用请配置 GEO_MCP_API_KEY", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isLoopback(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// withRateLimit 按 IP 的令牌桶限流，防止刷接口触发昂贵 LLM 调用。
+func (s *Server) withRateLimit(next http.Handler) http.Handler {
+	limiter := newMCPRateLimiter()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		if !limiter.allow(host) {
+			slog.Warn("MCP 请求被限流", slog.String("remote", r.RemoteAddr), slog.String("path", r.URL.Path))
+			http.Error(w, "请求过于频繁", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// mcpRateLimiter 按 IP 的令牌桶限流器（惰性创建 + 定期清理）。
+type mcpRateLimiter struct {
+	mu          sync.Mutex
+	buckets     map[string]*mcpTokenBucket
+	lastCleanup time.Time
+}
+
+type mcpTokenBucket struct {
+	tokens   float64
+	lastTime time.Time
+}
+
+func newMCPRateLimiter() *mcpRateLimiter {
+	return &mcpRateLimiter{
+		buckets:     map[string]*mcpTokenBucket{},
+		lastCleanup: time.Now(),
+	}
+}
+
+// allow 消费 1 个令牌，成功返回 true。
+func (rl *mcpRateLimiter) allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	b, ok := rl.buckets[ip]
+	if !ok {
+		b = &mcpTokenBucket{tokens: mcpRateBurst, lastTime: time.Now()}
+		rl.buckets[ip] = b
+	}
+	now := time.Now()
+	elapsed := now.Sub(b.lastTime).Seconds()
+	b.lastTime = now
+	b.tokens += elapsed * mcpRatePerSec
+	if b.tokens > mcpRateBurst {
+		b.tokens = mcpRateBurst
+	}
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	// 惰性清理：每 100 次创建触发一次过期桶回收
+	if len(rl.buckets) > 1024 && now.Sub(rl.lastCleanup) > 10*time.Minute {
+		for k, v := range rl.buckets {
+			if now.Sub(v.lastTime) > 30*time.Minute {
+				delete(rl.buckets, k)
+			}
+		}
+		rl.lastCleanup = now
+	}
+	return true
+}
+
+// newSessionID 生成随机 session ID（16 字节 hex）。
+func newSessionID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		// crypto/rand 失败属于极端情况，退化为时间戳（仍唯一）
+		return fmt.Sprintf("geo-mcp-%d", time.Now().UnixNano())
+	}
+	return "geo-mcp-" + hex.EncodeToString(buf)
+}
+
+// addSession 记录新 session 并返回 ID。
+func (s *Server) addSession() string {
+	id := newSessionID()
+	s.mu.Lock()
+	s.sessions[id] = time.Now()
+	s.mu.Unlock()
+	return id
+}
+
+// isSessionValid 校验 session 是否存在且未过期，并刷新活跃时间。
+func (s *Server) isSessionValid(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	last, ok := s.sessions[id]
+	if !ok {
+		return false
+	}
+	if time.Since(last) > sessionTTL {
+		delete(s.sessions, id)
+		return false
+	}
+	s.sessions[id] = time.Now()
+	return true
 }
 
 // ServeHTTP 处理 MCP JSON-RPC 2.0 请求。
@@ -112,6 +324,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// session 校验：initialize 之前或 session 失效时拒绝业务调用。
+	// 兼容未携带 session 头的客户端（宽松放行），但已携带则必须有效。
+	if req.Method != "initialize" {
+		if sid := r.Header.Get("Mcp-Session-Id"); sid != "" && !s.isSessionValid(sid) {
+			slog.Warn("MCP session 无效或已过期", slog.String("session", truncate(sid)), slog.String("method", req.Method))
+			http.Error(w, "会话无效或已过期，请重新 initialize", http.StatusBadRequest)
+			return
+		}
+	}
+
 	// 分发方法
 	var result interface{}
 	var rpcErr *rpcError
@@ -119,7 +341,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch req.Method {
 	case "initialize":
 		// 握手：生成并返回 session id
-		sessionID := fmt.Sprintf("geo-mcp-%d", time.Now().UnixNano())
+		sessionID := s.addSession()
 		w.Header().Set("Mcp-Session-Id", sessionID)
 		w.Header().Set("Mcp-Protocol-Version", protocolVersion)
 		result = s.handleInitialize()
@@ -571,4 +793,12 @@ func getInt(args map[string]interface{}, key string, def int) int {
 		return int(n)
 	}
 	return def
+}
+
+// truncate 截断字符串用于日志（避免完整 token/session 落日志）。
+func truncate(s string) string {
+	if len(s) <= 16 {
+		return s
+	}
+	return s[:8] + "…" + s[len(s)-8:]
 }

@@ -408,3 +408,84 @@ func TestContextHelpers(t *testing.T) {
 		t.Error("Admin should NOT have PermDeleteWorkspace")
 	}
 }
+
+func TestValidatePasswordStrength(t *testing.T) {
+	ok := []string{
+		"StrongPass1",
+		"a1b2c3d4",
+		"密码1234", // 非 ASCII 字母 + 数字：按字节/符文均需通过
+		"1234567a",
+		"A1234567",
+	}
+	for _, pw := range ok {
+		if err := validatePasswordStrength(pw); err != nil {
+			t.Errorf("validatePasswordStrength(%q) unexpected error: %v", pw, err)
+		}
+	}
+	bad := []string{
+		"", "short", "12345678", "abcdefgh", "aaaaaaaa", "!@#$%^&*",
+		strings.Repeat("a", 129), strings.Repeat("A1", 70), // 超长（>128）
+	}
+	for _, pw := range bad {
+		if err := validatePasswordStrength(pw); err == nil {
+			t.Errorf("validatePasswordStrength(%q...) should fail", truncateForTest(pw))
+		}
+	}
+}
+
+func truncateForTest(s string) string {
+	if len(s) > 16 {
+		return s[:16] + "..."
+	}
+	return s
+}
+
+// TestTokenVersionRevoke 验证改密 / 手动吊销后旧 access token 立即失效（需 MySQL）。
+func TestTokenVersionRevoke(t *testing.T) {
+	s := openTestStore(t)
+	u, _, err := s.CreateUser("revoke@geo.ai", "StrongPass1!", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 签发带当前版本的 access token
+	now := time.Now()
+	access, err := signJWT(jwtClaims{
+		Sub: u.ID, Email: u.Email, JTI: "jti_old", Type: "access",
+		Iat: now.Unix(), Exp: now.Add(time.Hour).Unix(), V: u.TokenVersion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 版本匹配 → 可解析通过
+	if c, err := parseJWT(access); err != nil || c.V != u.TokenVersion {
+		t.Fatalf("token should be valid: err=%v v=%d want %d", err, c.V, u.TokenVersion)
+	}
+	// 改密 → token_version +1
+	if err := s.UpdatePassword(u.ID, "NewStrongPass2!"); err != nil {
+		t.Fatal(err)
+	}
+	u2, err := s.GetUserByID(u.ID)
+	if err != nil || u2 == nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	if u2.TokenVersion != u.TokenVersion+1 {
+		t.Fatalf("token_version = %d, want %d", u2.TokenVersion, u.TokenVersion+1)
+	}
+	// 旧 access token 虽未过期且签名有效，但版本不匹配 → 鉴权层应拒绝
+	if _, err := parseJWT(access); err != nil {
+		t.Fatalf("old token should still parse (revocation is a middleware-level check): %v", err)
+	}
+	// 模拟中间件校验
+	c, _ := parseJWT(access)
+	if c.V == u2.TokenVersion {
+		t.Error("old token version should differ from current")
+	}
+	// 手动吊销（再 +1）
+	if err := s.RevokeUserTokens(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	u3, _ := s.GetUserByID(u.ID)
+	if u3.TokenVersion != u2.TokenVersion+1 {
+		t.Fatalf("after revoke token_version = %d, want %d", u3.TokenVersion, u2.TokenVersion+1)
+	}
+}

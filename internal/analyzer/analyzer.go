@@ -46,6 +46,8 @@ var (
 	reURL = regexp.MustCompile(`https?://[^\s）)]+`)
 	// 技术术语（英文缩写/专业词）
 	reTechnical = regexp.MustCompile(`\b[A-Z]{2,}\b|API|算法|架构|协议|框架`)
+	// 汉字（countWords 中用于把中文替换为空格以统计英文单词）
+	reHan = regexp.MustCompile(`[\p{Han}]`)
 )
 
 // Analyze 分析内容，返回各类 GEO 信号检测结果。
@@ -244,7 +246,7 @@ func countWords(content string) int {
 			cnCount++
 		}
 	}
-	enWords := len(strings.Fields(regexp.MustCompile(`[\p{Han}]`).ReplaceAllString(content, " ")))
+	enWords := len(strings.Fields(reHan.ReplaceAllString(content, " ")))
 	if cnCount > enWords {
 		return cnCount
 	}

@@ -50,6 +50,7 @@ GEO 部署脚本
   GEO_PORT      服务端口（默认 8080）
   IMAGE_TAG     镜像标签（默认 latest）
   INSTALL_DIR   二进制安装路径（默认 /opt/geo）
+  GEO_ALLOW_WEAK_PASSWORD  设为 1 放行默认弱密码（仅本地开发）
 
 EOF
 }
@@ -62,9 +63,17 @@ check_env_file() {
         info "已创建 .env，请按需编辑: $PROJECT_DIR/.env"
         warn "⚠ 模板包含默认弱密码（geoPass），生产环境务必修改后重启！"
     fi
-    # 检测默认弱密码：拒绝带默认口令上线
+    # 检测默认弱密码：生产部署默认拒绝带默认口令上线。
+    # 本地开发可设 GEO_ALLOW_WEAK_PASSWORD=1 显式放行（不推荐用于生产）。
     if grep -qE 'geoPass' "$PROJECT_DIR/.env" 2>/dev/null; then
-        warn "⚠ .env 中仍存在默认弱密码（geoPass），生产部署前请修改: GEO_*_MYSQL_DSN / GEO_MYSQL_PASSWORD"
+        if [[ "${GEO_ALLOW_WEAK_PASSWORD:-0}" == "1" ]]; then
+            warn "⚠ .env 中仍存在默认弱密码（geoPass），已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
+        else
+            error "检测到默认弱密码（geoPass）：生产部署禁止使用默认口令！"
+            error "请修改 .env 中的 GEO_MYSQL_PASSWORD / GEO_*_MYSQL_DSN 后重试；"
+            error "或设置 GEO_ALLOW_WEAK_PASSWORD=1 强制放行（仅限本地开发，不推荐）。"
+            exit 1
+        fi
     fi
 }
 

@@ -2,16 +2,11 @@
 package auth
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/netip"
-	"os"
-	"strings"
-	"sync"
 	"time"
+
+	"my-geo/internal/httputil"
 )
 
 // writeInternalError 内部错误：日志记录详情，响应仅给通用信息（防泄露 DSN/SQL/路径等内部细节）。
@@ -67,116 +62,21 @@ type loginResponse struct {
 // ============================================================
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	httputil.WriteJSON(w, status, data)
 }
 
 func readJSON(r *http.Request, v any) error {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB
-	if err != nil {
-		return err
-	}
-	if len(body) == 0 {
-		return errors.New("请求体为空")
-	}
-	if err := json.Unmarshal(body, v); err != nil {
-		return err
-	}
-	return nil
+	return httputil.ReadJSON(r, v)
 }
 
 // ---- 可信代理与真实客户端 IP ----
 //
-// 与 server 中间件策略一致：仅当 RemoteAddr 属于 GEO_TRUSTED_PROXIES
-// 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被任意客户端伪造
-// 绕过审计/限流。auth 包内独立实现（不可反向依赖 server 包）。
-
-var (
-	trustedProxyOnce sync.Once
-	trustedProxyNets []netip.Prefix
-)
-
-// trustedProxies 解析 GEO_TRUSTED_PROXIES（逗号分隔的 IP/CIDR）。
-func trustedProxies() []netip.Prefix {
-	trustedProxyOnce.Do(func() {
-		raw := strings.TrimSpace(os.Getenv("GEO_TRUSTED_PROXIES"))
-		if raw == "" {
-			return
-		}
-		for _, part := range strings.Split(raw, ",") {
-			p := strings.TrimSpace(part)
-			if p == "" {
-				continue
-			}
-			if !strings.Contains(p, "/") {
-				if addr, err := netip.ParseAddr(p); err == nil {
-					trustedProxyNets = append(trustedProxyNets, netip.PrefixFrom(addr, addr.BitLen()))
-				}
-				continue
-			}
-			if prefix, err := netip.ParsePrefix(p); err == nil {
-				trustedProxyNets = append(trustedProxyNets, prefix)
-			}
-		}
-	})
-	return trustedProxyNets
-}
-
-func isTrustedProxy(ipStr string) bool {
-	if ipStr == "" {
-		return false
-	}
-	addr, err := netip.ParseAddr(ipStr)
-	if err != nil {
-		return false
-	}
-	for _, p := range trustedProxies() {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
-}
-
-func stripPort(hostport string) string {
-	if strings.HasPrefix(hostport, "[") { // [::1]:8080
-		if i := strings.LastIndex(hostport, "]"); i > 0 {
-			return hostport[1:i]
-		}
-	}
-	if i := strings.LastIndex(hostport, ":"); i > 0 {
-		// 避免无端口的 IPv6 字面被误切
-		if !strings.Contains(hostport[i+1:], ":") {
-			return hostport[:i]
-		}
-	}
-	return hostport
-}
+// 与 server 中间件策略一致（实现见 httputil）：仅当 RemoteAddr 属于
+// GEO_TRUSTED_PROXIES 时才解析 X-Forwarded-For/X-Real-IP，避免这些头被
+// 任意客户端伪造绕过审计/限流。
 
 // requestIP 获取真实客户端 IP（仅信任来自可信代理的转发头）。
-func requestIP(r *http.Request) string {
-	remoteIP := stripPort(r.RemoteAddr)
-	if !isTrustedProxy(remoteIP) {
-		return remoteIP
-	}
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		parts := strings.Split(fwd, ",")
-		for i := range parts {
-			ip := strings.TrimSpace(parts[i])
-			if ip == "" {
-				continue
-			}
-			if !isTrustedProxy(ip) {
-				return ip
-			}
-		}
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	return remoteIP
-}
+func requestIP(r *http.Request) string { return httputil.ClientIP(r) }
 
 func requestUA(r *http.Request) string {
 	return r.Header.Get("User-Agent")

@@ -26,8 +26,26 @@ import (
 	"my-geo/pkg/geo"
 )
 
+// 版本信息，通过 ldflags 注入：
+//
+//	go build -ldflags "-X main.version=v1.2.3 -X main.commit=$(git rev-parse --short HEAD) -X 'main.buildAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+var (
+	version = "dev"   // 语义化版本号（release 时由 CI 注入）
+	commit  = "none"  // git commit 短哈希
+	buildAt = "unknown" // 构建时间（UTC ISO8601）
+)
+
 func main() {
+	// 先加载 .env（可选，文件不存在时静默跳过），使其中配置（含日志级别）先于后续初始化生效。
+	if err := config.LoadDotEnv(".env"); err != nil {
+		fmt.Fprintln(os.Stderr, "警告: 加载 .env 失败:", err)
+	}
 	initLogger()
+	// 启动关键配置 fail-fast 校验（弱密钥/缺 DSN 拒绝启动）。
+	if err := config.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, "错误:", err)
+		os.Exit(1)
+	}
 	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
@@ -42,7 +60,9 @@ func main() {
 func initLogger() {
 	var level slog.Level = slog.LevelInfo
 	if v := strings.TrimSpace(os.Getenv("GEO_LOG_LEVEL")); v != "" {
-		_ = level.UnmarshalText([]byte(v))
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			slog.Warn("GEO_LOG_LEVEL 无效，使用默认级别 info", slog.String("value", v), slog.Any("error", err))
+		}
 	}
 	format := strings.TrimSpace(os.Getenv("GEO_LOG_FORMAT"))
 	if format == "" {
@@ -72,6 +92,7 @@ func newRootCmd() *cobra.Command {
 
 基于 Princeton GEO 论文 (KDD 2024) 的 9 种优化策略，
 融合 AutoGEO (ICLR 2026) 的 GEO/GEU 双评分体系。`,
+		Version: fmt.Sprintf("%s (commit %s, built %s)", version, commit, buildAt),
 	}
 	root.AddCommand(
 		newOptimizeCmd(),

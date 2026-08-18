@@ -56,6 +56,7 @@ import (
 	"my-geo/internal/brand/vertical"
 	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
+	"my-geo/internal/httputil"
 	"my-geo/internal/llm"
 	"my-geo/internal/mail"
 	"my-geo/internal/models"
@@ -85,6 +86,7 @@ type Server struct {
 	authSvc     *auth.Service // 账号体系（未启用时为 nil；但 Service.Enabled() 才为 false）
 	authH       auth.HandlerSet
 	whitelabel  Whitelabel
+	llmMgr      *llm.Manager // 全局 LLM 管理器（/metrics 与品牌引擎复用同一实例）
 	addr        string
 	mux         *http.ServeMux
 	httpServer  *http.Server // 用于 graceful shutdown
@@ -106,7 +108,9 @@ func loadWhitelabelFromEnv() Whitelabel {
 // brandEngine 为 nil 时仍可正常启动（内容优化功能不受影响），仅品牌审计接口
 // 返回 503。此处打印启动警告以便运维快速发现。
 func New(engine *geo.Engine, addr string) *Server {
-	be := newBrandEngineFromEnv()
+	// 全局 LLM 管理器：品牌引擎与 /metrics 复用同一实例，避免多实例计数漂移。
+	llmMgr := newLLMManagerFromEnv()
+	be := newBrandEngineFromEnv(llmMgr)
 	if be == nil {
 		slog.Warn("品牌审计引擎未初始化（无可用适配器）；POST /api/v1/brand/audit 将返回 503。请配置各引擎 API Key 环境变量。")
 	} else if os.Getenv("GEO_LLM_KEY") == "" {
@@ -132,6 +136,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		mux:         http.NewServeMux(),
 		authSvc:     authSvc,
 		authH:       auth.NewHandlerSet(authSvc),
+		llmMgr:      llmMgr,
 	}
 	// 初始化邮件发送器（未配置 SMTP 时为 nil，邮件接口返回未启用提示）
 	if ms, err := mail.NewSender(); err != nil {
@@ -159,7 +164,7 @@ func New(engine *geo.Engine, addr string) *Server {
 // China-Check MCP（工商核验）默认启用（免鉴权、免费），可通过
 // GEO_CHINACHECK_ENABLED=false 显式关闭，或 GEO_CHINACHECK_URL 指定自定义端点。
 // 离线工商 MySQL 库默认启用，即便空库也会打开以便后续写入。
-func newBrandEngineFromEnv() *brand.Engine {
+func newBrandEngineFromEnv(llmMgr *llm.Manager) *brand.Engine {
 	adapters, errs := config.BrandAdaptersFromEnv()
 	for eng, e := range errs {
 		slog.Warn("LLM 适配器创建失败", slog.String("engine", string(eng)), slog.Any("error", e))
@@ -170,7 +175,9 @@ func newBrandEngineFromEnv() *brand.Engine {
 	// 为每个适配器包装降级缓存（外部 LLM 不可用时返回缓存结果）
 	adapters = adapter.WrapWithFallback(adapters)
 	slog.Info("LLM 适配器降级缓存已启用", slog.String("ttl", "1h"), slog.Int("max_per_engine", 1000))
-	llmMgr := newLLMManagerFromEnv()
+	if llmMgr == nil {
+		llmMgr = newLLMManagerFromEnv()
+	}
 	opts := []brand.Option{
 		brand.WithAdapters(adapters),
 		brand.WithLLM(llmMgr),
@@ -206,7 +213,7 @@ func newBrandEngineFromEnv() *brand.Engine {
 // 内部逻辑与 newBrandEngineFromEnv 完全一致，仅做导出封装，避免在 MCP Server
 // 命令中重复实现 ChinaCheck / OfflineDB / LLM / HistoryDB 的环境变量解析逻辑。
 func BuildBrandEngineFromEnv() *brand.Engine {
-	return newBrandEngineFromEnv()
+	return newBrandEngineFromEnv(nil)
 }
 
 // newHistoryDBFromEnv 连接审计历史 MySQL 库。
@@ -1042,10 +1049,9 @@ func (s *Server) handleOptimize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// writeJSON 统一 JSON 响应（实现见 httputil）。
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	httputil.WriteJSON(w, status, data)
 }
 
 // writeInternalError 记录完整错误到日志（含 request_id），但对客户端只返回通用提示，
@@ -1062,18 +1068,9 @@ func writeInternalError(w http.ResponseWriter, err error, msg string) {
 	writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: m})
 }
 
+// readJSON 解析 JSON 请求体（实现见 httputil，默认上限 10MB）。
 func readJSON(r *http.Request, v interface{}) error {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 限制 10MB
-	if err != nil {
-		return fmt.Errorf("读取请求体失败: %w", err)
-	}
-	if len(body) == 0 {
-		return fmt.Errorf("请求体为空")
-	}
-	if err := json.Unmarshal(body, v); err != nil {
-		return fmt.Errorf("JSON 解析失败: %w", err)
-	}
-	return nil
+	return httputil.ReadJSON(r, v)
 }
 
 // requireDataAdmin 校验"数据清理类"接口的权限（P2-9）。
@@ -1555,20 +1552,12 @@ func (s *Server) handleBrandProfileAutocomplete(w http.ResponseWriter, r *http.R
 // 返回来自 383 家中国出海软件公司的离线匹配结果，零延迟。
 func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Request) {
 	if s.brandEngine == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
-			"error":  "品牌审计引擎未初始化",
-			"total":  0,
-			"result": []struct{}{},
-		})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌审计引擎未初始化"})
 		return
 	}
 	kb := s.brandEngine.Knowledge()
 	if kb == nil {
-		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"error":  "知识库未加载",
-			"total":  0,
-			"result": []struct{}{},
-		})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "知识库未加载"})
 		return
 	}
 	var (
@@ -1577,11 +1566,7 @@ func (s *Server) handleBrandKnowledgeSearch(w http.ResponseWriter, r *http.Reque
 	)
 	if r.Method == http.MethodGet {
 		q = r.URL.Query().Get("q")
-		if l := r.URL.Query().Get("limit"); l != "" {
-			if n, err := strconv.Atoi(l); err == nil && n > 0 {
-				limit = n
-			}
-		}
+		_, limit = httputil.OffsetLimit(r, 5, 100)
 	} else if r.Method == http.MethodPost {
 		var body struct {
 			Q     string `json:"q"`
@@ -1725,11 +1710,7 @@ func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) 
 	)
 	if r.Method == http.MethodGet {
 		q = r.URL.Query().Get("q")
-		if l := r.URL.Query().Get("limit"); l != "" {
-			if n, err := strconv.Atoi(l); err == nil && n > 0 {
-				limit = n
-			}
-		}
+		_, limit = httputil.OffsetLimit(r, 5, 100)
 	} else if r.Method == http.MethodPost {
 		var body struct {
 			Q     string `json:"q"`
@@ -2103,18 +2084,7 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand 参数"})
 		return
 	}
-	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 500 {
-			limit = n
-		}
-	}
-	offset := 0
-	if o := r.URL.Query().Get("offset"); o != "" {
-		if n, err := strconv.Atoi(o); err == nil && n >= 0 {
-			offset = n
-		}
-	}
+	offset, limit := httputil.OffsetLimit(r, 50, 500)
 	records, err := s.brandEngine.HistoryDB().List(r.Context(), brandName, limit, offset)
 	if err != nil {
 		writeInternalError(w, err, "读取审计历史")
@@ -2497,11 +2467,7 @@ func (s *Server) handleSocialMonitor(w http.ResponseWriter, r *http.Request) {
 		if p := r.URL.Query().Get("platforms"); p != "" {
 			platforms = strings.Split(p, ",")
 		}
-		if l := r.URL.Query().Get("limit"); l != "" {
-			if n, err := strconv.Atoi(l); err == nil && n > 0 {
-				limit = n
-			}
-		}
+		_, limit = httputil.OffsetLimit(r, 20, 200)
 	} else if r.Method == http.MethodPost {
 		var body struct {
 			BrandName string   `json:"brand_name"`
@@ -2808,16 +2774,14 @@ func (a *llmManagerAdapter) Complete(ctx context.Context, prompt string) (string
 	return a.mgr.Rewrite(ctx, prompt, "")
 }
 
-// newAutoRewriter 惰性创建自动改写引擎，复用品牌引擎的 LLM 管理器。
+// newAutoRewriter 惰性创建自动改写引擎，复用全局 LLM 管理器（与品牌引擎同实例）。
 //
-// 未初始化品牌引擎时返回基于 StubLLMClient 的降级引擎（规则化改写）。
+// 未初始化 LLM 时返回基于 nil 客户端的降级引擎（纯规则化改写）。
 func (s *Server) newAutoRewriter() *autorewriter.Rewriter {
-	if s.brandEngine == nil {
+	if s.llmMgr == nil || !s.llmMgr.HasAvailable() {
 		return autorewriter.New(nil)
 	}
-	// 复用 brandEngine 内部的 LLM 管理器（通过环境变量重新构建以保持一致）
-	mgr := newLLMManagerFromEnv()
-	return autorewriter.New(&llmManagerAdapter{mgr: mgr})
+	return autorewriter.New(&llmManagerAdapter{mgr: s.llmMgr})
 }
 
 // handleAutoRewriteRules 返回 AutoGEO 默认规则集（含 Princeton PWC 提升值）。
@@ -3955,15 +3919,7 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	category := strings.TrimSpace(r.URL.Query().Get("category"))
-	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-		}
-	}
-	if limit > 500 {
-		limit = 500
-	}
+	_, limit := httputil.OffsetLimit(r, 50, 500)
 	items, err := s.getAllBrandLatestRecords(r.Context())
 	if err != nil {
 		writeInternalError(w, err, "")

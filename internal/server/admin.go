@@ -10,10 +10,11 @@ import (
 	"os"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"my-geo/internal/httputil"
 )
 
 // serverStartTime 服务启动时间（包初始化时记录，用于系统信息展示）。
@@ -146,17 +147,7 @@ func (s *Server) handleAdminTenants(w http.ResponseWriter, r *http.Request) {
 	}
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
 	planFilter := strings.TrimSpace(r.URL.Query().Get("plan"))
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page <= 0 {
-		page = 1
-	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	page, limit := httputil.PageLimit(r, 20, 100)
 
 	tenants := s.buildMockTenants(r.Context())
 	// 过滤
