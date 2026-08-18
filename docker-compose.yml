@@ -63,9 +63,15 @@ services:
       # 开发直连：生产建议启用 nginx 反代（见下方 proxy profile）后注释此行。
       - "${GEO_PORT:-8080}:8080"
     env_file:
-      - .env
+      # .env 为可选覆盖文件（含敏感配置，已被 .gitignore 忽略）。
+      # 缺失时 compose 不报错，应用改用下方 environment: 默认值即可一键启动。
+      - path: .env
+        required: false
     environment:
       - TZ=Asia/Shanghai
+      # 管理员密钥：留空时所有 /api/v1/admin/* 接口返回 403（默认安全）。
+      # 本地开发需管理员接口时：export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
+      - GEO_ADMIN_KEY=${GEO_ADMIN_KEY:-}
       # MySQL DSN（指向 compose 内的 mysql 服务，密码与上方 MYSQL_PASSWORD 同一变量）
       - GEO_OFFLINE_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local
       - GEO_HISTORY_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local

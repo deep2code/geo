@@ -58,6 +58,10 @@ type CaseResult struct {
 	CitRateProjected  float64 `json:"cit_rate_projected"`
 	CitRateActual     float64 `json:"cit_rate_actual"`
 	LiftPct           float64 `json:"lift_pct"` // 引用率代理提升%（基于投影）
+	// LiveCited / LiveDetail：接入真实引擎查询（--live）时的实测引用结果；
+	// 为空表示沿用离线代理（offline-proxy）。CitRateActual 在 live 模式下被实测值覆盖。
+	LiveCited  bool   `json:"live_cited,omitempty"`
+	LiveDetail string `json:"live_detail,omitempty"`
 	AppliedStrategies int     `json:"applied_strategies"`
 	ExpectedCitations int     `json:"expected_citations"`
 }
@@ -85,18 +89,39 @@ type Report struct {
 	Aggregate     Aggregate      `json:"aggregate"`
 }
 
+// EvalOption 评测可选项（如接入真实引擎查询）。
+type EvalOption func(*evalConfig)
+
+type evalConfig struct {
+	live LiveCitationChecker
+}
+
+// WithLiveChecker 接入真实生成式引擎查询，用实测引用结果覆盖 Actual 指标。
+// 不设置则保持 offline-proxy 模式（纯离线代理，无需联网/API Key）。
+func WithLiveChecker(c LiveCitationChecker) EvalOption {
+	return func(cfg *evalConfig) { cfg.live = c }
+}
+
 // Evaluate 运行评测集，返回可复现报告。
 //
 // engine 已按需要应用规则集（见 geo.Engine.ApplyRuleSet）。无 LLM 时进入 offline-proxy 模式：
 // ScoreAfter≈基线，但 RelCitProjected 仍给出"应用推荐策略"的预期提升，体现评测框架价值。
-func Evaluate(ctx context.Context, engine *geo.Engine, bench *Benchmark) (*Report, error) {
+// 传入 WithLiveChecker 时切换到 live 模式：Actual 指标由真实引擎查询的实测引用结果覆盖。
+func Evaluate(ctx context.Context, engine *geo.Engine, bench *Benchmark, opts ...EvalOption) (*Report, error) {
 	if len(bench.Cases) == 0 {
 		return nil, fmt.Errorf("评测集为空")
+	}
+	cfg := &evalConfig{}
+	for _, o := range opts {
+		o(cfg)
 	}
 	report := &Report{
 		BenchmarkName: bench.Name,
 		GeneratedAt:   time.Now().Format(time.RFC3339),
 		Mode:          "offline-proxy",
+	}
+	if cfg.live != nil {
+		report.Mode = "live"
 	}
 	var agg Aggregate
 	agg.CaseCount = len(bench.Cases)
@@ -141,6 +166,21 @@ func Evaluate(ctx context.Context, engine *geo.Engine, bench *Benchmark) (*Repor
 			AppliedStrategies: applied,
 			ExpectedCitations: len(c.ExpectedCitations),
 		}
+		// live 模式：用真实引擎查询的实测引用结果覆盖 Actual 指标。
+		if cfg.live != nil {
+			cited, detail, lerr := cfg.live.CheckCitation(ctx, c.Query, c.TargetURL, c.TargetContent)
+			if lerr != nil {
+				return nil, fmt.Errorf("用例 %d 实时查询失败: %w", i+1, lerr)
+			}
+			r.LiveCited = cited
+			r.LiveDetail = detail
+			liveRate := 0.0
+			if cited {
+				liveRate = 1.0
+			}
+			r.CitRateActual = liveRate
+			r.RelCitActual = liveRate
+		}
 		if rateBefore > 0 {
 			r.LiftPct = (rateProjected - rateBefore) / rateBefore * 100
 		}
@@ -180,18 +220,32 @@ func RenderMarkdown(r *Report) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# GEO 评测报告：%s\n\n", r.BenchmarkName)
 	fmt.Fprintf(&b, "- 生成时间：%s\n", r.GeneratedAt)
-	fmt.Fprintf(&b, "- 模式：%s（相对引用得分为离线代理指标；接入真实引擎查询后可替换为实测引用率）\n", r.Mode)
+	if r.Mode == "live" {
+		fmt.Fprintf(&b, "- 模式：live（Actual 指标由真实引擎查询的**实测引用**覆盖；基线/投影仍为离线代理）\n")
+	} else {
+		fmt.Fprintf(&b, "- 模式：%s（相对引用得分为离线代理指标；--live 接入真实引擎后可替换为实测引用率）\n", r.Mode)
+	}
 	a := r.Aggregate
 	fmt.Fprintf(&b, "- 用例数：%d\n", a.CaseCount)
 	fmt.Fprintf(&b, "- 平均评分：基线 %.1f → 实际 %.1f\n", a.AvgScoreBefore, a.AvgScoreAfter)
 	fmt.Fprintf(&b, "- 平均相对可见度得分（加性，仅供透明参考）：基线 %.3f → 投影 %.3f → 实际 %.3f\n",
 		a.AvgRelCitBefore, a.AvgRelCitProjected, a.AvgRelCitActual)
-	fmt.Fprintf(&b, "- 平均引用率代理（有界 0–1）：基线 %.1f%% → 投影 %.1f%% → 实际 %.1f%%\n",
+	fmt.Fprintf(&b, "- 平均引用率（有界 0–1）：基线 %.1f%% → 投影 %.1f%% → 实际 %.1f%%\n",
 		a.AvgCitRateBefore*100, a.AvgCitRateProjected*100, a.AvgCitRateActual*100)
-	fmt.Fprintf(&b, "- **平均预期引用率提升：%.1f%%**（基于有界代理投影 vs 基线）\n\n", a.AvgLiftPct)
+	fmt.Fprintf(&b, "- **平均预期引用率提升：%.1f%%**（基于有界代理投影 vs 基线）\n", a.AvgLiftPct)
+	if r.Mode == "live" {
+		cited := 0
+		for _, c := range r.Cases {
+			if c.LiveCited {
+				cited++
+			}
+		}
+		fmt.Fprintf(&b, "- **实测引用（live）：%d/%d 用例被真实引擎引用**\n", cited, a.CaseCount)
+	}
+	fmt.Fprintf(&b, "\n")
 
-	b.WriteString("| # | 查询 | 基线分 | 实际分 | 引用率代理(基线→投影→实际) | 预期提升 | 应用策略 |\n")
-	b.WriteString("|---|------|-------:|-------:|------------------------------:|--------:|--------:|\n")
+	b.WriteString("| # | 查询 | 基线分 | 实际分 | 引用率(基线→投影→实际) | 预期提升 | 应用策略 |\n")
+	b.WriteString("|---|------|-------:|-------:|--------------------------:|--------:|--------:|\n")
 	for _, c := range r.Cases {
 		fmt.Fprintf(&b, "| %d | %s | %.1f | %.1f | %.1f%% → %.1f%% → %.1f%% | %+.1f%% | %d |\n",
 			c.Index, truncate(c.Query, 24), c.ScoreBefore, c.ScoreAfter,
@@ -199,7 +253,8 @@ func RenderMarkdown(r *Report) string {
 	}
 	fmt.Fprintf(&b, "\n> 说明：引用率代理 = 1 − e^(−相对可见度得分)，将加性得分映射到 0–1；"+
 		"提升%% 为投影 vs 基线。"+
-		"相对可见度得分为加性指标（可>1），仅在 JSON 报告中保留以作透明参考。\n")
+		"相对可见度得分为加性指标（可>1），仅在 JSON 报告中保留以作透明参考。"+
+		"live 模式下「实际」列为真实引擎实测引用率（被引用=100%%），可在 JSON 报告查看 live_cited / live_detail。\n")
 	return b.String()
 }
 

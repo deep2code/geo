@@ -173,9 +173,9 @@
 | 2 | 规则集外部化 | ✅ 已实施 | `internal/config/ruleset.go` + `geo rules {show\|validate\|list}`；`config/rules/*.json` 示例；`scorer.ApplyRuleSet` 注入权重与策略系数；optimize/score/analyze/serve 均支持 `--rules` |
 | 3 | LLM 成本仪表盘 | ✅ 已实施 | `internal/llm` 按模型聚合 token/USD（`modelPricing` 表 + 月度预算熔断 `ErrBudgetExceeded`）；`/api/v1/admin/cost` 端点 + `geo cost report`；Prometheus `geo_llm_cost_*` 指标 |
 | 4 | CI 质量门禁 | ✅ 前轮已完成（P1-8） | golangci-lint + govulncheck + `go test -race` |
-| 5 | 部署开箱即用 | ⬜ 待办 | 依赖 P0-1 建库；补 `docker compose up` 冒烟脚本进 CI |
+| 5 | 部署开箱即用 | ✅ 已实施 | compose 对 `.env` 设 `required:false`（缺失不报错，改用以 `environment:` 默认值一键启动）+ `GEO_ADMIN_KEY` 透传；`scripts/smoke-compose.sh` + CI `deploy-smoke` 作业（构建→探活→`/metrics`→成本端点鉴权 403/200） |
 
-> 说明：#1 评测集的相对引用得分为**离线代理指标**（无需联网/API Key，可复现）；接入真实引擎查询后可替换为实测引用率。指标修正点：原始 `RelativeCitationScore` 为加性指标（可 >1），直接算提升% 会得出 +886% 这类失真值；改为先经 `1−e^(−rel)` 映射到 0–1 再算提升%，结果有界、可解释（实测平均预期提升约 +408%）。
+> 说明：#1 评测集的相对引用得分为**离线代理指标**（无需联网/API Key，可复现）；`geo evaluate --live --llm-key sk-xxx` 接入真实引擎（OpenAI 兼容 Chat Completions）实测引用，覆盖 Actual 指标并报告 `live_cited`。指标修正点：原始 `RelativeCitationScore` 为加性指标（可 >1），直接算提升% 会得出 +886% 这类失真值；改为先经 `1−e^(−rel)` 映射到 0–1 再算提升%，结果有界、可解释（实测平均预期提升约 +408%）。
 
 ---
 

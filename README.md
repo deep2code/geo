@@ -239,8 +239,13 @@ go install ./cmd/geo
 # 方式二：Makefile
 make build    # 产物 bin/geo
 
-# 方式三：Docker
-docker compose up -d    # 访问 http://localhost:8080
+# 方式三：Docker（开箱即用）
+docker compose up -d    # 自动建 4 个业务库（initdb）+ 构建镜像，访问 http://localhost:8080
+# 注意：.env 为可选覆盖文件（缺失不报错，使用 compose 内置默认值即可一键启动）；
+#       管理员接口默认 403（需 export GEO_ADMIN_KEY="$(openssl rand -hex 16)" 后才可用）。
+
+# 一键启动冒烟校验（CI 同款）：构建→探活→/metrics→成本端点鉴权
+bash scripts/smoke-compose.sh
 ```
 
 ### Web 前端构建（Vite + React + go:embed）
@@ -340,7 +345,7 @@ graph LR
 | `geo autorewrite` | AutoGEO 规则重写 | ✅ |
 | `geo serve` | 启动 Web UI + API | 视功能 |
 | `geo mcp-server` | MCP Server 模式 | 视功能 |
-| `geo evaluate` | 跑中文 GEO 评测集，产出改前/改后引用率可复现报告 | ❌（离线代理）/ ✅（接入真实引擎） |
+| `geo evaluate` | 跑中文 GEO 评测集，产出改前/改后引用率可复现报告（`--live --llm-key` 接入真实引擎实测引用） | ❌（离线代理）/ ✅（接入真实引擎） |
 | `geo rules show\|validate\|list` | 规则集外部化：查看/校验/列出可用规则集 | ❌ |
 | `geo cost report` | LLM 成本仪表盘：按模型聚合 token/USD + 预算熔断状态 | ❌（读 Prometheus/服务端） |
 
