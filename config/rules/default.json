@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "name": "default",
+  "description": "内置默认规则集（与代码硬编码基线一致）。可复制后按需调整权重与策略系数。",
+  "weights": {
+    "quotation": 8.0,
+    "statistics": 7.0,
+    "cite_sources": 7.0,
+    "fluency": 6.0,
+    "authoritative": 5.0,
+    "technical_terms": 4.0,
+    "unique_words": 3.0,
+    "heading_hierarchy": 8.0,
+    "front_loading": 7.0,
+    "lists": 5.0,
+    "definition_opening": 5.0,
+    "tables": 3.0,
+    "faq": 2.0,
+    "negative_penalty": 2.5,
+    "evergreen": 12.0
+  },
+  "strategy_effectiveness": {
+    "quotation": 0.41,
+    "statistics": 0.33,
+    "fluency": 0.29,
+    "cite_sources": 0.27,
+    "authoritative": 0.25,
+    "technical_terms": 0.20,
+    "unique_words": 0.18,
+    "structure": 0.22,
+    "answer_first": 0.24,
+    "faq": 0.20,
+    "schema": 0.30,
+    "easy_understand": 0.15,
+    "keyword": 0.10
+  }
+}

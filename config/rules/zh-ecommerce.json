@@ -1,0 +1,44 @@
+{
+  "version": "1.0.0",
+  "name": "zh-ecommerce",
+  "description": "中文电商/种草行业规则集示例：强化权威背书、统计数据与引用来源，弱化纯流畅度。演示按行业组合权重。",
+  "domain": "soft",
+  "weights": {
+    "quotation": 9.0,
+    "statistics": 8.0,
+    "cite_sources": 8.0,
+    "fluency": 5.0,
+    "authoritative": 7.0,
+    "technical_terms": 3.0,
+    "unique_words": 4.0,
+    "heading_hierarchy": 8.0,
+    "front_loading": 7.0,
+    "lists": 6.0,
+    "definition_opening": 5.0,
+    "tables": 4.0,
+    "faq": 3.0,
+    "negative_penalty": 2.5,
+    "evergreen": 10.0
+  },
+  "strategy_effectiveness": {
+    "quotation": 0.45,
+    "statistics": 0.38,
+    "fluency": 0.29,
+    "cite_sources": 0.30,
+    "authoritative": 0.30,
+    "technical_terms": 0.20,
+    "unique_words": 0.18,
+    "structure": 0.22,
+    "answer_first": 0.24,
+    "faq": 0.22,
+    "schema": 0.30,
+    "easy_understand": 0.15,
+    "keyword": 0.10
+  },
+  "strategy_triggers": {
+    "cite_sources": { "enabled": true, "min_score": 0 },
+    "quotation": { "enabled": true, "min_score": 0 },
+    "statistics": { "enabled": true, "min_score": 0 },
+    "keyword": { "enabled": false }
+  }
+}

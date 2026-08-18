@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -117,6 +118,9 @@ func newRootCmd() *cobra.Command {
 		newAutoRewriteCmd(),
 		newDiscoverCmd(),
 		newDriftCmd(),
+		newRulesCmd(),
+		newCostCmd(),
+		newEvaluateCmd(),
 	)
 	return root
 }
@@ -165,7 +169,16 @@ func buildEngine(cmd *cobra.Command) *geo.Engine {
 	if model == "" {
 		model = config.Env("GEO_LLM_MODEL", "")
 	}
-	return geo.New(geo.WithOpenAI(key, base, model))
+	// 月度预算（USD）：优先 --budget-usd，回退 GEO_LLM_BUDGET_USD 环境变量。
+	budget, _ := cmd.Flags().GetFloat64("budget-usd")
+	if budget <= 0 {
+		if v := os.Getenv("GEO_LLM_BUDGET_USD"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				budget = f
+			}
+		}
+	}
+	return geo.New(geo.WithOpenAI(key, base, model), geo.WithBudgetUSD(budget))
 }
 
 // readContent 读取内容：-f 文件 / --content / stdin。
@@ -215,6 +228,9 @@ func newOptimizeCmd() *cobra.Command {
 				return err
 			}
 			engine := buildEngine(cmd)
+			if err := applyRulesFlag(cmd, engine); err != nil {
+				return err
+			}
 
 			req := &models.OptimizationRequest{Content: content}
 
@@ -274,7 +290,9 @@ func newOptimizeCmd() *cobra.Command {
 	cmd.Flags().String("company", "", "企业名称（用于品牌实体增强）")
 	cmd.Flags().String("company-product", "", "产品名称")
 	cmd.Flags().String("company-desc", "", "企业描述")
+	cmd.Flags().Float64("budget-usd", 0, "LLM 月度预算上限（USD），超限后熔断后续 LLM 调用")
 	llmFlags(cmd)
+	cmd.Flags().String("rules", "", "规则集 JSON 路径（覆盖评分权重/策略系数）；也可用 GEO_RULES 环境变量")
 	return cmd
 }
 
@@ -298,6 +316,9 @@ func newScoreCmd() *cobra.Command {
 				return err
 			}
 			engine := buildEngine(cmd)
+			if err := applyRulesFlag(cmd, engine); err != nil {
+				return err
+			}
 			score, breakdowns := engine.Score(content)
 
 			fmt.Printf("GEO 评分: %.1f/100  等级: %s\n\n", score, scoreGrade(score))
@@ -315,6 +336,7 @@ func newScoreCmd() *cobra.Command {
 	cmd.Flags().StringP("file", "f", "", "输入文件路径")
 	cmd.Flags().String("content", "", "直接输入内容")
 	llmFlags(cmd)
+	cmd.Flags().String("rules", "", "规则集 JSON 路径（覆盖评分权重/策略系数）；也可用 GEO_RULES 环境变量")
 	return cmd
 }
 
@@ -329,6 +351,9 @@ func newAnalyzeCmd() *cobra.Command {
 				return err
 			}
 			engine := buildEngine(cmd)
+			if err := applyRulesFlag(cmd, engine); err != nil {
+				return err
+			}
 			analysis := engine.Analyze(content)
 
 			fmt.Printf("词数: %d  常青度: %d/100\n\n", analysis.WordCount, analysis.EvergreenScore)
@@ -353,6 +378,7 @@ func newAnalyzeCmd() *cobra.Command {
 	cmd.Flags().StringP("file", "f", "", "输入文件路径")
 	cmd.Flags().String("content", "", "直接输入内容")
 	llmFlags(cmd)
+	cmd.Flags().String("rules", "", "规则集 JSON 路径（覆盖评分权重/策略系数）；也可用 GEO_RULES 环境变量")
 	return cmd
 }
 
@@ -387,6 +413,9 @@ func newServeCmd() *cobra.Command {
 				port = config.Env("GEO_PORT", "8080")
 			}
 			engine := buildEngine(cmd)
+			if err := applyRulesFlag(cmd, engine); err != nil {
+				return err
+			}
 			srv := server.New(engine, ":"+port)
 			fmt.Printf("GEO API 服务已启动: http://localhost:%s\n", port)
 			fmt.Println("接口：")
@@ -403,6 +432,7 @@ func newServeCmd() *cobra.Command {
 	}
 	cmd.Flags().StringP("port", "p", "", "服务端口（默认 GEO_PORT 环境变量，缺省 8080）")
 	llmFlags(cmd)
+	cmd.Flags().String("rules", "", "规则集 JSON 路径（覆盖评分权重/策略系数）；也可用 GEO_RULES 环境变量")
 	return cmd
 }
 

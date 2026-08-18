@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"my-geo/internal/httputil"
+	"my-geo/internal/llm"
 )
 
 // serverStartTime 服务启动时间（包初始化时记录，用于系统信息展示）。
@@ -448,4 +449,21 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		"num_cpu":         runtime.NumCPU(),
 		"version":         geoVersion,
 	})
+}
+
+// handleAdminCost 返回 LLM 成本仪表盘数据（按模型聚合的 token 与美元成本 + 预算状态）。
+func (s *Server) handleAdminCost(w http.ResponseWriter, r *http.Request) {
+	if !s.checkAdminKey(r) {
+		s.adminForbidden(w)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	if s.llmMgr == nil {
+		writeJSON(w, http.StatusOK, llm.CostReport{})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.llmMgr.Cost())
 }

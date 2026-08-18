@@ -13,7 +13,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"my-geo/internal/models"
 )
 
 // OpenAIProvider OpenAI 兼容的 LLM 提供者。
@@ -26,6 +29,10 @@ type OpenAIProvider struct {
 	// P1-3：成本控制参数（可通过 With 选项覆盖，默认值见 NewOpenAI）。
 	maxTokens   int     // 请求体 max_tokens，<=0 表示不发送（用服务端默认）
 	temperature float64 // 请求体 temperature
+
+	// 最近一次调用的 token 用量（成本仪表盘用）。atomic.Value 存 models.TokenUsage，
+	// 避免与并发调用竞争——成本统计为近似值，允许极小误差。
+	lastUsage atomic.Value
 }
 
 // OpenAIOption 配置选项。
@@ -144,6 +151,12 @@ func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (s
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		// usage 在成本仪表盘中用于 token 计费；旧模型可能不返回，故用指针可缺省。
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -162,5 +175,26 @@ func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (s
 	if rewritten == "" {
 		return content, fmt.Errorf("LLM 返回空内容")
 	}
+
+	// 记录 token 用量供成本仪表盘聚合（缺省 usage 时记为 0）。
+	if result.Usage != nil {
+		p.lastUsage.Store(models.TokenUsage{
+			PromptTokens:     result.Usage.PromptTokens,
+			CompletionTokens: result.Usage.CompletionTokens,
+			TotalTokens:      result.Usage.TotalTokens,
+		})
+	}
 	return rewritten, nil
 }
+
+// LastUsage 返回最近一次成功调用的 token 用量（成本仪表盘用）。
+// 并发调用下为近似值——成本统计允许极小误差。
+func (p *OpenAIProvider) LastUsage() models.TokenUsage {
+	if v, ok := p.lastUsage.Load().(models.TokenUsage); ok {
+		return v
+	}
+	return models.TokenUsage{}
+}
+
+// Model 返回模型名（成本归因用）。
+func (p *OpenAIProvider) Model() string { return p.model }

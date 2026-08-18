@@ -515,6 +515,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/announcements", s.handleAdminAnnouncements)
 	s.mux.HandleFunc("/api/v1/admin/announcements/", s.handleAdminAnnouncementDelete)
 	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
+	s.mux.HandleFunc("/api/v1/admin/cost", s.handleAdminCost) // LLM 成本仪表盘
 	// 帮助中心与新手引导接口（#101）
 	s.mux.HandleFunc("/api/v1/help/articles", s.handleHelpArticles)
 	s.mux.HandleFunc("/api/v1/help/articles/", s.handleHelpArticleDetail)

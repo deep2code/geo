@@ -1,0 +1,103 @@
+{
+  "name": "zh-geo-sample",
+  "description": "中文 GEO 评测集样例（12 个跨领域用例）。用于 geo evaluate 跑改前/改后引用率与评分对比。target_content 为待优化页面摘要，离线即可评测；接入真实引擎查询后可补充实测引用率。",
+  "created_at": "2026-08-18",
+  "cases": [
+    {
+      "query": "大模型推理成本怎么降",
+      "target_url": "https://example.com/blog/llm-inference-cost",
+      "target_content": "大模型推理成本高。我们用批处理把吞吐量提高。还用了量化。效果不错。",
+      "engines": ["chatgpt", "deepseek", "qwen"],
+      "domain_type": "knowledge",
+      "expected_citations": ["批处理", "量化", "吞吐量"]
+    },
+    {
+      "query": "敏感肌用什么洗面奶",
+      "target_url": "https://example.com/skincare/sensitive-cleanser",
+      "target_content": "这款洗面奶适合敏感肌。温和不刺激。泡沫丰富。很多用户喜欢。",
+      "engines": ["doubao", "xiaohongshu-ish", "kimi"],
+      "domain_type": "soft",
+      "expected_citations": ["敏感肌", "温和", "无香精"]
+    },
+    {
+      "query": "甲状腺结节要紧吗",
+      "target_url": "https://example.com/health/thyroid-nodule",
+      "target_content": "甲状腺结节大部分是良性。需要定期随访。少数有恶变风险。建议做超声。",
+      "engines": ["chatgpt", "wenxin", "qwen"],
+      "domain_type": "serious",
+      "expected_citations": ["良性", "超声随访", "恶变风险"]
+    },
+    {
+      "query": "公司章程怎么写",
+      "target_url": "https://example.com/legal/articles-of-association",
+      "target_content": "公司章程约定股东权利。要明确出资比例。还要写清算规则。避免纠纷。",
+      "engines": ["chatgpt", "yuanbao", "wenxin"],
+      "domain_type": "serious",
+      "expected_citations": ["股东权利", "出资比例", "清算规则"]
+    },
+    {
+      "query": "定投基金靠谱吗",
+      "target_url": "https://example.com/finance/dca",
+      "target_content": "基金定投能摊平成本。长期持有更稳。但要选对标的。注意费率。",
+      "engines": ["chatgpt", "glm", "deepseek"],
+      "domain_type": "knowledge",
+      "expected_citations": ["摊平成本", "长期持有", "费率"]
+    },
+    {
+      "query": "考研英语怎么复习",
+      "target_url": "https://example.com/edu/kaoyan-english",
+      "target_content": "考研英语先背单词。再练真题。作文要模板。每天坚持。",
+      "engines": ["kimi", "qwen", "doubao"],
+      "domain_type": "knowledge",
+      "expected_citations": ["单词", "真题", "作文模板"]
+    },
+    {
+      "query": "成都三天怎么玩",
+      "target_url": "https://example.com/travel/chengdu-3d",
+      "target_content": "成都三天可逛宽窄巷子。看大熊猫。吃火锅。周边有青城山。",
+      "engines": ["doubao", "kimi", "chatgpt"],
+      "domain_type": "soft",
+      "expected_citations": ["宽窄巷子", "大熊猫", "火锅"]
+    },
+    {
+      "query": "减脂期吃什么",
+      "target_url": "https://example.com/food/fat-loss-diet",
+      "target_content": "减脂期多吃蛋白质。蔬菜管饱。少油少糖。配合运动更好。",
+      "engines": ["doubao", "xiaohongshu-ish", "kimi"],
+      "domain_type": "soft",
+      "expected_citations": ["蛋白质", "少油少糖", "运动"]
+    },
+    {
+      "query": "新能源车怎么选",
+      "target_url": "https://example.com/auto/ev-buying",
+      "target_content": "选新能源车看续航。也看补能。电池质保重要。试驾再定。",
+      "engines": ["chatgpt", "yuanbao", "wenxin"],
+      "domain_type": "knowledge",
+      "expected_citations": ["续航", "补能", "电池质保"]
+    },
+    {
+      "query": "远程办公效率怎么提",
+      "target_url": "https://example.com/work/remote-productivity",
+      "target_content": "远程办公要固定工位。用看板管任务。开会要克制。留出专注时间。",
+      "engines": ["chatgpt", "glm", "deepseek"],
+      "domain_type": "knowledge",
+      "expected_citations": ["固定工位", "看板", "专注时间"]
+    },
+    {
+      "query": "宝宝夜醒频繁怎么办",
+      "target_url": "https://example.com/parenting/baby-night-wake",
+      "target_content": "宝宝夜醒先排查饥饿。建立作息。减少夜奶。白天多活动。",
+      "engines": ["doubao", "kimi", "chatgpt"],
+      "domain_type": "soft",
+      "expected_citations": ["饥饿", "作息", "夜奶"]
+    },
+    {
+      "query": "机械键盘轴体怎么选",
+      "target_url": "https://example.com/digital/keyboard-switch",
+      "target_content": "机械键盘轴体有红轴青轴茶轴。红轴轻。青轴脆。茶轴中庸。看手感。",
+      "engines": ["chatgpt", "qwen", "kimi"],
+      "domain_type": "knowledge",
+      "expected_citations": ["红轴", "青轴", "茶轴"]
+    }
+  ]
+}

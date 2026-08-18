@@ -132,6 +132,30 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Fprintf(&b, "geo_llm_provider_open{provider=%q} %d\n", st.Name, open)
 		}
+
+		// LLM 成本仪表盘指标（按模型聚合 token 与美元成本）
+		cost := s.llmMgr.Cost()
+		b.WriteString("# HELP geo_llm_token_total LLM token consumption by model and kind.\n# TYPE geo_llm_token_total counter\n")
+		for _, row := range cost.Rows {
+			fmt.Fprintf(&b, "geo_llm_token_total{model=%q,kind=\"prompt\"} %d\n", row.Model, row.PromptTokens)
+			fmt.Fprintf(&b, "geo_llm_token_total{model=%q,kind=\"completion\"} %d\n", row.Model, row.CompletionTokens)
+		}
+		b.WriteString("# HELP geo_llm_cost_usd_total Estimated LLM cost in USD by model.\n# TYPE geo_llm_cost_usd_total counter\n")
+		for _, row := range cost.Rows {
+			fmt.Fprintf(&b, "geo_llm_cost_usd_total{model=%q} %.6f\n", row.Model, row.CostUSD)
+		}
+		b.WriteString("# HELP geo_llm_cost_total_usd Total estimated LLM cost in USD.\n# TYPE geo_llm_cost_total_usd gauge\n")
+		fmt.Fprintf(&b, "geo_llm_cost_total_usd %.6f\n", cost.TotalUSD)
+		if cost.BudgetUSD > 0 {
+			b.WriteString("# HELP geo_llm_cost_budget_usd Configured monthly LLM budget in USD.\n# TYPE geo_llm_cost_budget_usd gauge\n")
+			fmt.Fprintf(&b, "geo_llm_cost_budget_usd %.6f\n", cost.BudgetUSD)
+			b.WriteString("# HELP geo_llm_cost_breached Whether the LLM budget circuit breaker is tripped.\n# TYPE geo_llm_cost_breached gauge\n")
+			breached := 0
+			if cost.Breached {
+				breached = 1
+			}
+			fmt.Fprintf(&b, "geo_llm_cost_breached %d\n", breached)
+		}
 	}
 
 	io.WriteString(w, b.String())

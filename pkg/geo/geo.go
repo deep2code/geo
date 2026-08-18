@@ -31,6 +31,7 @@ type Option func(*engineConfig)
 
 type engineConfig struct {
 	llmProvider llm.Provider
+	budgetUSD   float64 // LLM 月度预算上限（USD），>0 时超限熔断
 }
 
 // WithLLM 注入自定义 LLM Provider。
@@ -57,6 +58,15 @@ func WithOpenAI(apiKey, baseURL, model string) Option {
 	}
 }
 
+// WithBudgetUSD 设置 LLM 月度预算上限（USD）；超限后引擎拒绝后续 LLM 调用。
+func WithBudgetUSD(limit float64) Option {
+	return func(c *engineConfig) {
+		if limit > 0 {
+			c.budgetUSD = limit
+		}
+	}
+}
+
 // New 创建 GEO 引擎。
 //
 // 未配置 LLM 时，系统仍可运行（仅规则化预处理 + 评分 + 建议），不调用 LLM。
@@ -73,7 +83,7 @@ func New(opts ...Option) *Engine {
 	if cfg.llmProvider != nil {
 		providers = append(providers, cfg.llmProvider)
 	}
-	mgr := llm.NewManager(providers...)
+	mgr := llm.NewManagerWithOptions(providers, llm.WithMonthlyBudgetUSD(cfg.budgetUSD))
 
 	opt := optimizer.New(sc, mgr)
 	return &Engine{optimizer: opt, scorer: sc, analyzer: a}
@@ -92,6 +102,22 @@ func (e *Engine) Score(content string) (float64, []models.ScoreBreakdown) {
 // Analyze 分析内容的 GEO 信号。
 func (e *Engine) Analyze(content string) *models.ContentAnalysis {
 	return e.analyzer.Analyze(content)
+}
+
+// ApplyRuleSet 应用外部化规则集（覆盖评分权重与策略效果系数）。
+//
+// 详见 internal/config/ruleset.go——将评分经验从硬编码改为可版本化配置，
+// 支持按行业/引擎偏好组合。应在启动早期、任何 Score/Optimize 调用之前调用。
+func (e *Engine) ApplyRuleSet(rs *config.RuleSet) {
+	scorer.ApplyRuleSet(rs)
+}
+
+// EstimateVisibility 预估给定评分在应用指定策略后的可见度指标（评测集用）。
+//
+// 与 optimizer 内部使用同一套策略效果系数，便于离线投影"若应用推荐策略"的预期提升，
+// 不依赖 LLM 实际改写结果。详见 internal/eval。
+func (e *Engine) EstimateVisibility(score float64, applied []models.StrategyType) models.VisibilityMetrics {
+	return e.scorer.EstimateVisibility(score, applied)
 }
 
 // Strategies 返回全部可用策略类型。

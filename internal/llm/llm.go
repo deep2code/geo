@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,6 +62,8 @@ type Options struct {
 	CircuitFailures int64
 	// CircuitCoolDown 熔断冷却期。
 	CircuitCoolDown time.Duration
+	// BudgetUSD 月度预算上限（USD）；>0 时累计成本超限即熔断（拒绝后续调用）。
+	BudgetUSD float64
 }
 
 // defaultOptions 返回与旧版写死常量一致的行为。
@@ -112,6 +116,16 @@ func WithCircuitBreak(failures int64, coolDown time.Duration) Option {
 	}
 }
 
+// WithMonthlyBudgetUSD 设置月度预算上限（USD）。累计成本超限后拒绝后续 LLM 调用，
+// 对齐 DeepSeek 涨价对冲思路——避免账单失控。
+func WithMonthlyBudgetUSD(limit float64) Option {
+	return func(o *Options) {
+		if limit > 0 {
+			o.BudgetUSD = limit
+		}
+	}
+}
+
 // Provider LLM 提供者接口。
 type Provider interface {
 	// Name 提供者名称（Status / 日志使用，建议稳定唯一）。
@@ -120,6 +134,73 @@ type Provider interface {
 	Rewrite(ctx context.Context, prompt, content string) (string, error)
 	// Available 是否可用（已配置 API Key 等）。
 	Available() bool
+}
+
+// UsageReporter 可选接口：提供者实现后，Manager 会采集 token 用量用于成本仪表盘。
+type UsageReporter interface {
+	LastUsage() models.TokenUsage
+}
+
+// ModelReporter 可选接口：提供者实现后，Manager 可据此按模型聚合成本。
+type ModelReporter interface {
+	Model() string
+}
+
+// ModelPricing 单一模型的 USD 单价（每 1K token）。
+type ModelPricing struct {
+	PromptPer1K     float64 `json:"prompt_per_1k"`
+	CompletionPer1K float64 `json:"completion_per_1k"`
+}
+
+// modelPricing 内置单价表（USD / 1K tokens）。随模型迭代更新；
+// 含主流 OpenAI 与国内模型（DeepSeek/Qwen/GLM/Kimi/豆包），对齐 DeepSeek 涨价对冲思路。
+//
+// 注：单价为公开价参考值，实际以各厂商账单为准；如需覆盖可在启动时修改本表。
+var modelPricing = map[string]ModelPricing{
+	"gpt-4o-mini":       {PromptPer1K: 0.00015, CompletionPer1K: 0.00060},
+	"gpt-4o":            {PromptPer1K: 0.00250, CompletionPer1K: 0.01000},
+	"deepseek-chat":     {PromptPer1K: 0.00027, CompletionPer1K: 0.00110},
+	"deepseek-reasoner": {PromptPer1K: 0.00055, CompletionPer1K: 0.00219},
+	"qwen-plus":         {PromptPer1K: 0.00040, CompletionPer1K: 0.00120},
+	"qwen-max":          {PromptPer1K: 0.00160, CompletionPer1K: 0.00480},
+	"glm-4":             {PromptPer1K: 0.00050, CompletionPer1K: 0.00050},
+	"glm-4-flash":       {PromptPer1K: 0.00010, CompletionPer1K: 0.00010},
+	"moonshot-v1-8k":    {PromptPer1K: 0.00090, CompletionPer1K: 0.00090},
+	"doubao-pro-32k":    {PromptPer1K: 0.00080, CompletionPer1K: 0.00200},
+}
+
+// ModelPricingTable 返回内置单价表副本（供 CLI / 文档展示）。
+func ModelPricingTable() map[string]ModelPricing {
+	out := make(map[string]ModelPricing, len(modelPricing))
+	for k, v := range modelPricing {
+		out[k] = v
+	}
+	return out
+}
+
+// CostRow 单模型成本聚合行。
+type CostRow struct {
+	Model            string  `json:"model"`
+	Calls            int64   `json:"calls"`
+	PromptTokens     int64   `json:"prompt_tokens"`
+	CompletionTokens int64   `json:"completion_tokens"`
+	TotalTokens      int64   `json:"total_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
+}
+
+// CostReport 成本仪表盘报告（按模型聚合 + 总览）。
+type CostReport struct {
+	Rows      []CostRow `json:"rows"`
+	TotalUSD  float64   `json:"total_usd"`
+	BudgetUSD float64   `json:"budget_usd"` // 0 = 未设预算
+	Breached  bool      `json:"breached"`   // 是否触发预算熔断
+}
+
+// costAccum 单模型成本累加器（在 costMu 保护下访问）。
+type costAccum struct {
+	prompt     int64
+	completion int64
+	calls      int64
 }
 
 // providerState 每个 provider 的运行状态 + 熔断计数。
@@ -159,6 +240,11 @@ type Manager struct {
 
 	sem  chan struct{} // 并发信号量；nil 表示不限制
 	opts Options
+
+	// 成本仪表盘：按模型聚合 token 用量与美元成本。
+	costMu     sync.Mutex
+	costByModel map[string]*costAccum
+	breached    atomic.Bool // 预算熔断标志
 }
 
 // NewManager 创建管理器（默认策略：2 次重试、并发上限 8、连续 5 次失败冷却 30s）。
@@ -185,6 +271,7 @@ func NewManagerWithOptions(providers []Provider, opts ...Option) *Manager {
 		stateByName: map[string]*providerState{},
 		states:      map[*providerState]struct{}{},
 		opts:        o,
+		costByModel: map[string]*costAccum{},
 	}
 	if o.MaxConcurrency > 0 {
 		m.sem = make(chan struct{}, o.MaxConcurrency)
@@ -242,6 +329,10 @@ func (ps *providerState) status(name string, available bool) ProviderStatus {
 //
 // 并发安全：超过 MaxConcurrency 的调用会阻塞等待信号量；ctx 取消时立即返回。
 func (m *Manager) Rewrite(ctx context.Context, prompt, content string) (string, error) {
+	// 预算熔断：已超预算直接拒绝（不消耗任何 LLM 额度）。
+	if m.opts.BudgetUSD > 0 && m.breached.Load() {
+		return content, ErrBudgetExceeded
+	}
 	// 全局并发上限（在取 provider 列表之前获取，避免无谓的拷贝）。
 	if m.sem != nil {
 		select {
@@ -337,7 +428,12 @@ func (m *Manager) callWithRetry(ctx context.Context, st *providerState, p Provid
 	for attempt := 0; ; attempt++ {
 		st.totalCalls.Add(1)
 		result, err = p.Rewrite(ctx, prompt, content)
-		if err == nil || attempt >= opts.RetryMax {
+		if err == nil {
+			// 成功调用：采集 token 用量用于成本仪表盘（仅计成功那次，重试失败不计入）。
+			m.recordUsageForProvider(p)
+			return result, nil
+		}
+		if attempt >= opts.RetryMax {
 			return result, err
 		}
 		// 指数退避等待（ctx 取消时中止）
@@ -356,6 +452,77 @@ func (m *Manager) callWithRetry(ctx context.Context, st *providerState, p Provid
 			delay = opts.RetryMaxDelay
 		}
 	}
+}
+
+// recordUsageForProvider 从 Provider 抽取最近一次 token 用量并按模型聚合。
+func (m *Manager) recordUsageForProvider(p Provider) {
+	ur, ok := p.(UsageReporter)
+	if !ok {
+		return
+	}
+	u := ur.LastUsage()
+	if u.IsZero() {
+		return
+	}
+	model := ""
+	if mr, ok := p.(ModelReporter); ok {
+		model = mr.Model()
+	}
+	if model == "" {
+		// 回退：去掉已知 provider 前缀（如 "openai:"）。
+		model = strings.TrimPrefix(p.Name(), "openai:")
+	}
+	m.recordUsage(model, u)
+}
+
+// recordUsage 累加单模型 token 用量并做预算熔断检查（costMu 保护）。
+func (m *Manager) recordUsage(model string, u models.TokenUsage) {
+	m.costMu.Lock()
+	defer m.costMu.Unlock()
+	a := m.costByModel[model]
+	if a == nil {
+		a = &costAccum{}
+		m.costByModel[model] = a
+	}
+	a.prompt += int64(u.PromptTokens)
+	a.completion += int64(u.CompletionTokens)
+	a.calls++
+	if m.opts.BudgetUSD > 0 && m.totalCostLocked() >= m.opts.BudgetUSD {
+		m.breached.Store(true)
+	}
+}
+
+// totalCostLocked 在 costMu 已加锁时计算当前总美元成本。
+func (m *Manager) totalCostLocked() float64 {
+	var total float64
+	for model, a := range m.costByModel {
+		price := modelPricing[model]
+		total += float64(a.prompt)/1000*price.PromptPer1K + float64(a.completion)/1000*price.CompletionPer1K
+	}
+	return total
+}
+
+// Cost 返回按模型聚合的成本仪表盘报告（线程安全）。
+func (m *Manager) Cost() CostReport {
+	m.costMu.Lock()
+	defer m.costMu.Unlock()
+	rows := make([]CostRow, 0, len(m.costByModel))
+	var total float64
+	for model, a := range m.costByModel {
+		price := modelPricing[model]
+		cost := float64(a.prompt)/1000*price.PromptPer1K + float64(a.completion)/1000*price.CompletionPer1K
+		rows = append(rows, CostRow{
+			Model:            model,
+			Calls:            a.calls,
+			PromptTokens:     a.prompt,
+			CompletionTokens: a.completion,
+			TotalTokens:      a.prompt + a.completion,
+			CostUSD:          cost,
+		})
+		total += cost
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Model < rows[j].Model })
+	return CostReport{Rows: rows, TotalUSD: total, BudgetUSD: m.opts.BudgetUSD, Breached: m.breached.Load()}
 }
 
 // HasAvailable 是否有"已配置"的 Provider（不考虑熔断）。
@@ -393,6 +560,9 @@ func (m *Manager) Status() []ProviderStatus {
 
 // ErrNotConfigured LLM 未配置。
 var ErrNotConfigured = errors.New("LLM 提供者未配置")
+
+// ErrBudgetExceeded 月度预算已耗尽，Manager 拒绝后续 LLM 调用。
+var ErrBudgetExceeded = errors.New("LLM 月度预算已耗尽，已熔断（请于账单周期重置或上调 GEO_LLM_BUDGET_USD）")
 
 // StubProvider 默认桩实现，无 API Key 时使用。
 //

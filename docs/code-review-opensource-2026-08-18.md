@@ -165,6 +165,18 @@
 4. **CI 质量门禁**：golangci-lint + govulncheck + `go test -race` + 前端 typecheck 全进 CI，release 加版本注入（P1-3）。
 5. **部署开箱即用**：修 P0-1 后补一份 `docker compose up` 冒烟脚本进 CI，确保每次提交都能一键起。
 
+### 战略项落地状态（2026-08-18，本会话已实施 #1/#2/#3）
+
+| # | 方向 | 状态 | 交付物 |
+|---|------|------|--------|
+| 1 | 评测体系 | ✅ 已实施 | `internal/eval` 包 + `geo evaluate` 子命令；`config/benchmarks/zh-geo-sample.json` 12 个中文跨领域用例；离线代理指标（有界引用率 `1−e^(−相对可见度得分)`）避免提升% 失真 |
+| 2 | 规则集外部化 | ✅ 已实施 | `internal/config/ruleset.go` + `geo rules {show\|validate\|list}`；`config/rules/*.json` 示例；`scorer.ApplyRuleSet` 注入权重与策略系数；optimize/score/analyze/serve 均支持 `--rules` |
+| 3 | LLM 成本仪表盘 | ✅ 已实施 | `internal/llm` 按模型聚合 token/USD（`modelPricing` 表 + 月度预算熔断 `ErrBudgetExceeded`）；`/api/v1/admin/cost` 端点 + `geo cost report`；Prometheus `geo_llm_cost_*` 指标 |
+| 4 | CI 质量门禁 | ✅ 前轮已完成（P1-8） | golangci-lint + govulncheck + `go test -race` |
+| 5 | 部署开箱即用 | ⬜ 待办 | 依赖 P0-1 建库；补 `docker compose up` 冒烟脚本进 CI |
+
+> 说明：#1 评测集的相对引用得分为**离线代理指标**（无需联网/API Key，可复现）；接入真实引擎查询后可替换为实测引用率。指标修正点：原始 `RelativeCitationScore` 为加性指标（可 >1），直接算提升% 会得出 +886% 这类失真值；改为先经 `1−e^(−rel)` 映射到 0–1 再算提升%，结果有界、可解释（实测平均预期提升约 +408%）。
+
 ---
 
 ## 六、建议落地顺序

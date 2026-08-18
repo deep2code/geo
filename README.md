@@ -309,10 +309,17 @@ graph LR
         MCP["mcp-server"]
     end
 
+    subgraph 战略["🎯 战略级能力"]
+        EV["evaluate"]
+        RU["rules"]
+        CO["cost"]
+    end
+
     style 内容 fill:#dbeafe,stroke:#2563eb
     style 品牌 fill:#dcfce7,stroke:#16a34a
     style P0P1 fill:#fef3c7,stroke:#d97706
     style 服务 fill:#f3e8ff,stroke:#7c3aed
+    style 战略 fill:#ffe4e6,stroke:#e11d48
 ```
 
 | 命令 | 说明 | 需 LLM Key |
@@ -333,6 +340,9 @@ graph LR
 | `geo autorewrite` | AutoGEO 规则重写 | ✅ |
 | `geo serve` | 启动 Web UI + API | 视功能 |
 | `geo mcp-server` | MCP Server 模式 | 视功能 |
+| `geo evaluate` | 跑中文 GEO 评测集，产出改前/改后引用率可复现报告 | ❌（离线代理）/ ✅（接入真实引擎） |
+| `geo rules show\|validate\|list` | 规则集外部化：查看/校验/列出可用规则集 | ❌ |
+| `geo cost report` | LLM 成本仪表盘：按模型聚合 token/USD + 预算熔断状态 | ❌（读 Prometheus/服务端） |
 
 ---
 
