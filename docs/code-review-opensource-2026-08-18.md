@@ -34,10 +34,10 @@
 | P1-3 | ✅ 已修复 | main 声明 version/commit/buildAt + `--version` + CI ldflags | `cmd/geo/main.go`、`.github/workflows/release.yml` |
 | P1-4 | ✅ 已修复 | LLM 指数退避重试/并发信号量/可配置熔断 | `internal/llm/llm.go` |
 | P1-5 | ✅ 已修复 | Prompt 注入防护（定界符+数据声明+截断+清洗） | `internal/brand/brand.go`、`internal/optimizer/autorewriter/` |
-| P1-6 | ✅ 已修复 | 零依赖 SQL migrations（embed + 版本表 + checksum） | `internal/migrate/` |
+| P1-6 | ✅ 已修复（2026-08-19 改为移除） | 曾实现零依赖 SQL migrations（embed + 版本表 + checksum）；现按新架构**整体移除** `internal/migrate/`，DDL 全部沉淀 `deploy/initdb/02-schema.sql`，应用内不再内嵌建表 | `deploy/initdb/` |
 | P1-7 | ✅ 已修复 | `.env` 加载 + 启动 fail-fast 校验 | `internal/config/env.go`、`cmd/geo/main.go` |
 | P1-8 | ✅ 已修复 | 高价值单测（safeURL 协议白名单 / writeInternalError 脱敏防泄露 / requireDataAdmin legacy 放行 / util.SplitSentences·CountSentences / scorer OverrideWeights 配置化生效+鲁棒性）+ CI 增 quality-gates 作业（golangci-lint + govulncheck） | `internal/server/security_test.go`、`internal/util/util_test.go`、`internal/scorer/scorer_test.go`、`.github/workflows/ci.yml` |
-| P1-9 | ✅ 已修复 | 弱密钥 fail-fast、API Key 恒时比较、JWT token_version 手动吊销、密码策略（8+ 字母数字） | `internal/config/env.go`、`internal/auth/auth.go`、`internal/migrate/sql/auth/0002_token_version.sql` |
+| P1-9 | ✅ 已修复 | 弱密钥 fail-fast、API Key 恒时比较、JWT token_version 手动吊销、密码策略（8+ 字母数字） | `internal/config/env.go`、`internal/auth/auth.go`（token_version 列由 `deploy/initdb/02-schema.sql` auth 区块创建） |
 | P1-10 | ✅ 已修复 | 抽 `internal/httputil`（JSON 读写/IP/分页统一，消除 10MB vs 1MB 漂移） | `internal/httputil/`、`internal/server/`、`internal/auth/handlers.go` |
 | P1-11 | ✅ 已修复 | ticket 冒泡排序改 `slices.SortFunc` | `internal/server/ticket.go` |
 | P2-3 | ✅ 已修复 | `globalKB` 无锁单例改 `atomic.Pointer`（失败可重试） | `internal/brand/knowledge/knowledge.go` |
@@ -66,6 +66,7 @@
 - `docker-compose.yml:14` 仅 `MYSQL_DATABASE: geo`，但 `:69-72` 四条 DSN 指向 `geo_offline` / `geo_history` / `geo_auth` / `geo_chinacheck` 四个库——**mysql 镜像不会创建这 4 个库**；`:21` 的 initdb 挂载还被注释掉了。
 - 生产代码无 `CREATE DATABASE`（仅测试里有）。
 - **建议**：启用 initdb（新增 `deploy/initdb/01-databases.sql` 建 4 库并授权），或在 app 启动时自动建库（`CREATE DATABASE IF NOT EXISTS` + `GRANT`）。修好后 `docker compose up` 应能做到开箱即用。
+- **✅ 2026-08-19 落地**：启用 initdb（01 建库授权 + 02 建表）；且已从 5 库合并为单库 `geo`，DSN 全部指向 `/geo`。
 
 ### P0-2 🔴 MCP Server 裸跑：无优雅关闭、无超时、无 recovery、无鉴权限流
 - `internal/brand/mcpserver/mcpserver.go:69`：`return http.ListenAndServe(s.addr, mux)`——无 signal 处理、无 ReadTimeout/WriteTimeout、无 panic recovery；对比 REST Server（`server.go:372-408`）已有完整的 `signal.NotifyContext` + `Shutdown(30s)`。
@@ -104,6 +105,7 @@
 ### P1-6 🔴 无 migrations 体系，schema 无法演进
 - schema 全部 `CREATE TABLE IF NOT EXISTS` 内嵌代码（`auth.go:598-647` 等），靠 `runDDL` 字符串匹配吞错（`auth.go:530`）；无 migrations 目录、无 golang-migrate，列变更/索引变更无法版本化。
 - **建议**：引入 `golang-migrate`（纯 SQL 迁移文件 + 版本表），建表逻辑从代码移出；至少把现有 DDL 沉淀为 001_init.sql。
+- **✅ 2026-08-19 落地（方向相反但更彻底）**：全部 DDL 沉淀为 `deploy/initdb/02-schema.sql`（5 库合并为单库 geo，12 张表 29 条语句，mysql 容器首次启动自动执行），应用内 `internal/migrate` 内嵌迁移已整体删除，启动不再自动建表。
 
 ### P1-7 🟠 配置分散、无集中校验、无 .env 加载
 - 无统一 `Config` 结构：DSN/开关散落各包（`dbprovider/factory.go:22`、`auth/auth.go:1015`），启动无整体校验；

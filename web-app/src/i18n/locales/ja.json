@@ -207,7 +207,7 @@
     "companySnapshot": "企業スナップショット"
   },
   "brandAudit": {
-    "title": "ブランド監査",
+    "title": "タイトル",
     "subtitle": "AI検索エンジン全体でのブランド可視性を包括監査",
     "selectBrand": "ブランドを選択",
     "startAudit": "監査開始",
@@ -270,7 +270,6 @@
       "reputation": "レピュテーション",
       "entity": "エンティティ強化"
     },
-    "title": "タイトル",
     "detail": "詳細",
     "tasks": "タスク",
     "expectedImpact": "期待される影響",
@@ -565,6 +564,9 @@
     "usageTotalEmails": "総メール送信数",
     "usageActiveTenants": "アクティブテナント数",
     "sysInfoTitle": "システム情報",
+    "sysBuildVersion": "ビルドバージョン",
+    "sysBuildCommit": "Gitコミット",
+    "sysBuildTime": "ビルド時刻",
     "sysGoVersion": "Goバージョン",
     "sysMemory": "メモリ割当",
     "sysGoroutines": "Goroutine数",

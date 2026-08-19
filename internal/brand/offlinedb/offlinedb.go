@@ -22,12 +22,11 @@ import (
 	"unicode"
 
 	"my-geo/internal/dbprovider"
-	"my-geo/internal/migrate"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const defaultMySQLDSN = "geo_offline:geo_offline_pass@tcp(127.0.0.1:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+const defaultMySQLDSN = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 // Company 数据库中的一条工商注册记录。
 type Company struct {
@@ -90,12 +89,7 @@ func Open(path string) (OfflineStore, error) {
 		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)
 	}
 
-	// 应用版本化迁移（schema 统一由 internal/migrate 管理）。
-	if _, err := migrate.Migrate(ctx, sqldb, "offline"); err != nil {
-		_ = sqldb.Close()
-		return nil, fmt.Errorf("初始化 schema 失败: %w", err)
-	}
-
+	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 	return &mysqlStore{path: dsn, db: sqldb}, nil
 }
 

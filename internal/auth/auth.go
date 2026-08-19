@@ -41,7 +41,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"my-geo/internal/dbprovider"
-	"my-geo/internal/migrate"
 	"my-geo/internal/util"
 )
 
@@ -489,7 +488,7 @@ func defaultAuthDSN() (string, error) {
 	if d != "" {
 		return d, nil
 	}
-	return "", errors.New("启用账号体系（GEO_AUTH_ENABLED=true）必须配置 GEO_AUTH_MYSQL_DSN，例如 geo:pass@tcp(127.0.0.1:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local")
+	return "", errors.New("启用账号体系（GEO_AUTH_ENABLED=true）必须配置 GEO_AUTH_MYSQL_DSN，例如 geo:pass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local")
 }
 
 // maskDSN 把 DSN 里的密码替换成 ***，避免在日志/响应中泄露凭据。
@@ -532,12 +531,8 @@ func OpenStore() (*Store, error) {
 		return nil, fmt.Errorf("set mysql session: %w", err)
 	}
 
-	// 应用版本化迁移（schema 统一由 internal/migrate 管理，失败即报错，
-	// 不再吞掉"已存在"类错误——迁移按版本记录，天然幂等）。
-	if _, err := migrate.Migrate(ctx, db, "auth"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("init auth schema: %w", err)
-	}
+	// 数据库表结构由 deploy/initdb 初始化（01-databases.sql + 02-schema.sql），
+	// 应用内不再内嵌 migration。
 	return &Store{dsn: dsn, db: db}, nil
 }
 
@@ -966,6 +961,42 @@ func (svc *Service) Enabled() bool { return svc.enabled }
 
 // Store 返回底层存储（未启用时为 nil）。
 func (svc *Service) Store() *Store { return svc.store }
+
+// BootstrapAdmin 启动时初始化管理员账号（不依赖注册接口）。
+//
+// 读取 GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD：
+//   - 账号体系未启用、或 GEO_ADMIN_EMAIL 未配置 → 直接跳过（返回 nil）；
+//   - GEO_ADMIN_EMAIL 已配置但密码为空 → 返回错误（由调用方告警，不阻断启动）；
+//   - 该邮箱已存在 → 跳过（幂等，重复启动不会覆盖已有账号）；
+//   - 不存在 → 创建管理员（Owner + 默认工作区 "Default Workspace"）。
+//
+// 密码需满足强度要求（≥8 位且同时含字母与数字，见 validatePasswordStrength）。
+func (svc *Service) BootstrapAdmin() error {
+	if svc == nil || !svc.enabled || svc.store == nil {
+		return nil
+	}
+	email := strings.TrimSpace(strings.ToLower(os.Getenv("GEO_ADMIN_EMAIL")))
+	if email == "" {
+		return nil
+	}
+	password := os.Getenv("GEO_ADMIN_PASSWORD")
+	if password == "" {
+		return fmt.Errorf("GEO_ADMIN_EMAIL 已配置但 GEO_ADMIN_PASSWORD 为空，跳过管理员初始化")
+	}
+	existing, err := svc.store.GetUserByEmail(email)
+	if err != nil {
+		return fmt.Errorf("查询管理员邮箱失败: %w", err)
+	}
+	if existing != nil {
+		slog.Info("管理员账号已存在，跳过初始化", slog.String("email", email))
+		return nil
+	}
+	if _, _, err := svc.store.CreateUser(email, password, "Administrator", "Default Workspace"); err != nil {
+		return fmt.Errorf("创建初始管理员失败: %w", err)
+	}
+	slog.Info("已创建初始管理员（Owner）", slog.String("email", email))
+	return nil
+}
 
 // Close 关闭存储。
 func (svc *Service) Close() error {

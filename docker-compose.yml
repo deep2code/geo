@@ -17,7 +17,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-      # 首次初始化时自动建 4 个业务库并授权（见 deploy/initdb/01-databases.sql）
+      # 首次初始化时自动建 5 个业务库并授权（见 deploy/initdb/01-databases.sql）
       - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
     ports:
       # 仅绑定本机，避免数据库端口暴露公网（应用容器经内部网络访问）
@@ -56,7 +56,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: geo:latest
+    # tag 固定 latest：构建后 `docker compose push` 即推送到 ACR（见 deploy 文档）
+    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest
     container_name: geo-server
     restart: unless-stopped
     ports:
@@ -72,13 +73,15 @@ services:
       # 管理员密钥：留空时所有 /api/v1/admin/* 接口返回 403（默认安全）。
       # 本地开发需管理员接口时：export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
       - GEO_ADMIN_KEY=${GEO_ADMIN_KEY:-}
-      # MySQL DSN（指向 compose 内的 mysql 服务，密码与上方 MYSQL_PASSWORD 同一变量）
-      - GEO_OFFLINE_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_offline?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_HISTORY_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_AUTH_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_auth?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_CHINACHECK_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo_chinacheck?parseTime=true&charset=utf8mb4&loc=Local
+      # MySQL DSN：单库架构，全部模块共用 geo 库（initdb 01 建库 + 02 建表）
+      - GEO_OFFLINE_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_HISTORY_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_AUTH_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
+      - GEO_CHINACHECK_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
       # Redis（异步审计队列后端；同时可作为 chinacheck 缓存）
       - GEO_REDIS_ADDR=redis:6379
+      # 计费库（与 auth 同库；未配置时自动回退 GEO_AUTH_MYSQL_DSN）
+      - GEO_BILLING_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
       - GEO_CHINACHECK_CACHE_TYPE=mysql
       # - GEO_CHINACHECK_CACHE_TYPE=redis
       # - GEO_CHINACHECK_REDIS_DSN=redis://redis:6379/0

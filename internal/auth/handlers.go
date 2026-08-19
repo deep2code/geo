@@ -91,10 +91,27 @@ type HandlerSet struct {
 	Svc *Service
 	// FirstUserAllowInviteOnly：为 true 时首用户也需 invite code（私有部署可选）
 	FirstUserInviteOnly bool
+	// AllowRegister：注册通道开关（默认 false 关闭；true 开放注册）。
+	// 管理员账号由启动时的 GEO_ADMIN_EMAIL/GEO_ADMIN_PASSWORD 预置，不依赖开放注册。
+	AllowRegister bool
+}
+
+// HandlerOption 构建 HandlerSet 的选项。
+type HandlerOption func(*HandlerSet)
+
+// WithAllowRegister 设置注册通道开关（对应 GEO_ALLOW_REGISTER）。
+func WithAllowRegister(v bool) HandlerOption {
+	return func(h *HandlerSet) { h.AllowRegister = v }
 }
 
 // NewHandlerSet 构建 handler 集。
-func NewHandlerSet(svc *Service) HandlerSet { return HandlerSet{Svc: svc} }
+func NewHandlerSet(svc *Service, opts ...HandlerOption) HandlerSet {
+	h := HandlerSet{Svc: svc}
+	for _, o := range opts {
+		o(&h)
+	}
+	return h
+}
 
 // ---- 注册 ----
 
@@ -107,23 +124,18 @@ func (h HandlerSet) Register(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, AuthNResponse{Error: "账号体系未启用（请设置 GEO_AUTH_ENABLED=true）", Code: "AUTH_DISABLED"})
 		return
 	}
+	// 注册通道默认关闭（GEO_ALLOW_REGISTER=false）：管理员账号由部署初始化预置，
+	// 不依赖"首用户注册"。如需开放注册，设 GEO_ALLOW_REGISTER=true。
+	if !h.AllowRegister {
+		writeJSON(w, http.StatusForbidden, AuthNResponse{
+			Error: "注册通道已关闭（GEO_ALLOW_REGISTER=false）。管理员账号由部署初始化预置，请联系管理员开通账号。",
+			Code:  "REGISTRATION_CLOSED",
+		})
+		return
+	}
 	var req registerRequest
 	if err := readJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, AuthNResponse{Error: "参数解析失败: " + err.Error(), Code: "BAD_REQUEST"})
-		return
-	}
-	// 非首用户注册：暂不开放（后续走邀请码或管理员邀请流程）。
-	// 首用户直接创建。
-	hasUsers, err := h.Svc.Store().HasUsers()
-	if err != nil {
-		writeInternalError(w, "register.has_users", err)
-		return
-	}
-	if hasUsers {
-		writeJSON(w, http.StatusForbidden, AuthNResponse{
-			Error: "当前实例已有用户，普通注册通道已关闭。请联系工作区管理员邀请，或通过 invite_code 注册。",
-			Code:  "REGISTRATION_CLOSED",
-		})
 		return
 	}
 	u, ws, err := h.Svc.Store().CreateUser(req.Email, req.Password, req.DisplayName, req.WorkspaceName)

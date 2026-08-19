@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,14 +36,35 @@ func testRootDSN(t *testing.T) string {
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	rootDSN := testRootDSN(t)
-	dbName := fmt.Sprintf("geo_auth_test_%d_%s", os.Getpid(), strings.ToLower(time.Now().Format("150405000000")))
+	// 库名用纳秒级随机，避免同一微秒窗口内多个测试生成同名库相互污染
+	dbName := fmt.Sprintf("geo_auth_test_%d_%d", os.Getpid(), time.Now().UnixNano())
 	root, err := sql.Open("mysql", rootDSN)
 	if err != nil {
 		t.Fatalf("打开 root 连接: %v", err)
 	}
 	defer root.Close()
-	if _, err := root.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s` DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci", dbName)); err != nil {
+	// 先删后建，保证库内干净（即使极端情况库名碰撞也重建）
+	if _, err := root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName)); err != nil {
+		t.Fatalf("DROP DATABASE: %v", err)
+	}
+	if _, err := root.Exec(fmt.Sprintf("CREATE DATABASE `%s` DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci", dbName)); err != nil {
 		t.Fatalf("CREATE DATABASE: %v", err)
+	}
+	// 建表：schema 以 deploy/initdb/02-schema.sql 为单一事实来源（应用内不内嵌迁移）。
+	// 用独立连接 + multiStatements 一次性执行 "USE 测试库 + 全部 DDL"，
+	// 避免连接池中 USE 与后续语句落到不同连接导致建错库。
+	schemaSQL, err := os.ReadFile(filepath.Join("..", "..", "deploy", "initdb", "02-schema.sql"))
+	if err != nil {
+		t.Fatalf("读取 02-schema.sql: %v", err)
+	}
+	msDB, err := sql.Open("mysql", ensureMultiStatements(rootDSN))
+	if err != nil {
+		t.Fatalf("打开建表连接: %v", err)
+	}
+	defer msDB.Close()
+	stmts := splitSchemaStatements(string(schemaSQL))
+	if _, err := msDB.Exec("USE `" + dbName + "`;\n" + strings.Join(stmts, ";\n") + ";"); err != nil {
+		t.Fatalf("建表失败（库 %s，共 %d 条语句）: %v", dbName, len(stmts), err)
 	}
 	// 把 user:pass@tcp(host)/?xxx 改造成 user:pass@tcp(host)/dbname?xxx
 	dsn := injectDB(rootDSN, dbName)
@@ -57,6 +79,40 @@ func openTestStore(t *testing.T) *Store {
 		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
 	})
 	return s
+}
+
+// ensureMultiStatements 确保 DSN 带 multiStatements=true（建表需一次执行多条 DDL）。
+func ensureMultiStatements(dsn string) string {
+	if strings.Contains(dsn, "multiStatements=") {
+		return dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&multiStatements=true"
+	}
+	return dsn + "?multiStatements=true"
+}
+
+// splitSchemaStatements 按分号切分 schema SQL，过滤空语句、纯注释行与 USE 行。
+func splitSchemaStatements(content string) []string {
+	var out []string
+	for _, s := range strings.Split(content, ";") {
+		var kept []string
+		for _, ln := range strings.Split(s, "\n") {
+			trimmed := strings.TrimSpace(ln)
+			if trimmed == "" || strings.HasPrefix(trimmed, "--") || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if strings.HasPrefix(trimmed, "USE ") {
+				continue // USE 由调用方处理（连接已选定测试库）
+			}
+			kept = append(kept, ln)
+		}
+		body := strings.TrimSpace(strings.Join(kept, "\n"))
+		if body != "" {
+			out = append(out, body)
+		}
+	}
+	return out
 }
 
 // injectDB 在 DSN 路径部分插入数据库名。
@@ -487,5 +543,48 @@ func TestTokenVersionRevoke(t *testing.T) {
 	u3, _ := s.GetUserByID(u.ID)
 	if u3.TokenVersion != u2.TokenVersion+1 {
 		t.Fatalf("after revoke token_version = %d, want %d", u3.TokenVersion, u2.TokenVersion+1)
+	}
+}
+
+// TestBootstrapAdmin 启动初始化管理员：创建、幂等、跳过逻辑。
+// 依赖本地 MySQL（GEO_TEST_MYSQL_ROOT_DSN 或 root@127.0.0.1:3306），不可用则跳过。
+func TestBootstrapAdmin(t *testing.T) {
+	st := openTestStore(t)
+	svc := &Service{store: st, enabled: true, loginFails: map[string]loginFailState{}}
+
+	// 1) 未配置 GEO_ADMIN_EMAIL → 跳过
+	t.Setenv("GEO_ADMIN_EMAIL", "")
+	t.Setenv("GEO_ADMIN_PASSWORD", "")
+	if err := svc.BootstrapAdmin(); err != nil {
+		t.Fatalf("未配置邮箱应跳过: %v", err)
+	}
+
+	// 2) 配置后创建管理员（Owner + 默认工作区）
+	t.Setenv("GEO_ADMIN_EMAIL", "admin@geo.test")
+	t.Setenv("GEO_ADMIN_PASSWORD", "AdminPass123")
+	if err := svc.BootstrapAdmin(); err != nil {
+		t.Fatalf("创建管理员失败: %v", err)
+	}
+	u, err := st.GetUserByEmail("admin@geo.test")
+	if err != nil || u == nil {
+		t.Fatalf("管理员未创建: user=%v err=%v", u, err)
+	}
+	ws, err := st.ListWorkspacesWithRole(u.ID)
+	if err != nil || len(ws) == 0 {
+		t.Fatalf("管理员默认工作区缺失: ws=%v err=%v", ws, err)
+	}
+	if ws[0].Role != RoleOwner {
+		t.Fatalf("管理员应为 Owner，实际 %q", ws[0].Role)
+	}
+
+	// 3) 幂等：再次调用不重复创建、不报错
+	if err := svc.BootstrapAdmin(); err != nil {
+		t.Fatalf("重复调用应幂等: %v", err)
+	}
+
+	// 4) 密码为空 → 报错（调用方告警）
+	t.Setenv("GEO_ADMIN_PASSWORD", "")
+	if err := svc.BootstrapAdmin(); err == nil {
+		t.Fatal("密码为空应返回错误")
 	}
 }

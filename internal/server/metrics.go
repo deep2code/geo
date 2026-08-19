@@ -31,15 +31,19 @@ import (
 var (
 	buildVersion = "dev"
 	buildCommit  = "none"
+	buildAt      = "unknown" // 构建时间（UTC ISO8601）
 )
 
 // SetBuildInfo 由 main 包在启动时同步版本信息（与 geo --version 一致）。
-func SetBuildInfo(version, commit string) {
+func SetBuildInfo(version, commit, buildAtStr string) {
 	if version != "" {
 		buildVersion = version
 	}
 	if commit != "" {
 		buildCommit = commit
+	}
+	if buildAtStr != "" {
+		buildAt = buildAtStr
 	}
 }
 

@@ -2,8 +2,8 @@
 #
 # backup.sh — MyGEO 生产级 MySQL 备份 / 恢复
 #
-# 覆盖 4 个业务库：geo_offline / geo_history / geo_auth / geo_chinacheck
-#   - 每库独立 mysqldump + gzip，时间戳命名
+# 覆盖 1 个业务库：geo（单库架构，auth/billing/history/chinacheck/offline 共用）
+#   - mysqldump + gzip，时间戳命名
 #   - 本地保留策略（默认保留 14 天 daily，可选 weekly/monthly 归档）
 #   - 备份后 gzip -t 完整性校验
 #   - 可选异地归档：配置 GEO_BACKUP_REMOTE（aws s3 / ossutil）后自动上传
@@ -11,11 +11,11 @@
 #   - 支持 restore 子命令按库 / 按时间点恢复
 #
 # 用法：
-#   ./backup.sh backup            # 全量备份 4 库
-#   ./backup.sh backup --db geo_history   # 仅备份单个库
+#   ./backup.sh backup            # 全量备份 geo 库
+#   ./backup.sh backup --db geo   # 仅备份单个库（可多库，空格分隔）
 #   ./backup.sh list              # 列出本地备份
 #   ./backup.sh restore --latest  # 恢复全部库到最新备份
-#   ./backup.sh restore --db geo_history --file backups/geo_history-20260819-093000.sql.gz
+#   ./backup.sh restore --db geo --file backups/geo-20260819-093000.sql.gz
 #
 # 环境变量（缺省值已对齐 docker-compose.yml）：
 #   GEO_MYSQL_HOST     默认 mysql
@@ -23,7 +23,7 @@
 #   GEO_MYSQL_USER     默认 geo
 #   GEO_MYSQL_PASSWORD 默认 geoPass（务必在生产用强口令并通过 secret 注入）
 #   GEO_BACKUP_DIR     默认 /data/geo/backups
-#   GEO_BACKUP_DBS     默认 "geo_offline geo_history geo_auth geo_chinacheck"
+#   GEO_BACKUP_DBS     默认 "geo"
 #   GEO_BACKUP_KEEP_DAYS 默认 14
 #   GEO_BACKUP_REMOTE  默认空（例：'s3://mygeo-backups' 或 'oss://mygeo-backups'）
 #
@@ -35,7 +35,7 @@ PORT="${GEO_MYSQL_PORT:-3306}"
 USER="${GEO_MYSQL_USER:-geo}"
 PASSWORD="${GEO_MYSQL_PASSWORD:-geoPass}"
 BACKUP_DIR="${GEO_BACKUP_DIR:-/data/geo/backups}"
-DBS="${GEO_BACKUP_DBS:-geo_offline geo_history geo_auth geo_chinacheck}"
+DBS="${GEO_BACKUP_DBS:-geo}"
 KEEP_DAYS="${GEO_BACKUP_KEEP_DAYS:-14}"
 REMOTE="${GEO_BACKUP_REMOTE:-}"
 

@@ -62,6 +62,7 @@ Dockerfile:84 检查 `/api/v1/health`，docker-compose.yml:84 检查 `/healthz`�
 ### P0-10 【安全】默认弱凭据 DSN 静默使用
 `auth.go:541`：未配置 `GEO_AUTH_MYSQL_DSN` 时静默使用 `geo_auth:geo_auth_pass@tcp(127.0.0.1:3306)/geo_auth` 已知弱口令连接。
 修复：生产环境未配置 DSN 时应直接报错退出，不落默认值。
+- **✅ 2026-08-19 已处理**：`auth.go` 未配置 DSN 时 fail-fast 报错；默认 DSN 已统一为单库 `geo:geoPass@tcp(127.0.0.1:3306)/geo`（弱口令仅本地开发默认）。
 
 ---
 

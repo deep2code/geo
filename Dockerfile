@@ -4,11 +4,21 @@
 #   - Go   1.26（与 go.mod / CI ci.yml / release.yml 对齐）
 #   - Node 20.x（与 CI / 现代 Vite 要求对齐）
 #   - Alpine 3.20
+#
+# 多架构（buildx）：docker buildx build --platform linux/amd64,linux/arm64 --push
+#   - web-builder 用 $BUILDPLATFORM（本机架构）跑 npm/vite：产物是纯静态文件，
+#     架构无关，本机原生构建最快
+#   - builder 用 $TARGETPLATFORM（目标架构）跑 go build：CGO_ENABLED=0 交叉编译
+# syntax=docker/dockerfile:1
 
-# ===== 阶段 1：前端构建（生产级 SPA）=====
-FROM node:20-alpine AS web-builder
+# ===== 阶段 1：前端构建（生产级 SPA；静态产物架构无关，用本机平台构建最快）=====
+FROM --platform=$BUILDPLATFORM node:20-alpine AS web-builder
 
 WORKDIR /web
+
+# npm 镜像源（默认官方源；国内/受限网络可传 --build-arg NPM_REGISTRY 覆盖）
+ARG NPM_REGISTRY=https://registry.npmjs.org
+ENV npm_config_registry=$NPM_REGISTRY
 
 # 仅拷贝 package 定义，充分利用 layer 缓存
 COPY web-app/package.json web-app/package-lock.json ./
@@ -18,12 +28,21 @@ RUN npm ci
 COPY web-app/ ./
 RUN npm run build
 
-# ===== 阶段 2：Go 后端构建 =====
+# ===== 阶段 2：Go 后端构建（目标架构默认即 TARGETPLATFORM；CGO 禁用可安全交叉编译）=====
 FROM golang:1.26-alpine AS builder
 
 ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILD_AT=unknown
+# buildx 预定义的目标平台参数
+ARG TARGETOS
+ARG TARGETARCH
+
+# Go 模块代理与校验库（默认官方源；国内/受限网络可传 build-arg 覆盖）
+ARG GOPROXY_URL=https://proxy.golang.org,direct
+ENV GOPROXY=$GOPROXY_URL
+ARG GOSUMDB_URL=sum.golang.org
+ENV GOSUMDB=$GOSUMDB_URL
 
 WORKDIR /build
 
@@ -34,11 +53,13 @@ RUN go mod download
 # 拷贝源码
 COPY . .
 
-# 从上一阶段拷贝前端构建产物到预期位置（server.go 中 //go:embed web/dist/*）
-COPY --from=web-builder /web/dist ./web/dist
+# 从上一阶段拷贝前端构建产物到预期位置（server.go 中 //go:embed web/dist/*，
+# 相对 internal/server/ 目录；vite.config.ts 的 outDir 为 ../internal/server/web/dist，
+# 在容器 /web 下解析为 /internal/server/web/dist）
+COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 
-# 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用）
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用；GOOS/GOARCH 来自 buildx）
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
     -o /out/geo \

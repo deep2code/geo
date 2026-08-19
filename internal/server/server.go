@@ -117,8 +117,14 @@ func New(engine *geo.Engine, addr string) *Server {
 	if as, err := auth.NewService(); err != nil {
 		slog.Warn("账号体系初始化失败（将不启用 JWT/工作区/RBAC）", slog.Any("error", err))
 	} else {
+		// 启动时预置管理员（GEO_ADMIN_EMAIL/GEO_ADMIN_PASSWORD，幂等）
+		if err := as.BootstrapAdmin(); err != nil {
+			slog.Warn("初始化管理员失败（不影响启动）", slog.Any("error", err))
+		}
 		authSvc = as
 	}
+	// 注册通道开关（GEO_ALLOW_REGISTER，默认 false 关闭；管理员由部署预置）
+	allowRegister := strings.EqualFold(config.Env("GEO_ALLOW_REGISTER", "false"), "true")
 	s := &Server{
 		engine:      engine,
 		brandEngine: be,
@@ -126,7 +132,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		addr:        addr,
 		mux:         http.NewServeMux(),
 		authSvc:     authSvc,
-		authH:       auth.NewHandlerSet(authSvc),
+		authH:       auth.NewHandlerSet(authSvc, auth.WithAllowRegister(allowRegister)),
 		llmMgr:      llmMgr,
 	}
 	// 初始化邮件发送器（未配置 SMTP 时为 nil，邮件接口返回未启用提示）
@@ -221,7 +227,7 @@ func BuildBrandEngineFromEnv() *brand.Engine {
 // 环境变量：
 //
 //	GEO_HISTORY_DB_ENABLED=true/false     总开关（默认 true）
-//	GEO_HISTORY_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo_history?...  DSN（优先）
+//	GEO_HISTORY_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  DSN（优先）
 //	GEO_HISTORY_DB_PATH=...                兼容旧变量：若形如 user:pass@tcp(...) 则作为 DSN
 func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
@@ -279,7 +285,7 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 //	GEO_CHINACHECK_URL=https://...               自定义 MCP endpoint
 //	GEO_CHINACHECK_LANG=zh/en/ja/...             enum 字段翻译语言（默认 zh）
 //	GEO_CHINACHECK_CACHE_ENABLED=true/false      缓存开关（默认 true）
-//	GEO_CHINACHECK_MYSQL_DSN=user:pass@tcp(...)/geo_cache?...  MySQL 缓存 DSN（优先）
+//	GEO_CHINACHECK_MYSQL_DSN=user:pass@tcp(...)/geo?...  MySQL 缓存 DSN（优先）
 //	GEO_CHINACHECK_CACHE_PATH=...                兼容旧变量（若含 @tcp(...) 则视为 DSN）
 //	GEO_CHINACHECK_CACHE_MAX_ITEMS=20000         最大缓存条目（默认 10000）
 //	GEO_CHINACHECK_CACHE_TTL_HOURS=720           单条目 TTL 小时（默认 720=30 天）
@@ -336,7 +342,7 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 // 环境变量：
 //
 //	GEO_OFFLINE_DB_ENABLED=true/false         总开关（默认 true）
-//	GEO_OFFLINE_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo_offline?...  DSN（优先）
+//	GEO_OFFLINE_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  DSN（优先）
 //	GEO_OFFLINE_DB_PATH=...                   兼容旧变量（形如 user:pass@tcp(...) 视为 DSN）
 func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")

@@ -289,6 +289,9 @@ const Admin: React.FC = () => {
   // 系统信息数据
   const sysInfo = systemInfo ?? {
     go_version: 'go1.22.0',
+    build_version: 'dev',
+    build_commit: 'none',
+    build_at: '',
     memory_alloc: '128MB',
     goroutines: 42,
     start_time: new Date(Date.now() - 86400_000 * 7).toISOString(),
@@ -407,6 +410,18 @@ const Admin: React.FC = () => {
 
           <Card title={t('admin.sysInfoTitle')} compact>
             <div className="admin-sysinfo-list">
+              <div className="admin-sysinfo-row">
+                <span className="admin-sysinfo-key">{t('admin.sysBuildVersion')}</span>
+                <span className="admin-sysinfo-val">{sysInfo.build_version}</span>
+              </div>
+              <div className="admin-sysinfo-row">
+                <span className="admin-sysinfo-key">{t('admin.sysBuildCommit')}</span>
+                <span className="admin-sysinfo-val" title={sysInfo.build_commit}>{sysInfo.build_commit}</span>
+              </div>
+              <div className="admin-sysinfo-row">
+                <span className="admin-sysinfo-key">{t('admin.sysBuildTime')}</span>
+                <span className="admin-sysinfo-val">{sysInfo.build_at ? new Date(sysInfo.build_at).toLocaleString() : '-'}</span>
+              </div>
               <div className="admin-sysinfo-row">
                 <span className="admin-sysinfo-key">{t('admin.sysGoVersion')}</span>
                 <span className="admin-sysinfo-val">{sysInfo.go_version}</span>

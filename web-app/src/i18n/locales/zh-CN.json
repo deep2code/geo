@@ -207,7 +207,7 @@
     "companySnapshot": "工商快照"
   },
   "brandAudit": {
-    "title": "品牌审计",
+    "title": "标题",
     "subtitle": "全方位审计品牌在 AI 搜索引擎中的可见度",
     "selectBrand": "选择品牌",
     "startAudit": "开始审计",
@@ -270,7 +270,6 @@
       "reputation": "声誉管理",
       "entity": "实体增强"
     },
-    "title": "标题",
     "detail": "详情",
     "tasks": "具体任务",
     "expectedImpact": "预期影响",
@@ -565,6 +564,9 @@
     "usageTotalEmails": "邮件总发送数",
     "usageActiveTenants": "活跃租户数",
     "sysInfoTitle": "系统信息",
+    "sysBuildVersion": "构建版本",
+    "sysBuildCommit": "Git Commit",
+    "sysBuildTime": "打包时间",
     "sysGoVersion": "Go 版本",
     "sysMemory": "内存分配",
     "sysGoroutines": "Goroutine 数",

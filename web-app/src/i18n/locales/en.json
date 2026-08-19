@@ -207,7 +207,7 @@
     "companySnapshot": "Company Snapshot"
   },
   "brandAudit": {
-    "title": "Brand Audit",
+    "title": "Title",
     "subtitle": "Comprehensive brand visibility audit across AI search engines",
     "selectBrand": "Select Brand",
     "startAudit": "Start Audit",
@@ -270,7 +270,6 @@
       "reputation": "Reputation Management",
       "entity": "Entity Enhancement"
     },
-    "title": "Title",
     "detail": "Detail",
     "tasks": "Tasks",
     "expectedImpact": "Expected Impact",
@@ -565,6 +564,9 @@
     "usageTotalEmails": "Total Emails",
     "usageActiveTenants": "Active Tenants",
     "sysInfoTitle": "System Info",
+    "sysBuildVersion": "Build Version",
+    "sysBuildCommit": "Git Commit",
+    "sysBuildTime": "Build Time",
     "sysGoVersion": "Go Version",
     "sysMemory": "Memory Alloc",
     "sysGoroutines": "Goroutines",

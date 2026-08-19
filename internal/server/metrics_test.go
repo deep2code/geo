@@ -75,9 +75,9 @@ func TestMetricsWithLLMManager(t *testing.T) {
 }
 
 func TestSetBuildInfo(t *testing.T) {
-	SetBuildInfo("v9.9.9", "abc123")
-	defer SetBuildInfo("dev", "none")
-	if buildVersion != "v9.9.9" || buildCommit != "abc123" {
-		t.Errorf("SetBuildInfo 未生效: version=%q commit=%q", buildVersion, buildCommit)
+	SetBuildInfo("v9.9.9", "abc123", "2026-08-19T10:00:00Z")
+	defer SetBuildInfo("dev", "none", "unknown")
+	if buildVersion != "v9.9.9" || buildCommit != "abc123" || buildAt != "2026-08-19T10:00:00Z" {
+		t.Errorf("SetBuildInfo 未生效: version=%q commit=%q buildAt=%q", buildVersion, buildCommit, buildAt)
 	}
 }

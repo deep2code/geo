@@ -16,9 +16,9 @@ import (
 
 // newBillingFromEnv 初始化计费服务与异步队列。
 //
-// DSN 解析：GEO_BILLING_MYSQL_DSN 优先；缺失时回退 GEO_AUTH_MYSQL_DSN
-// （与账号体系同库，便于订阅关联工作区）。任一不可达则计费降级为不可用，
-// 不影响其他功能启动。
+// DSN 解析：GEO_BILLING_MYSQL_DSN 优先；缺失时直接回退 GEO_AUTH_MYSQL_DSN
+// （单库架构，全部模块共用 geo 库，无需改写库名）。
+// 任一不可达则计费降级为不可用，不影响其他功能启动。
 func newBillingFromEnv(be *brand.Engine, authSvc *auth.Service) (*billing.Service, billing.HandlerSet, *queue.Client, *queue.Server) {
 	// 异步队列（Redis 背书，独立于计费库）。
 	var qClient *queue.Client
@@ -43,7 +43,8 @@ func newBillingFromEnv(be *brand.Engine, authSvc *auth.Service) (*billing.Servic
 		slog.Warn("品牌引擎未初始化，异步审计队列不可用。")
 	}
 
-	// 计费（MySQL）：与队列解耦，可独立启停。
+	// 计费（MySQL）：与队列解耦，可独立启停。优先用 GEO_BILLING_MYSQL_DSN，
+	// 缺失时回退 GEO_AUTH_MYSQL_DSN（单库架构共用 geo 库）。
 	dsn := config.Env("GEO_BILLING_MYSQL_DSN", "")
 	if dsn == "" {
 		dsn = config.Env("GEO_AUTH_MYSQL_DSN", "")

@@ -44,7 +44,7 @@ func main() {
 
 	initLogger()
 	// 同步构建信息到 server 包（/metrics 的 geo_build_info 与 --version 保持一致）。
-	server.SetBuildInfo(version, commit)
+	server.SetBuildInfo(version, commit, buildAt)
 	// 启动关键配置 fail-fast 校验（弱密钥/缺 DSN 拒绝启动）。
 	if err := config.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)

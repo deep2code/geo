@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"my-geo/internal/dbprovider"
-	"my-geo/internal/migrate"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -26,7 +25,7 @@ type mysqlCacheStore struct {
 	ttl      time.Duration
 }
 
-const defaultMySQLDSN = "geo_cache:geo_cache_pass@tcp(127.0.0.1:3306)/geo_cache?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+const defaultMySQLDSN = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 func resolveDSN(filePath string) string {
 	if filePath != "" {
@@ -65,22 +64,8 @@ func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("chinacheck/mysql: set session failed: %w", err)
 	}
-
-	if err := c.initSchema(); err != nil {
-		db.Close()
-		return nil, err
-	}
+	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 	return c, nil
-}
-
-func (c *mysqlCacheStore) initSchema() error {
-	// 应用版本化迁移（schema 统一由 internal/migrate 管理）。
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if _, err := migrate.Migrate(ctx, c.db, "chinacheck"); err != nil {
-		return fmt.Errorf("chinacheck/mysql: schema init failed: %w", err)
-	}
-	return nil
 }
 
 func (c *mysqlCacheStore) Path() string    { return c.dsn }

@@ -721,7 +721,7 @@ flowchart LR
     subgraph INGEST["📥 数据导入阶段（一次性）"]
         direction TB
         SRC["🌐 种子数据源<br/>guichong/-/tree/json<br/>31省×42年 JSON"]
-        SRC --> INIT["首次启动自动建表<br/>+ FULLTEXT(ngram) 索引"]
+        SRC --> INIT["初始化：deploy/initdb<br/>01建库 + 02建表/索引"]
         INIT --> IMP["「工商库导入」页<br/>上传 JSON / GitHub 直连<br/>3种格式自动识别"]
         IMP --> READY["✅ 1000万+数据就绪"]
     end
@@ -759,7 +759,9 @@ graph TB
 ### 操作命令速查（均已在 Web 界面提供）
 
 ```bash
-# 1. 初始化空库：首次启动服务时自动建表 + 索引，无需手动操作
+# 1. 初始化空库（部署时执行一次）：
+#    docker compose up -d mysql  # 自动执行 deploy/initdb（01建库+02建表+索引）
+#    或手动: mysql -uroot -p < deploy/initdb/01-databases.sql && mysql -uroot -p < deploy/initdb/02-schema.sql
 # 2A. 本地批量导入（推荐，全量）：
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
 #    打开「工商库导入」页 → 上传 ~/geo-erddb/Enterprise-Registration-Data/json/ 下的文件
@@ -996,7 +998,7 @@ MCP Server 已随 Web 服务同进程启动（默认 `:9090` `/mcp`），无需�
 - `GEO_AUTH_MYSQL_DSN`
 - `GEO_CHINACHECK_MYSQL_DSN`（或切换为 Redis：`GEO_CHINACHECK_REDIS_DSN`，分布式场景推荐）
 
-> 首次启动会自动建表 / 建索引，无需手动迁移。
+> 表结构由部署初始化完成（`deploy/initdb/01-databases.sql` + `02-schema.sql`，mysql 容器首次启动自动执行），应用内不内嵌迁移。
 
 ### Q: GEO 优化后多久能看到效果？
 

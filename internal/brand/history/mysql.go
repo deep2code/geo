@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"my-geo/internal/dbprovider"
-	"my-geo/internal/migrate"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -33,7 +32,7 @@ func Open(path string) (Store, error) {
 		if envDSN := os.Getenv("GEO_HISTORY_MYSQL_DSN"); envDSN != "" {
 			dsn = envDSN
 		} else {
-			dsn = "geo_history:geo_history_pass@tcp(127.0.0.1:3306)/geo_history?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+			dsn = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 		}
 	}
 	dsn = dbprovider.NormalizeMySQLDSN(dsn)
@@ -52,11 +51,7 @@ func Open(path string) (Store, error) {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: MySQL 初始化会话失败: %w", err)
 	}
-	// 应用版本化迁移（schema 统一由 internal/migrate 管理）。
-	if _, err := migrate.Migrate(ctx, sqldb, "history"); err != nil {
-		sqldb.Close()
-		return nil, fmt.Errorf("history: MySQL schema 初始化失败: %w", err)
-	}
+	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 	return &mysqlStore{path: dsn, db: sqldb}, nil
 }
 

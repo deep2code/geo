@@ -18,7 +18,7 @@
 | 5 | SSO / SAML / OIDC | P2 | 对接企业飞书/钉钉/企业微信 IdP。 |
 
 > 其余已落地（`internal/auth/*` + `internal/server/server.go` 中间件 + `internal/brand/history/*` workspace 改造）：
-> - ✅ #1 邮箱 + 密码注册 / 登录（首用户开放，后续需 Owner/Admin 邀请）
+> - ✅ #1 邮箱 + 密码注册 / 登录（注册通道默认关闭；管理员由部署预置 GEO_ADMIN_EMAIL/PASSWORD，可配 GEO_ALLOW_REGISTER=true 开放注册）
 > - ✅ #2 HMAC-SHA256 JWT（access 2h / refresh 14d）+ refresh 轮换 + 登出吊销 + 防暴
 > - ✅ #3 Workspace 多租户 + `audit_history`/`BrandProfile` 按 workspace 自动迁移过滤
 > - ✅ #4 Owner/Admin/Member/Viewer 四角色 × 9 Permissions RBAC 中间件

@@ -11,7 +11,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"my-geo/internal/dbprovider"
-	"my-geo/internal/migrate"
 )
 
 // Store 计费数据访问层。底层复用 MySQL（默认与账号体系同库）。
@@ -20,10 +19,11 @@ type Store struct {
 	dsn string
 }
 
-// OpenStore 打开（或复用）billing 数据库连接并应用迁移。
+// OpenStore 打开（或复用）billing 数据库连接。
 //
 // dsn 为空时返回错误：调用方需先解析 GEO_BILLING_MYSQL_DSN，缺失时回退
 // GEO_AUTH_MYSQL_DSN（见 server.go 的 newBillingFromEnv）。
+// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 func OpenStore(dsn string) (*Store, error) {
 	if dsn == "" {
 		return nil, errors.New("billing: 未配置 GEO_BILLING_MYSQL_DSN 且未回退到 GEO_AUTH_MYSQL_DSN")
@@ -34,12 +34,7 @@ func OpenStore(dsn string) (*Store, error) {
 		return nil, fmt.Errorf("billing: 打开数据库失败: %w", err)
 	}
 	dbprovider.ConfigurePool(db, "auth")
-	st := &Store{db: db, dsn: dsn}
-	if _, err := migrate.Migrate(context.Background(), db, "billing"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("billing: 迁移失败: %w", err)
-	}
-	return st, nil
+	return &Store{db: db, dsn: dsn}, nil
 }
 
 // DB 返回底层连接（供队列等共享同一连接复用）。
