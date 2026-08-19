@@ -23,6 +23,7 @@ import (
 	"mime"
 	"my-geo/internal/adapter"
 	"my-geo/internal/auth"
+	"my-geo/internal/billing"
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/chinacheck"
 	"my-geo/internal/brand/history"
@@ -31,6 +32,7 @@ import (
 	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
 	"my-geo/internal/httputil"
+	"my-geo/internal/queue"
 	"my-geo/internal/llm"
 	"my-geo/internal/mail"
 	"my-geo/internal/models"
@@ -70,6 +72,10 @@ type Server struct {
 	mailSender  *mail.Sender  // SMTP 邮件发送器（未配置时为 nil）
 	authSvc     *auth.Service // 账号体系（未启用时为 nil；但 Service.Enabled() 才为 false）
 	authH       auth.HandlerSet
+	billingSvc  *billing.Service // 计费 / 订阅 / 支付（未启用时为 nil）
+	billingH    billing.HandlerSet
+	queueClient *queue.Client // 异步审计队列客户端（未启用时为 nil）
+	queueServer *queue.Server // 异步审计 worker 池（未启用时为 nil）
 	whitelabel  Whitelabel
 	llmMgr      *llm.Manager // 全局 LLM 管理器（/metrics 与品牌引擎复用同一实例）
 	addr        string
@@ -136,6 +142,15 @@ func New(engine *geo.Engine, addr string) *Server {
 		if s.scheduler != nil {
 			s.scheduler.Start()
 		}
+	}
+	// 初始化计费 / 订阅 / 支付 与 异步队列
+	bsvc, bh, qc, qs := newBillingFromEnv(be, authSvc)
+	s.billingSvc = bsvc
+	s.billingH = bh
+	s.queueClient = qc
+	s.queueServer = qs
+	if qs != nil {
+		s.startQueue(context.Background())
 	}
 	s.registerRoutes()
 	return s
@@ -405,11 +420,17 @@ func (s *Server) Close() {
 	if s.scheduler != nil {
 		s.scheduler.Stop()
 	}
+	if s.queueServer != nil {
+		s.queueServer.Stop()
+	}
 	if s.brandEngine != nil {
 		s.brandEngine.Close()
 	}
 	if s.authSvc != nil {
 		_ = s.authSvc.Close()
+	}
+	if s.billingSvc != nil {
+		_ = s.billingSvc.Store().Close()
 	}
 }
 
@@ -517,6 +538,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/cms/info", s.handleCMSInfo)
 	// 安全审计接口
 	s.mux.HandleFunc("/api/v1/security/audit", s.handleSecurityAudit)
+	// ── 计费 / 订阅 / 支付（# 商业化） ──
+	s.registerBillingRoutes()
+	// 异步审计（长任务解耦）
+	s.mux.HandleFunc("/api/v1/brand/audit/async", s.handleBrandAuditAsync)
+	s.mux.HandleFunc("/api/v1/brand/audit/jobs/", s.handleAuditJob)
 	// 管理员后台接口（#100）
 	s.mux.HandleFunc("/api/v1/admin/tenants", s.handleAdminTenants)
 	s.mux.HandleFunc("/api/v1/admin/tenants/", s.handleAdminTenantDetail)

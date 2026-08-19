@@ -51,6 +51,13 @@ func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "prompts 不能为空"})
 		return
 	}
+	// 配额校验：计费启用且能解析工作区时，拦截超套餐审计。
+	if !s.checkAuditQuota(r) {
+		writeJSON(w, http.StatusTooManyRequests, ErrorResponse{
+			Error: "本月审计次数已达套餐上限，请升级套餐或下月再试",
+		})
+		return
+	}
 	if s.brandEngine == nil {
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌审计引擎未初始化"})
 		return
@@ -60,6 +67,8 @@ func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, err, "")
 		return
 	}
+	// 审计成功，记录用量（计费启用时）。
+	s.recordAuditUsage(r)
 	writeJSON(w, http.StatusOK, report)
 }
 

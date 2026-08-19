@@ -1,0 +1,271 @@
+// Package queue 提供基于 Redis 的异步任务队列（asynq 背书）。
+//
+// 为什么用 Redis/asynq 而不是 MySQL：
+// 用户明确选择 Redis 作为队列后端。asynq 在 Redis 之上提供了可靠的
+// 任务分发、指数退避重试、死信（dead）、结果存储与状态巡检（Inspector），
+// 远比手写「SELECT ... FOR UPDATE SKIP LOCKED」轮询更适合生产。
+// 本项目此前把审计任务放在 MySQL（零额外依赖），现将队列独立到 Redis，
+// 与计费库（MySQL）解耦——二者可各自独立启停。
+//
+// 连接通过环境变量 GEO_REDIS_ADDR 注入（默认 127.0.0.1:6379）。
+package queue
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
+	"my-geo/internal/brand"
+)
+
+const (
+	// QueueAudit 审计任务队列名。
+	QueueAudit = "audit"
+	// TaskAudit 审计任务类型名。
+	TaskAudit = "audit:brand"
+)
+
+// Status 任务状态（与前端轮询约定保持一致）。
+const (
+	StatusPending   = "pending"
+	StatusRunning   = "running"
+	StatusSucceeded = "succeeded"
+	StatusFailed    = "failed"
+)
+
+// Job 异步审计任务（HTTP 层视图；底层由 asynq 任务承载）。
+type Job struct {
+	ID          string
+	WorkspaceID string
+	BrandName   string
+	ProfileJSON string // brand.BrandProfile 的 JSON 快照（兼容旧调用方）
+	Status      string
+	ResultJSON  string
+	ErrorMsg    string
+	Attempts    int
+	MaxAttempts int
+	CreatedAt   int64
+	FinishedAt  int64
+}
+
+// jobPayload 是写入 asynq 的任务负载，附带创建时间（TaskInfo 无 EnqueuedAt）。
+type jobPayload struct {
+	ID          string             `json:"id"`
+	WorkspaceID string             `json:"workspace_id"`
+	BrandName   string             `json:"brand_name"`
+	CreatedAt   int64              `json:"created_at"`
+	Profile     brand.BrandProfile `json:"profile"`
+}
+
+// Client 任务入队与状态查询（供 HTTP handler 调用）。
+type Client struct {
+	rdb  *asynq.Client
+	insp *asynq.Inspector
+	addr string
+}
+
+// NewClient 构建 Redis 背书的队列客户端，并做一次连通性校验。
+// addr 为空时回退到 127.0.0.1:6379。
+func NewClient(addr string) (*Client, error) {
+	if addr == "" {
+		addr = "127.0.0.1:6379"
+	}
+	// 启动期连通性校验：连不上就直接禁用队列，避免运行期 503 抖动。
+	rc := redis.NewClient(&redis.Options{Addr: addr})
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	err := rc.Ping(pingCtx).Err()
+	cancel()
+	_ = rc.Close()
+	if err != nil {
+		return nil, fmt.Errorf("queue: 无法连接 Redis(%s): %w", addr, err)
+	}
+	opt := asynq.RedisClientOpt{Addr: addr}
+	return &Client{
+		rdb:  asynq.NewClient(opt),
+		insp: asynq.NewInspector(opt),
+		addr: addr,
+	}, nil
+}
+
+// Enqueue 入队一条审计任务，返回任务 ID。
+func (c *Client) Enqueue(ctx context.Context, j *Job) (string, error) {
+	if j.ID == "" {
+		j.ID = newJobID()
+	}
+	if j.MaxAttempts <= 0 {
+		j.MaxAttempts = 3
+	}
+	payload := jobPayload{
+		ID:          j.ID,
+		WorkspaceID: j.WorkspaceID,
+		BrandName:   j.BrandName,
+		CreatedAt:   time.Now().Unix(),
+	}
+	if j.ProfileJSON != "" {
+		var p brand.BrandProfile
+		if err := json.Unmarshal([]byte(j.ProfileJSON), &p); err == nil {
+			payload.Profile = p
+		}
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("queue: 序列化任务失败: %w", err)
+	}
+	task := asynq.NewTask(TaskAudit, body,
+		asynq.TaskID(j.ID),
+		asynq.Queue(QueueAudit),
+		asynq.MaxRetry(j.MaxAttempts),
+		asynq.Timeout(30*time.Minute),
+		asynq.Retention(24*time.Hour), // 完成后结果保留 24h，供轮询读取
+	)
+	info, err := c.rdb.EnqueueContext(ctx, task)
+	if err != nil {
+		return "", fmt.Errorf("queue: 入队失败: %w", err)
+	}
+	return info.ID, nil
+}
+
+// GetJob 查询任务状态与结果（经 asynq Inspector）。
+func (c *Client) GetJob(ctx context.Context, id string) (*Job, error) {
+	info, err := c.insp.GetTaskInfo(QueueAudit, id)
+	if err != nil {
+		return nil, err
+	}
+	job := &Job{ID: id}
+	switch info.State.String() {
+	case "active", "retry", "aggregating":
+		job.Status = StatusRunning
+	case "pending", "scheduled":
+		job.Status = StatusPending
+	case "archived", "completed":
+		job.Status = StatusSucceeded
+	case "dead":
+		job.Status = StatusFailed
+	default:
+		job.Status = StatusPending
+	}
+	var p jobPayload
+	_ = json.Unmarshal(info.Payload, &p)
+	job.WorkspaceID = p.WorkspaceID
+	job.BrandName = p.BrandName
+	job.Attempts = info.Retried
+	job.MaxAttempts = info.MaxRetry
+	job.CreatedAt = p.CreatedAt
+	if job.Status == StatusSucceeded {
+		if info.Result != nil {
+			job.ResultJSON = string(info.Result)
+		}
+		if !info.CompletedAt.IsZero() {
+			job.FinishedAt = info.CompletedAt.Unix()
+		}
+	}
+	if job.Status == StatusFailed {
+		job.ErrorMsg = info.LastErr
+		if !info.LastFailedAt.IsZero() {
+			job.FinishedAt = info.LastFailedAt.Unix()
+		}
+	}
+	return job, nil
+}
+
+// Close 释放底层连接。
+func (c *Client) Close() error {
+	if c.insp != nil {
+		_ = c.insp.Close()
+	}
+	if c.rdb != nil {
+		return c.rdb.Close()
+	}
+	return nil
+}
+
+// Server 后台 worker（asynq Server），处理 audit 队列中的任务。
+type Server struct {
+	srv    *asynq.Server
+	engine *brand.Engine
+	stop   sync.Once
+}
+
+// NewServer 构建 worker。concurrency 为并发处理数（≤0 时默认 2）。
+func NewServer(addr string, engine *brand.Engine, concurrency int) (*Server, error) {
+	if addr == "" {
+		addr = "127.0.0.1:6379"
+	}
+	if concurrency <= 0 {
+		concurrency = 2
+	}
+	srv := asynq.NewServer(
+		asynq.RedisClientOpt{Addr: addr},
+		asynq.Config{
+			Concurrency:     concurrency,
+			Queues:          map[string]int{QueueAudit: 1},
+			StrictPriority:  false,
+			ShutdownTimeout: 30 * time.Second,
+			RetryDelayFunc:  asynq.DefaultRetryDelayFunc,
+		},
+	)
+	return &Server{srv: srv, engine: engine}, nil
+}
+
+// Start 启动 worker（阻塞直到 ctx 取消或 Run 异常退出）。通常在独立 goroutine 中调用。
+func (s *Server) Start(ctx context.Context) {
+	mux := asynq.NewServeMux()
+	mux.Handle(TaskAudit, asynq.HandlerFunc(s.processAudit))
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.srv.Run(mux) }()
+	select {
+	case <-ctx.Done():
+		s.Stop()
+	case err := <-errCh:
+		if err != nil {
+			slog.Error("queue: worker 异常退出", slog.Any("error", err))
+		}
+	}
+}
+
+// Stop 优雅关闭 worker（幂等）。
+func (s *Server) Stop() {
+	s.stop.Do(func() {
+		s.srv.Shutdown()
+	})
+}
+
+// processAudit 执行审计：跑 brand.Engine.Audit，成功写回结果。
+// 返回错误时 asynq 按 MaxRetry 指数退避重试，超限进入 dead 状态。
+func (s *Server) processAudit(ctx context.Context, t *asynq.Task) error {
+	var p jobPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return fmt.Errorf("queue: 解析任务负载失败: %w", err) // 致命，不再重试
+	}
+	if s.engine == nil {
+		return fmt.Errorf("queue: 品牌审计引擎未初始化")
+	}
+	report, err := s.engine.Audit(ctx, p.Profile)
+	if err != nil {
+		return err
+	}
+	resultJSON, _ := json.Marshal(report)
+	if rw := t.ResultWriter(); rw != nil {
+		if _, werr := rw.Write(resultJSON); werr != nil {
+			slog.Warn("queue: 写回结果失败", slog.String("job", p.ID), slog.Any("error", werr))
+		}
+	}
+	slog.Info("queue: 异步审计完成", slog.String("job", p.ID), slog.String("brand", p.BrandName))
+	return nil
+}
+
+// newJobID 生成任务 ID（带 job_ 前缀，16 字节熵）。
+func newJobID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "job_" + time.Now().Format("20060102150405")
+	}
+	return "job_" + hex.EncodeToString(b)
+}

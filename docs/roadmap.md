@@ -28,11 +28,11 @@
 
 | # | 事项 | 优先级 | 说明 |
 |---|------|--------|------|
-| 10 | 套餐与配额模型 | P1 | Free / Pro / Enterprise；按品牌数、审计次数、邮件量、并发数限制。定价方案 API 已就绪，需接入配额执行。 |
-| 11 | 支付渠道接入 | P1 | 支付宝 / 微信 / 银联；海外可考虑 Stripe。 |
-| 12 | 发票与合同流 | P1 | 电子发票开票、订单管理、续费与到期提醒。 |
+| 10 | 套餐与配额模型 | P1 | Free / Pro / Enterprise；按品牌数、审计次数、邮件量、并发数限制。定价方案 API 已就绪，需接入配额执行。 **✅ 已落地（2026-08-19）：`internal/billing` 套餐目录 + 订阅 + 月度配额执行 + `/api/v1/billing/*` 接口；审计接口已接入配额拦截。** |
+| 11 | 支付渠道接入 | P1 | 支付宝 / 微信 / 银联；海外可考虑 Stripe。 **✅ 已落地（2026-08-19）：`internal/billing/payment` 抽象层覆盖微信支付 v3 / 支付宝 RSA2 / Stripe（纯标准库签名与 webhook 验签）。三者与「手动激活」轻量版并存、互不替代：`GET /api/v1/billing/payment-methods`（及 `/plans` 内 `payment_methods`）始终返回微信/支付宝/Stripe + 手动，按凭据齐备标注 configured；付费套餐需显式指定在线渠道（未配置即报错、不静默降级），免费/显式 manual 走手动激活。`CreateOrder` 语义已改为并存模型（`payment/methods.go` 元信息 + `service.CreateOrder`）。** |
+| 12 | 发票与合同流 | P1 | 电子发票开票、订单管理、续费与到期提醒。 **🟡 部分落地（2026-08-19）：订单（`payment_orders`）+ 发票记录（`invoices`）+ 支付成功自动开票已建；电子发票直开与合同流待接入。** |
 | 13 | 试用 / 邀请码 / 优惠券 | P2 | 7-14 天免费试用、渠道邀请码、促销折扣。 |
-| 14 | 用量计量（Metering） | P1 | 审计次数、LLM Token、邮件数、PDF 导出、外部 API 调用计量入库。 |
+| 14 | 用量计量（Metering） | P1 | 审计次数、LLM Token、邮件数、PDF 导出、外部 API 调用计量入库。 **✅ 已落地（2026-08-19）：`usage_meters` 按月滚动计量，审计/导出可扩展；`/api/v1/billing/usage` 可查。** |
 | 15 | 订阅续费与欠费策略 | P1 | Grace period、自动续费开关、降级只读模式。 |
 
 ## 三、部署、运维与可靠性
@@ -63,7 +63,7 @@
 |---|------|--------|------|
 | 60 | 品牌告警规则引擎 | P1 | 当前 SPA 里规则在 localStorage（仅前端），需要服务端持久化 + 周期评估 + 自动发邮件。 |
 | 61 | 周报自动分发订阅 | P1 | 定时任务把周维度 BVS 汇总、排名变化、告警摘要，邮件推送给订阅人。 |
-| 64 | 任务队列（审计 / PDF / 邮件异步） | P1 | 当前接口同步执行，长审计会超时；改用 `asynq`/`machinery` + worker。 |
+| 64 | 任务队列（审计 / PDF / 邮件异步） | P1 | 当前接口同步执行，长审计会超时；改用 `asynq`/`machinery` + worker。 **✅ 已落地（2026-08-19）：`internal/queue` 基于 Redis + asynq 的异步队列（用户明确要求用 Redis 而非 MySQL）。`POST /api/v1/brand/audit/async` 入队 + `GET /api/v1/brand/audit/jobs/{id}` 轮询；结果经 asynq ResultWriter 写回、Inspector 读取；审计接口已加配额拦截。后端依赖 `GEO_REDIS_ADDR`（默认 127.0.0.1:6379），docker-compose 已注入 `redis:6379` 并设为 geo 启动硬依赖。新增依赖 asynq v0.26 / go-redis v9。端到端冒烟测试 `internal/queue/smoke_test.go` 已通过（需 GEO_SMOKE_REDIS）。** |
 | 65 | 任务进度与实时通知 | P2 | WebSocket/SSE 推送审计进度、完成通知、失败原因。 |
 | 66 | 可导出 CSV / Excel 明细 | P2 | 引擎得分明细、关键词、Top 引用列表结构化导出。 |
 | 67 | 品牌协作评论与 @ 提及 | P2 | 报告上直接批注，@某人并发邮件 / 飞书。 |
