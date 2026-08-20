@@ -65,6 +65,10 @@ func (r *Reporter) Build(profile BrandProfile, results []PromptResult, stats []E
 	if len(r.personas) > 0 {
 		report.PersonaBreakdown = r.aggregatePersona(results, r.personas)
 	}
+	// 多次采样元信息（Samples>1 时）：平均一致性 + 低置信查询数。
+	if info := buildSamplingInfo(results); info != nil {
+		report.Sampling = info
+	}
 	report.SeverityIssues = BuildSeverityIssues(breakdown)
 	// 业务类型→策略自动联动：检测行业并生成权重覆盖与运营建议
 	vl := LinkVertical(profile, breakdown, score)
@@ -629,4 +633,32 @@ func (r *Reporter) aggregatePersona(results []PromptResult, personas []persona.P
 		})
 	}
 	return persona.Aggregate(prs, personas)
+}
+
+// buildSamplingInfo 从采样结果聚合报告级采样元信息。
+// 仅当存在 Samples>1 的有效结果时返回；一致性 1=多次采样判定完全一致。
+func buildSamplingInfo(results []PromptResult) *SamplingInfo {
+	total, sum, low := 0, 0.0, 0
+	samples := 0
+	for _, r := range results {
+		if r.Error != "" || r.Samples <= 1 {
+			continue
+		}
+		if samples == 0 {
+			samples = r.Samples
+		}
+		total++
+		sum += r.Consistency
+		if r.Consistency < 0.6 {
+			low++
+		}
+	}
+	if total == 0 {
+		return nil
+	}
+	return &SamplingInfo{
+		Samples:              samples,
+		AvgConsistency:       float64(int(sum/float64(total)*100+0.5)) / 100,
+		LowConfidenceQueries: low,
+	}
 }

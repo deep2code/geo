@@ -105,3 +105,39 @@ func TestEnvEngineKeysPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestWebSearchConfigKeys(t *testing.T) {
+	// webSearchEnvKey 推导
+	if got := webSearchEnvKey("GEO_OPENAI_KEY"); got != "GEO_OPENAI_WEB_SEARCH" {
+		t.Fatalf("webSearchEnvKey(GEO_OPENAI_KEY) = %s", got)
+	}
+	if got := webSearchEnvKey("GEO_DEEPSEEK_KEY"); got != "GEO_DEEPSEEK_WEB_SEARCH" {
+		t.Fatalf("webSearchEnvKey(GEO_DEEPSEEK_KEY) = %s", got)
+	}
+	// catalog 已登记各引擎 WEB_SEARCH 项
+	for _, k := range []string{"GEO_OPENAI_WEB_SEARCH", "GEO_GEMINI_WEB_SEARCH", "GEO_CLAUDE_WEB_SEARCH",
+		"GEO_DEEPSEEK_WEB_SEARCH", "GEO_QWEN_WEB_SEARCH", "GEO_KIMI_WEB_SEARCH", "GEO_GLM_WEB_SEARCH"} {
+		found := false
+		for _, s := range settings.catalog {
+			if s.Key == k {
+				found = true
+				if s.Type != "bool" {
+					t.Fatalf("%s 类型应为 bool", k)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("catalog 缺少 %s", k)
+		}
+	}
+	// envBool 解析
+	os.Unsetenv("GEO_TEST_WEB")
+	if !envBool("GEO_TEST_WEB", true) {
+		t.Fatal("默认值 true 应生效")
+	}
+	os.Setenv("GEO_TEST_WEB", "false")
+	if envBool("GEO_TEST_WEB", true) {
+		t.Fatal("false 应覆盖默认")
+	}
+	os.Unsetenv("GEO_TEST_WEB")
+}

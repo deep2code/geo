@@ -43,6 +43,8 @@ type claudeRequest struct {
 	Model     string        `json:"model"`
 	MaxTokens int           `json:"max_tokens"`
 	Messages  []chatMessage `json:"messages"`
+	// Tools 联网搜索工具（Anthropic 2025 支持 web_search tool）。
+	Tools []searchTool `json:"tools,omitempty"`
 }
 
 // claudeResponse Anthropic Messages 响应体。
@@ -96,7 +98,23 @@ func (a *ClaudeAdapter) Query(ctx context.Context, query string) (*models.Engine
 		"anthropic-version": anthropicVersion,
 	}
 	requestURL := a.cfg.BaseURL + "/v1/messages"
-	data, err := a.doPost(ctx, requestURL, raw, headers)
+	var data []byte
+	if a.cfg.WebSearch {
+		// 联网搜索：注入 Anthropic web_search 工具（Claude App 联网行为）。
+		withTools := reqBody
+		withTools.Tools = webSearchTool()
+		rawTools, err := json.Marshal(withTools)
+		if err != nil {
+			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
+		}
+		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, headers)
+	} else {
+		var err error
+		data, err = a.doPost(ctx, requestURL, raw, headers)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

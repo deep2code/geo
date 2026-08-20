@@ -45,6 +45,12 @@ type chatMessage struct {
 type chatCompletionRequest struct {
 	Model    string        `json:"model"`
 	Messages []chatMessage `json:"messages"`
+	// Tools 联网搜索工具（web_search）。未配置 WebSearch 时为空（不注入）。
+	Tools []searchTool `json:"tools,omitempty"`
+	// EnableSearch 通义/部分 OpenAI 兼容端点的联网开关参数（非 tool 方式）。
+	EnableSearch *bool `json:"enable_search,omitempty"`
+	// WebSearch 文心（百度千帆）内置联网搜索配置对象（非 tool 方式）。
+	WebSearch *wenxinWebSearchConfig `json:"web_search,omitempty"`
 }
 
 // chatCompletionResponse OpenAI Chat Completions 响应体。
@@ -100,7 +106,20 @@ func (a *ChatGPTAdapter) Query(ctx context.Context, query string) (*models.Engin
 	}
 
 	requestURL := a.cfg.BaseURL + "/v1/chat/completions"
-	data, err := a.doPost(ctx, requestURL, raw, nil)
+	var data []byte
+	if a.cfg.WebSearch {
+		// 联网搜索：模拟 ChatGPT App 的默认 Browse 行为（测量真实用户看到的引用）。
+		// 端点不支持 web_search 工具时自动回退无搜索查询。
+		withTools := reqBody
+		withTools.Tools = webSearchTool()
+		rawTools, err := json.Marshal(withTools)
+		if err != nil {
+			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
+		}
+		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, nil)
+	} else {
+		data, err = a.doPost(ctx, requestURL, raw, nil)
+	}
 	if err != nil {
 		return nil, err
 	}

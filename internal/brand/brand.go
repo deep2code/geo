@@ -98,6 +98,12 @@ func WithJudge(judge adapter.Adapter) Option {
 	}
 }
 
+// WithMonitorSamples 设置品牌审计多次采样（每查询词×引擎重复查询 N 次，多数票判定）。
+// n <= 1 时保持单次查询（默认）。单个审计请求可用 profile.Samples 覆盖。
+func WithMonitorSamples(n int) Option {
+	return func(e *Engine) { e.monitor = e.monitor.WithSamples(n) }
+}
+
 // WithPersonas 注入买家人设定义（用于人设分群测量，P1-c）。
 func WithPersonas(ps []persona.Persona) Option {
 	return func(e *Engine) { e.reporter = e.reporter.SetPersonas(ps) }

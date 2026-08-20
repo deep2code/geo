@@ -22,6 +22,7 @@ type Monitor struct {
 	maxConcurrency int          // 并行查询的最大并发数（默认 5）
 	roiTracker     *roi.Tracker // 可选：token 用量与成本追踪
 	judge          *llmanalysis.Analyzer // 可选：LLM 判定层（情感/源情报/准确性）
+	samples        int          // 采样次数：每 prompt×engine 重复查询 N 次，多数票判定（默认 1）
 }
 
 const defaultMaxConcurrency = 5
@@ -75,6 +76,26 @@ func (m *Monitor) WithJudge(judge adapter.Adapter) *Monitor {
 		m.judge = llmanalysis.New(judge)
 	}
 	return m
+}
+
+// WithSamples 设置采样次数：每个「查询词×引擎」重复查询 N 次，多数票判定。
+//
+// 目的：LLM 回答有随机方差，单次查询结果不可复现。N=3 时取多数票，
+// 提及/引用/情感判定更稳定，并输出一致性（consistency）供置信度参考。
+// n <= 1 时保持单次查询（默认，与旧版行为一致）。
+func (m *Monitor) WithSamples(n int) *Monitor {
+	if n > 1 {
+		m.samples = n
+	}
+	return m
+}
+
+// Samples 返回当前采样次数（默认 1）。
+func (m *Monitor) Samples() int {
+	if m.samples < 1 {
+		return 1
+	}
+	return m.samples
 }
 
 // Judge 返回 LLM 判定层（可能为 nil）。
@@ -155,8 +176,125 @@ func (m *Monitor) Run(ctx context.Context, profile BrandProfile) ([]PromptResult
 	return results, nil
 }
 
-// queryOne 查询单个引擎并检测品牌信号。
+// queryOne 查询单个引擎并检测品牌信号（支持多次采样）。
+//
+// 采样次数取 max(profile.Samples, monitor.Samples)，≥2 且引擎已配置时对同一
+// 查询重复 N 次，经 mergeSampled 多数票合并（提及/引用/情感），并输出一致性。
+// 单次查询（默认）或未配置 API Key（模拟响应）时行为与旧版完全一致。
 func (m *Monitor) queryOne(ctx context.Context, profile BrandProfile, prompt string, engine models.EngineType) PromptResult {
+	samples := m.samples
+	if profile.Samples > 1 {
+		samples = profile.Samples
+	}
+	if samples < 1 {
+		samples = 1
+	}
+	ad, ok := m.adapters[engine]
+	if !ok {
+		return PromptResult{Prompt: prompt, Engine: engine, Error: "引擎未配置适配器"}
+	}
+	if samples <= 1 || !ad.Configured() {
+		return m.queryOnce(ctx, profile, prompt, engine)
+	}
+	prs := make([]PromptResult, 0, samples)
+	for i := 0; i < samples; i++ {
+		prs = append(prs, m.queryOnce(ctx, profile, prompt, engine))
+	}
+	return mergeSampled(prs)
+}
+
+// mergeSampled 对 N 次采样的结果做多数票合并。
+//
+// 规则：
+//   - BrandMentioned / BrandCited：票数 > 有效采样数一半
+//   - BrandPosition：被提及采样中的最早位置
+//   - Sentiment：票数最多的倾向
+//   - CompetitorMentions：并集去重（任一采样引用即 Cited）
+//   - Consistency：提及票数 / 有效采样数（1=完全一致）
+//   - Answer / ExtractedSources 取第一个有效采样
+func mergeSampled(prs []PromptResult) PromptResult {
+	n := len(prs)
+	if n == 0 {
+		return PromptResult{}
+	}
+	out := prs[0]
+	mentionVotes, citedVotes, errors := 0, 0, 0
+	sentimentVotes := map[string]int{}
+	earliestPos := 0
+	compSeen := map[string]CompetitorMention{}
+
+	for _, p := range prs {
+		if p.Error != "" {
+			errors++
+			continue
+		}
+		if p.BrandMentioned {
+			mentionVotes++
+			if earliestPos == 0 || (p.BrandPosition > 0 && p.BrandPosition < earliestPos) {
+				earliestPos = p.BrandPosition
+			}
+		}
+		if p.BrandCited {
+			citedVotes++
+		}
+		sentimentVotes[p.Sentiment]++
+		for _, cm := range p.CompetitorMentions {
+			prev, ok := compSeen[cm.Name]
+			if !ok {
+				compSeen[cm.Name] = cm
+				continue
+			}
+			if cm.Cited && !prev.Cited {
+				prev.Cited = true
+			}
+			if prev.Position == 0 && cm.Position > 0 {
+				prev.Position = cm.Position
+			}
+			compSeen[cm.Name] = prev
+		}
+	}
+	if errors == n {
+		out.Error = prs[0].Error
+		return out
+	}
+	valid := n - errors
+	half := float64(valid) / 2
+
+	out.Error = ""
+	out.Samples = n
+	out.MentionVotes = mentionVotes
+	out.CitedVotes = citedVotes
+	out.BrandMentioned = float64(mentionVotes) > half
+	out.BrandCited = float64(citedVotes) > half
+	out.GhostCitation = out.BrandCited && !out.BrandMentioned
+	out.BrandPosition = earliestPos
+	out.Consistency = float64(mentionVotes) / float64(valid)
+
+	// 情感多数票
+	best, bestN := "neutral", 0
+	for s, c := range sentimentVotes {
+		if c > bestN {
+			best, bestN = s, c
+		}
+	}
+	out.Sentiment = best
+
+	comps := make([]CompetitorMention, 0, len(compSeen))
+	for _, cm := range compSeen {
+		comps = append(comps, cm)
+	}
+	out.CompetitorMentions = comps
+
+	var dur time.Duration
+	for _, p := range prs {
+		dur += p.Duration
+	}
+	out.Duration = dur / time.Duration(n)
+	return out
+}
+
+// queryOnce 执行单次引擎查询并检测品牌信号。
+func (m *Monitor) queryOnce(ctx context.Context, profile BrandProfile, prompt string, engine models.EngineType) PromptResult {
 	start := time.Now()
 	pr := PromptResult{Prompt: prompt, Engine: engine}
 
@@ -225,6 +363,8 @@ func (m *Monitor) queryOne(ctx context.Context, profile BrandProfile, prompt str
 	}
 	// 竞品提及
 	pr.CompetitorMentions = detectCompetitors(pr.Answer, resp.Citations, profile.Competitors)
+	// 单次查询明确标注 Samples=1（未采样），与多次采样结果字段对齐。
+	pr.Samples = 1
 
 	return pr
 }

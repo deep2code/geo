@@ -92,6 +92,9 @@ type BrandProfile struct {
 	Prompts []string `json:"prompts"`
 	// 目标 AI 引擎列表，为空时使用全部已配置引擎。
 	TargetEngines []models.EngineType `json:"target_engines,omitempty"`
+	// 采样次数：每个查询词×引擎重复查询 N 次，多数票判定（提升结果稳定性）。
+	// 0 或 1 = 单次查询（默认）；建议 3。覆盖引擎级 GEO_AUDIT_SAMPLES 配置。
+	Samples int `json:"samples,omitempty"`
 	// 品牌所属行业（大品类），如 企业软件 / 金融科技 / 电子商务 / 在线教育。
 	// 比 Category 更上层，用于跨品类对标与报告分组。
 	Industry string `json:"industry,omitempty"`
@@ -144,6 +147,16 @@ type PromptResult struct {
 	Duration time.Duration `json:"duration,omitempty"`
 	// 错误信息（查询失败时）。
 	Error string `json:"error,omitempty"`
+	// ---------- 多次采样（Samples=N，多数票判定）----------
+	// 采样次数（1=单次查询）。
+	Samples int `json:"samples,omitempty"`
+	// 品牌提及票数（Samples 次查询中被判定提及的次数）。
+	MentionVotes int `json:"mention_votes,omitempty"`
+	// 品牌引用票数。
+	CitedVotes int `json:"cited_votes,omitempty"`
+	// 一致性：MentionVotes/Samples（0-1），1=多次采样判定完全一致。
+	// 一致性低（如 0.5）说明该查询结果不稳定，分数置信度低。
+	Consistency float64 `json:"consistency,omitempty"`
 }
 
 // CompetitorMention 竞争对手提及。
@@ -231,6 +244,8 @@ type VisibilityReport struct {
 	WeightedCompetitorSOV []CompetitorSOV `json:"weighted_competitor_sov,omitempty"`
 	// 品牌准确性/幻觉检测标记（P0-3）：AI 回答与已核验事实的冲突/编造。
 	AccuracyFlags []llmanalysis.AccuracyFlag `json:"accuracy_flags,omitempty"`
+	// 采样元信息：本报告采用的采样次数与整体一致性（多次采样时）。
+	Sampling *SamplingInfo `json:"sampling,omitempty"`
 	// 买家人设分群测量（P1-c）：按人设聚合的可见度/情感。
 	PersonaBreakdown []persona.Segment `json:"persona_breakdown,omitempty"`
 	// AI 引荐流量 / ROI 归因（P0-2，可选，由外部流量源计算后注入）。
@@ -321,6 +336,16 @@ type ScoreBreakdown struct {
 	Authoritativeness float64 `json:"authoritativeness"`
 	// Trustworthiness 可信度：工商核验状态、低幽灵引用等反映信息可信度的信号。
 	Trustworthiness float64 `json:"trustworthiness"`
+}
+
+// SamplingInfo 报告的采样统计信息（多次采样模式）。
+type SamplingInfo struct {
+	// Samples 实际采用的采样次数（1=单次）。
+	Samples int `json:"samples"`
+	// AvgConsistency 所有有效查询的平均一致性（0-1），1=全部采样一致。
+	AvgConsistency float64 `json:"avg_consistency"`
+	// LowConfidenceQueries 一致性 < 0.6 的查询数（结果不稳定，建议复测）。
+	LowConfidenceQueries int `json:"low_confidence_queries"`
 }
 
 // CompetitorSOV 竞品声量份额。

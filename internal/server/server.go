@@ -227,6 +227,12 @@ func newBrandEngineFromEnv(llmMgr *llm.Manager) *brand.Engine {
 		opts = append(opts, brand.WithJudge(judge))
 		slog.Info("LLM 判定层已注入（情感/源情报/准确性升级）", slog.String("engine", string(judge.Engine())))
 	}
+	// 多次采样（GEO_AUDIT_SAMPLES，默认 1=单次；≥2 时多数票判定提升稳定性）。
+	// 可在管理后台「系统设置」修改，或单个审计请求用 profile.samples 覆盖。
+	if n := config.IntEnv("GEO_AUDIT_SAMPLES", 1); n > 1 {
+		opts = append(opts, brand.WithMonitorSamples(n))
+		slog.Info("品牌审计多次采样已启用", slog.Int("samples", n))
+	}
 	return brand.New(opts...)
 }
 

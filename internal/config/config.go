@@ -6,6 +6,8 @@ package config
 
 import (
 	"os"
+	"strconv"
+	"strings"
 
 	"my-geo/internal/adapter"
 	"my-geo/internal/models"
@@ -403,6 +405,9 @@ func buildAdapterConfig(engine models.EngineType) adapter.Config {
 
 	cfg := adapter.Config{
 		APIKey: Env(keyEnv, ""),
+		// 联网搜索开关：GEO_<ENGINE>_WEB_SEARCH（true/false）。
+		// 默认全部开启（各主流模型均已支持内置联网；端点不支持时自动降级无网查询）。
+		WebSearch: envBool(webSearchEnvKey(keyEnv), true),
 	}
 	if baseEnv != "" {
 		cfg.BaseURL = Env(baseEnv, defaultBaseURLs[engine])
@@ -411,6 +416,34 @@ func buildAdapterConfig(engine models.EngineType) adapter.Config {
 		cfg.Model = Env(modelEnv, defaultModels[engine])
 	}
 	return cfg
+}
+
+// webSearchEnvKey 由引擎 KEY 环境变量名推导其联网搜索开关名：
+// GEO_OPENAI_KEY → GEO_OPENAI_WEB_SEARCH。
+func webSearchEnvKey(keyEnv string) string {
+	return strings.TrimSuffix(keyEnv, "_KEY") + "_WEB_SEARCH"
+}
+
+// envBool 读取布尔环境变量/配置表值（true/1/yes 视为 true，其余 false）。
+func envBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(Env(key, "")))
+	if v == "" {
+		return def
+	}
+	return v == "true" || v == "1" || v == "yes"
+}
+
+// IntEnv 读取整数配置（DB > 环境变量 > 默认值），解析失败回退默认值。
+func IntEnv(key string, def int) int {
+	v := strings.TrimSpace(Env(key, ""))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 // BrandAdaptersFromEnv 从环境变量批量构建品牌审计用适配器映射。

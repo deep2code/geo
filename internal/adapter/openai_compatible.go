@@ -44,7 +44,33 @@ func (a *openAICompatibleAdapter) queryOpenAICompatible(ctx context.Context, que
 	}
 
 	requestURL := a.cfg.BaseURL + path
-	data, err := a.doPost(ctx, requestURL, raw, nil)
+	var data []byte
+	if a.cfg.WebSearch {
+		// 联网搜索（按厂商格式）：
+		//   - 通义 Qwen：enable_search 参数（非 tool）
+		//   - 其余 OpenAI 兼容引擎（Kimi/GLM/豆包/Grok 等）：web_search tool
+		// 端点不支持时自动回退无搜索查询。
+		withTools := reqBody
+		switch {
+		case a.engine == models.EngineQwen:
+			// 通义：enable_search 参数（非 tool）
+			enabled := true
+			withTools.EnableSearch = &enabled
+		case a.engine == models.EngineWenxin:
+			// 文心（百度千帆）：web_search 配置对象（非 tool），enable_citation 出引用角标
+			withTools.WebSearch = wenxinWebSearch()
+		default:
+			// 其余 OpenAI 兼容引擎：web_search tool
+			withTools.Tools = searchToolsFor(a.engine)
+		}
+		rawTools, err := json.Marshal(withTools)
+		if err != nil {
+			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
+		}
+		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, nil)
+	} else {
+		data, err = a.doPost(ctx, requestURL, raw, nil)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +87,10 @@ func (a *openAICompatibleAdapter) queryOpenAICompatible(ctx context.Context, que
 	}
 
 	answer := resp.Choices[0].Message.Content
+	// 文心联网回答带 ^[1]^ 引用角标，展示前清除（引用仍可从正文 URL 提取）
+	if a.engine == models.EngineWenxin && a.cfg.WebSearch {
+		answer = stripWenxinCitations(answer)
+	}
 	return &models.EngineResponse{
 		Engine:    a.engine,
 		Answer:    answer,

@@ -612,7 +612,32 @@ GEO_DEEPSEEK_KEY=xxx     # 🔴 DeepSeek（便宜好用）
 GEO_KIMI_KEY=xxx         # 🌙 Kimi（长文本）
 GEO_OPENAI_KEY=xxx       # 🔵 ChatGPT（效果稳定）
 GEO_PERPLEXITY_KEY=xxx   # 🟡 Perplexity（搜索增强）
+
+# 联网搜索开关（可选，默认按引擎开启）：
+# 审计时注入各引擎的联网搜索工具，模拟真实用户在大模型 App 里的提问行为，
+# 避免"API 直调无网 → 引用率系统性偏低"的测量偏差。
+# 端点不支持工具时自动降级为无搜索查询，不会报错。
+GEO_OPENAI_WEB_SEARCH=true      # ChatGPT（web_search tool）
+GEO_GEMINI_WEB_SEARCH=true      # Gemini（google_search tool）
+GEO_CLAUDE_WEB_SEARCH=true      # Claude（web_search tool）
+GEO_QWEN_WEB_SEARCH=true        # 通义（enable_search 参数）
+GEO_ERNIE_WEB_SEARCH=true       # 文心/千帆（web_search 配置对象，enable_citation 出 ^[1]^ 引用角标）
+GEO_DEEPSEEK_WEB_SEARCH=true    # DeepSeek（走 Responses API 的服务端 web_search，2026 新增内置联网）
+# ... 其余引擎同理：GEO_<ENGINE>_WEB_SEARCH=true/false
 ```
+
+> 联网搜索开关也可在管理后台「系统设置 → AI 引擎 API」分类中修改（存配置表，立即生效）。
+
+#### 多次采样（提升结果稳定性，可选）
+
+```bash
+GEO_AUDIT_SAMPLES=3   # 每个「查询词×引擎」重复查询 N 次，多数票判定（默认 1=单次）
+```
+
+- 报告每条结果带 `samples`（采样数）、`consistency`（一致性 0-1，1=多次采样判定完全一致）
+- 报告顶层带 `sampling`（平均一致性 + 低置信查询数），一致性 < 0.6 的查询建议复测
+- 单个请求可用 `profile.samples` 覆盖全局配置（例如只对重点查询采样 5 次）
+- ⚠️ 成本提醒：采样 N 次 = N 倍引擎调用量/token 成本，建议默认 1、重点品牌用 3
 
 #### ② 准备品牌画像（BrandProfile 结构）
 

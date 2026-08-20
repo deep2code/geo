@@ -48,7 +48,8 @@ type geminiContent struct {
 
 // geminiRequest Gemini generateContent 请求体。
 type geminiRequest struct {
-	Contents []geminiContent `json:"contents"`
+	Contents []geminiContent    `json:"contents"`
+	Tools    []geminiSearchTool `json:"tools,omitempty"` // google_search 联网搜索
 }
 
 // geminiResponse Gemini generateContent 响应体。
@@ -97,7 +98,19 @@ func (a *GeminiAdapter) Query(ctx context.Context, query string) (*models.Engine
 	// API Key 通过 URL 查询参数传递，不使用 Authorization 头
 	requestURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s",
 		a.cfg.BaseURL, a.cfg.Model, url.QueryEscape(a.cfg.APIKey))
-	data, err := a.doRequest(ctx, "POST", requestURL, raw, nil)
+	var data []byte
+	if a.cfg.WebSearch {
+		// 联网搜索：注入 google_search 工具（Gemini App 默认联网，弥补 API 无网测量差）。
+		withTools := reqBody
+		withTools.Tools = geminiSearchTools()
+		rawTools, err := json.Marshal(withTools)
+		if err != nil {
+			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
+		}
+		data, err = a.doRequestWithSearchFallback(ctx, requestURL, rawTools, raw, nil)
+	} else {
+		data, err = a.doRequest(ctx, "POST", requestURL, raw, nil)
+	}
 	if err != nil {
 		return nil, err
 	}

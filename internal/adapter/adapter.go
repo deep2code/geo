@@ -57,6 +57,14 @@ type Config struct {
 	BaseURL string        // 引擎 API 基地址，可配置，有合理默认值
 	Model   string        // 使用的模型名称
 	Timeout time.Duration // HTTP 调用超时时间，为 0 时使用默认值
+	// WebSearch 是否注入该引擎的联网搜索工具。
+	//
+	// 目的：模拟真实用户在大模型 App（ChatGPT/豆包/通义等）提问时的默认联网行为，
+	// 弥补"API 直调无网 → 引用率系统性偏低"的测量鸿沟（measurement gap）。
+	// 各引擎按厂商 API 格式注入（OpenAI 系 web_search tool / 通义 enable_search /
+	// Gemini google_search / Claude web_search）；端点不支持工具时自动回退无搜索查询，
+	// 系统行为与旧版一致。
+	WebSearch bool
 }
 
 // BaseAdapter 公共适配器基座，封装各引擎共享的 HTTP 调用与配置逻辑。
