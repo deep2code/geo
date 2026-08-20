@@ -6,11 +6,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/mcpserver"
@@ -50,6 +52,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "错误:", err)
 		os.Exit(1)
 	}
+	// DB 配置层：从 MySQL app_settings 加载管理后台可改的配置覆盖表（DB > 环境变量 > 默认值）。
+	// 设置库与账号体系同库（GEO_AUTH_MYSQL_DSN）。失败仅告警不退出——配置回退环境变量/默认值，
+	// 系统仍可运行，仅管理后台「系统设置」不可用。
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := config.InitSettings(ctx, os.Getenv("GEO_AUTH_MYSQL_DSN"), true); err != nil {
+			slog.Warn("DB 配置层未加载（管理后台系统设置不可用，配置使用环境变量+默认值）", slog.Any("error", err))
+		}
+		cancel()
+	}
+	defer config.Close()
 
 	engine := buildEngineFromEnv()
 

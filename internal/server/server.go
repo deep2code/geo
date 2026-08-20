@@ -28,6 +28,7 @@ import (
 	"my-geo/internal/brand/chinacheck"
 	"my-geo/internal/brand/history"
 	"my-geo/internal/brand/offlinedb"
+	"my-geo/internal/brand/promptversion"
 	"my-geo/internal/brand/scheduler"
 	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
@@ -62,6 +63,10 @@ type Whitelabel struct {
 	PrimaryColor string `json:"primary_color"`
 	FaviconURL   string `json:"favicon_url"`
 	Domain       string `json:"domain"`
+	// P2-b：白标 / 多租户（agency）定制字段
+	AgencyName   string `json:"agency_name,omitempty"`    // 代理商/客户品牌名
+	TenantID     string `json:"tenant_id,omitempty"`      // 租户 ID（多客户隔离）
+	SupportEmail string `json:"support_email,omitempty"`  // 客户支持邮箱
 }
 
 // Server GEO REST API 服务。
@@ -78,6 +83,7 @@ type Server struct {
 	queueServer *queue.Server // 异步审计 worker 池（未启用时为 nil）
 	whitelabel  Whitelabel
 	llmMgr      *llm.Manager // 全局 LLM 管理器（/metrics 与品牌引擎复用同一实例）
+	promptStore *promptversion.MemoryStore // Prompt 版本/实验归因存储（P1-e，内存）
 	addr        string
 	mux         *http.ServeMux
 	httpServer  *http.Server // 用于 graceful shutdown
@@ -91,6 +97,9 @@ func loadWhitelabelFromEnv() Whitelabel {
 		PrimaryColor: config.Env("GEO_WL_PRIMARY_COLOR", "#3B82F6"),
 		FaviconURL:   config.Env("GEO_WL_FAVICON_URL", ""),
 		Domain:       config.Env("GEO_WL_DOMAIN", ""),
+		AgencyName:   config.Env("GEO_WL_AGENCY_NAME", ""),
+		TenantID:     config.Env("GEO_WL_TENANT_ID", ""),
+		SupportEmail: config.Env("GEO_WL_SUPPORT_EMAIL", ""),
 	}
 }
 
@@ -108,7 +117,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		slog.Warn("未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
 	}
 	// 管理员安全：未配置 GEO_ADMIN_KEY 时所有 /api/admin/* 将默认拒绝，此处统一打一次告警
-	if strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY")) == "" {
+	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) == "" {
 		slog.Warn("未配置 GEO_ADMIN_KEY，管理员接口（/api/admin/*）默认全部拒绝访问。" +
 			"如需启用请：export GEO_ADMIN_KEY=$(openssl rand -hex 16)")
 	}
@@ -129,6 +138,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		engine:      engine,
 		brandEngine: be,
 		whitelabel:  loadWhitelabelFromEnv(),
+		promptStore: promptversion.NewMemoryStore(),
 		addr:        addr,
 		mux:         http.NewServeMux(),
 		authSvc:     authSvc,
@@ -211,6 +221,12 @@ func newBrandEngineFromEnv(llmMgr *llm.Manager) *brand.Engine {
 		opts = append(opts, brand.WithHistoryDB(hdb))
 		slog.Info("审计历史 MySQL 库已启用", slog.String("dsn", maskDSN(hdb.Path())))
 	}
+	// 注入 LLM 判定层（P0-1/P0-3/P1-a）：从已配置适配器中挑选一个"判定模型"。
+	// 优先级：deepseek > chatgpt > 第一个已配置的引擎。未配置任何 key 时不注入（自动降级词典法）。
+	if judge := pickJudgeAdapter(adapters); judge != nil {
+		opts = append(opts, brand.WithJudge(judge))
+		slog.Info("LLM 判定层已注入（情感/源情报/准确性升级）", slog.String("engine", string(judge.Engine())))
+	}
 	return brand.New(opts...)
 }
 
@@ -220,6 +236,28 @@ func newBrandEngineFromEnv(llmMgr *llm.Manager) *brand.Engine {
 // 命令中重复实现 ChinaCheck / OfflineDB / LLM / HistoryDB 的环境变量解析逻辑。
 func BuildBrandEngineFromEnv() *brand.Engine {
 	return newBrandEngineFromEnv(nil)
+}
+
+// pickJudgeAdapter 从已配置适配器中挑选一个作为 LLM 判定模型。
+//
+// 判定模型需要较强的推理能力，优先级：deepseek > chatgpt > glm > 第一个已配置者。
+// 仅返回 Configured()==true 的适配器；无可用判定模型时返回 nil（系统降级词典法）。
+func pickJudgeAdapter(adapters map[models.EngineType]adapter.Adapter) adapter.Adapter {
+	priority := []models.EngineType{
+		models.EngineDeepSeek, models.EngineChatGPT, models.EngineGLM,
+		models.EngineQwen, models.EngineClaude, models.EngineKimi,
+	}
+	for _, eng := range priority {
+		if a, ok := adapters[eng]; ok && a.Configured() {
+			return a
+		}
+	}
+	for _, a := range adapters {
+		if a.Configured() {
+			return a
+		}
+	}
+	return nil
 }
 
 // newHistoryDBFromEnv 连接审计历史 MySQL 库。
@@ -516,6 +554,21 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brand/kol/analyze", s.handleKOLAnalyze)
 	// Top Source 归因分析接口（识别 LLM 引用的第三方权威域名）
 	s.mux.HandleFunc("/api/v1/brand/topsource/analyze", s.handleTopSourceAnalyze)
+	// ===== 商业化能力增强（P0/P1/P2）=====
+	// P0-2：AI 引荐流量 / ROI 归因
+	s.mux.HandleFunc("/api/v1/brand/attribution", s.handleBrandAttribution)
+	// P1-c：买家人设分群测量
+	s.mux.HandleFunc("/api/v1/brand/persona", s.handleBrandPersona)
+	// P1-d：开放测量 API（只读，agency/BI 接入，需 X-GEO-API-Key）
+	s.mux.HandleFunc("/api/v1/brand/measure", s.handleBrandMeasure)
+	// P1-e：Prompt 版本管理 + 实验归因
+	s.mux.HandleFunc("/api/v1/brand/prompt", s.handleBrandPrompt)
+	s.mux.HandleFunc("/api/v1/brand/prompt/version", s.handleBrandPrompt)
+	s.mux.HandleFunc("/api/v1/brand/prompt/versions", s.handleBrandPrompt)
+	s.mux.HandleFunc("/api/v1/brand/prompt/experiment", s.handleBrandPrompt)
+	s.mux.HandleFunc("/api/v1/brand/prompt/experiments", s.handleBrandPrompt)
+	// P2-c：预测性策略生成（历史趋势外推）
+	s.mux.HandleFunc("/api/v1/brand/predict", s.handleBrandPredict)
 	// 行业类型自动识别接口
 	s.mux.HandleFunc("/api/v1/brand/vertical/detect", s.handleVerticalDetect)
 	s.mux.HandleFunc("/api/v1/brand/vertical/list", s.handleVerticalList)
@@ -558,6 +611,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
 	s.mux.HandleFunc("/api/v1/admin/cost", s.handleAdminCost) // LLM 成本仪表盘
 	s.mux.HandleFunc("/api/v1/admin/selfcheck", s.handleAdminSelfCheck) // 系统自检报告
+	// 系统设置（DB 变量存储：管理后台可改）
+	s.mux.HandleFunc("/api/v1/admin/settings", s.handleAdminSettingsList)     // GET 列出 / PUT 更新
+	s.mux.HandleFunc("/api/v1/admin/settings/reset", s.handleAdminSettingsReset) // POST 恢复默认
 	// 帮助中心与新手引导接口（#101）
 	s.mux.HandleFunc("/api/v1/help/articles", s.handleHelpArticles)
 	s.mux.HandleFunc("/api/v1/help/articles/", s.handleHelpArticleDetail)

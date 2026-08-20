@@ -427,6 +427,25 @@ export const api = {
       request<SelfCheckReport>('/admin/selfcheck', {
         method: 'GET',
         skipAuthRedirect: true
+      }),
+    // 系统设置列表（支持分类/关键字过滤）
+    settings: (params?: { category?: string; q?: string }) => {
+      const qs = new URLSearchParams()
+      if (params?.category) qs.set('category', params.category)
+      if (params?.q) qs.set('q', params.q)
+      return request<any>(`/admin/settings?${qs.toString()}`, { method: 'GET' })
+    },
+    // 更新配置项
+    updateSetting: (key: string, value: string) =>
+      request<any>('/admin/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ key, value })
+      }),
+    // 恢复配置为默认值
+    resetSetting: (key: string) =>
+      request<any>('/admin/settings/reset', {
+        method: 'POST',
+        body: JSON.stringify({ key })
       })
   },
 

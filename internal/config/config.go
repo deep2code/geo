@@ -402,7 +402,7 @@ func buildAdapterConfig(engine models.EngineType) adapter.Config {
 	modelEnv := engineModelEnvKeys[engine]
 
 	cfg := adapter.Config{
-		APIKey: os.Getenv(keyEnv),
+		APIKey: Env(keyEnv, ""),
 	}
 	if baseEnv != "" {
 		cfg.BaseURL = Env(baseEnv, defaultBaseURLs[engine])
@@ -464,7 +464,13 @@ func LLMAdaptersFromEnv() (adapters map[models.EngineType]adapter.Adapter, errs 
 }
 
 // Env 读取字符串环境变量，未设置时返回 fallback。
+// Env 读取配置：DB（管理后台可改，非 bootstrap 项）> 环境变量 > 默认值。
+//
+// 调用 InitSettings 前（或未配置设置库时）行为与旧版完全一致：环境变量 > 默认值。
 func Env(key, fallback string) string {
+	if v, ok := settings.Get(key); ok && v != "" {
+		return v
+	}
 	if v := os.Getenv(key); v != "" {
 		return v
 	}

@@ -6,6 +6,7 @@ import { Button } from '@/components/Button'
 import { Input, Textarea } from '@/components/Input'
 import { Table, type TableColumn } from '@/components/Table'
 import { Tabs, TabPane } from '@/components/Tabs'
+import SettingsTab from './SettingsTab'
 import { useAppStore } from '@/store/useAppStore'
 import api, { getAdminKey, getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
@@ -528,6 +529,11 @@ const Admin: React.FC = () => {
               {renderResourceBar(sysInfo.disk_usage, t('admin.sysDiskUsage'))}
             </Card>
           </div>
+        </TabPane>
+
+        {/* Tab 5: 系统设置（DB 变量存储，管理后台可改） */}
+        <TabPane tabKey="settings" tab={`⚙️ ${t('admin.tabSettings')}`}>
+          <SettingsTab />
         </TabPane>
       </Tabs>
     </div>

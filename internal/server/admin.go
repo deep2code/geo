@@ -7,13 +7,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net/http"
-	"os"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"my-geo/internal/config"
 	"my-geo/internal/diagnostics"
 	"my-geo/internal/httputil"
 	"my-geo/internal/llm"
@@ -62,7 +62,8 @@ var (
 //
 //	export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
 func (s *Server) checkAdminKey(r *http.Request) bool {
-	key := strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY"))
+	// 经 config.Env 读取：DB（管理后台可改）> 环境变量 > 默认值。
+	key := strings.TrimSpace(config.Env("GEO_ADMIN_KEY", ""))
 	if key == "" {
 		// 只在启动阶段打一次 warning 即可，这里避免每请求刷日志
 		return false
@@ -485,7 +486,7 @@ func (s *Server) handleAdminSelfCheck(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
-	if strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY")) != "" && !s.checkAdminKey(r) {
+	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) != "" && !s.checkAdminKey(r) {
 		s.adminForbidden(w)
 		return
 	}

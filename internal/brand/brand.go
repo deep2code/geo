@@ -26,8 +26,10 @@ import (
 	"my-geo/internal/brand/crawler"
 	"my-geo/internal/brand/history"
 	"my-geo/internal/brand/knowledge"
+	"my-geo/internal/brand/llmanalysis"
 	"my-geo/internal/brand/market"
 	"my-geo/internal/brand/offlinedb"
+	"my-geo/internal/brand/persona"
 	"my-geo/internal/brand/roi"
 	"my-geo/internal/llm"
 	"my-geo/internal/models"
@@ -77,6 +79,28 @@ func WithAdapters(adapters map[models.EngineType]adapter.Adapter) Option {
 // WithLLM 注入 LLM 管理器（用于品牌智能补全）。
 func WithLLM(mgr *llm.Manager) Option {
 	return func(e *Engine) { e.llmMgr = mgr }
+}
+
+// WithJudge 注入 LLM 判定层（用于情感/源情报/准确性检测的智能升级）。
+//
+// judge 为判定模型适配器（建议强推理模型，如 deepseek / chatgpt）。同时作用于：
+//   - Monitor：情感倾向、源情报识别升级为 LLM 推理（未配置自动降级词典法）
+//   - Reporter：品牌准确性/幻觉检测（P0-3）
+//
+// 未配置（judge.Configured()==false）时，判定层自动降级，系统行为与旧版一致。
+func WithJudge(judge adapter.Adapter) Option {
+	return func(e *Engine) {
+		if judge == nil {
+			return
+		}
+		e.monitor = e.monitor.WithJudge(judge)
+		e.reporter = e.reporter.SetAnalyzer(llmanalysis.New(judge))
+	}
+}
+
+// WithPersonas 注入买家人设定义（用于人设分群测量，P1-c）。
+func WithPersonas(ps []persona.Persona) Option {
+	return func(e *Engine) { e.reporter = e.reporter.SetPersonas(ps) }
 }
 
 // WithKnowledge 注入品牌知识库（默认会自动从内嵌数据集加载）。
@@ -279,6 +303,26 @@ func (e *Engine) Audit(ctx context.Context, profile BrandProfile) (*VisibilityRe
 	}
 
 	return &report, nil
+}
+
+// PersonaBreakdown 按买家人设分群测量（P1-c）。
+//
+// 运行一次完整监控（与 Audit 同成本），但只返回人设维度的可见度/情感聚合，
+// 不持久化、不生成完整报告。适合"只看某几类买家是否看得见你"的轻量查询。
+func (e *Engine) PersonaBreakdown(ctx context.Context, profile BrandProfile, personas []persona.Persona) ([]persona.Segment, error) {
+	if len(personas) == 0 {
+		return nil, fmt.Errorf("未提供人设定义")
+	}
+	results, err := e.monitor.Run(ctx, profile)
+	if err != nil {
+		return nil, fmt.Errorf("监控执行失败: %w", err)
+	}
+	stats := e.scorer.Aggregate(results, profile, e.configuredEngines)
+	entCompleteness := EntityCompleteness(profile)
+	score, grade, tier, breakdown := e.scorer.ScoreWithProfile(stats, &profile, entCompleteness)
+	r := NewReporter().SetPersonas(personas)
+	report := r.Build(profile, results, stats, score, grade, tier, breakdown)
+	return report.PersonaBreakdown, nil
 }
 
 // saveHistory 将审计报告写入历史库（best-effort，失败记录 warning 日志不影响审计结果）。

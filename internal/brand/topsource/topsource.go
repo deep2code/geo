@@ -191,6 +191,36 @@ func Analyze(brandName string, results []brand.PromptResult, brandDomain string)
 				}
 			}
 		}
+		// P1-a：优先采用 LLM 识别的"采信源"实体（比正则 URL 更语义化）。
+		// 当某结果带了 ExtractedSources 时，把其 URL/Name 一并纳入域名聚合，
+		// 并把 name 命中品牌名者标记为 brandHit（回答明确采信了品牌自身）。
+		for _, s := range pr.ExtractedSources {
+			domain := ExtractDomain(s.URL)
+			if domain == "" {
+				domain = ExtractDomain(s.Name)
+			}
+			if domain == "" {
+				continue
+			}
+			totalCitations++
+			a, ok := agg[domain]
+			if !ok {
+				a = &domainAgg{
+					domain:  domain,
+					results: make(map[string]bool),
+					engines: make(map[models.EngineType]bool),
+				}
+				agg[domain] = a
+			}
+			a.citationCount++
+			a.results[resultKey] = true
+			a.engines[pr.Engine] = true
+			if !a.brandHit && brandNameLower != "" {
+				if strings.Contains(strings.ToLower(s.Name), brandNameLower) {
+					a.brandHit = true
+				}
+			}
+		}
 	}
 	report.TotalCitations = totalCitations
 

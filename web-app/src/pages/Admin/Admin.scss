@@ -185,3 +185,80 @@
     }
   }
 }
+
+/* ===== 系统设置（DB 变量存储）===== */
+.admin-settings {
+  &-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-color, rgba(128,128,128,0.15));
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: 600;
+      opacity: 0.7;
+      white-space: nowrap;
+    }
+
+    code {
+      font-size: 12px;
+      background: var(--bg-hover, rgba(128,128,128,0.1));
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  }
+
+  &-tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
+    white-space: nowrap;
+  }
+
+  &-val {
+    font-family: var(--font-mono, monospace);
+    word-break: break-all;
+  }
+
+  &-src {
+    display: inline-block;
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+
+    &.src-db {
+      background: rgba(59, 130, 246, 0.15);
+      color: #2563eb;
+    }
+    &.src-env {
+      background: rgba(16, 185, 129, 0.15);
+      color: #059669;
+    }
+    &.src-default {
+      background: rgba(128, 128, 128, 0.15);
+      color: #6b7280;
+    }
+    &.src-unset {
+      background: transparent;
+      color: #9ca3af;
+      border: 1px dashed rgba(128,128,128,0.4);
+    }
+  }
+
+  &-empty {
+    padding: 24px 0;
+    text-align: center;
+    opacity: 0.6;
+  }
+}

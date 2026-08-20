@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"my-geo/internal/adapter"
+	"my-geo/internal/brand/llmanalysis"
 	"my-geo/internal/brand/roi"
 	"my-geo/internal/models"
 )
@@ -20,6 +21,7 @@ type Monitor struct {
 	adapters       map[models.EngineType]adapter.Adapter
 	maxConcurrency int          // 并行查询的最大并发数（默认 5）
 	roiTracker     *roi.Tracker // 可选：token 用量与成本追踪
+	judge          *llmanalysis.Analyzer // 可选：LLM 判定层（情感/源情报/准确性）
 }
 
 const defaultMaxConcurrency = 5
@@ -63,6 +65,20 @@ func (m *Monitor) WithROITracker(t *roi.Tracker) *Monitor {
 
 // ROITracker 返回当前 ROI 追踪器（可能为 nil）。
 func (m *Monitor) ROITracker() *roi.Tracker { return m.roiTracker }
+
+// WithJudge 注入 LLM 判定层。
+//
+// judge 适配器（建议强推理模型）用于把情感/源情报/准确性从"词典法"升级为 LLM 推理。
+// 未配置（或适配器未 Configured）时，判定层自动降级到词典法，系统行为不变。
+func (m *Monitor) WithJudge(judge adapter.Adapter) *Monitor {
+	if judge != nil {
+		m.judge = llmanalysis.New(judge)
+	}
+	return m
+}
+
+// Judge 返回 LLM 判定层（可能为 nil）。
+func (m *Monitor) Judge() *llmanalysis.Analyzer { return m.judge }
 
 // NewMonitorFromConfigs 从配置批量创建适配器。
 //
@@ -190,8 +206,23 @@ func (m *Monitor) queryOne(ctx context.Context, profile BrandProfile, prompt str
 	}
 	// 幽灵引用：官网被引用但品牌名未在文本中出现
 	pr.GhostCitation = pr.BrandCited && !pr.BrandMentioned
-	// 情感分析（包含公司名作为匹配词）
-	pr.Sentiment = analyzeSentiment(pr.Answer, profile.Name, append(brandNames, companyNames...))
+	// 情感分析（包含公司名作为匹配词）。
+	// 优先用 LLM 判定层；未配置时降级到词典法（analyzeSentiment）。
+	if m.judge != nil && m.judge.Enabled() {
+		label, reason, conf := m.judge.Sentiment(ctx, profile.Name, append(brandNames, companyNames...), pr.Answer)
+		pr.Sentiment = label
+		pr.SentimentConfidence = conf
+		pr.LLMJudged = true
+		_ = reason
+	} else {
+		pr.Sentiment = analyzeSentiment(pr.Answer, profile.Name, append(brandNames, companyNames...))
+	}
+	// 源情报：LLM 识别回答"采信了谁"（降级为正则 URL）。
+	if m.judge != nil && m.judge.Enabled() {
+		if srcs, err := m.judge.ExtractSources(ctx, pr.Answer, profile.Domain); err == nil && len(srcs) > 0 {
+			pr.ExtractedSources = srcs
+		}
+	}
 	// 竞品提及
 	pr.CompetitorMentions = detectCompetitors(pr.Answer, resp.Citations, profile.Competitors)
 

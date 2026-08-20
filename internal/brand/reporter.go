@@ -2,11 +2,15 @@ package brand
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"my-geo/internal/brand/llmanalysis"
+	"my-geo/internal/brand/knowledge"
+	"my-geo/internal/brand/persona"
 	"my-geo/internal/brand/vertical"
 	"my-geo/internal/models"
 )
@@ -15,10 +19,21 @@ import (
 //
 // 将监控结果与评分聚合为运营可读的报告，生成内容缺口、竞品声量、
 // 负面提及摘要，并产出按优先级排序的运营行动建议。
-type Reporter struct{}
+type Reporter struct {
+	// 可选：LLM 判定层，用于品牌准确性/幻觉检测（P0-3）。
+	analyzer *llmanalysis.Analyzer
+	// 可选：买家人设定义，用于人设分群测量（P1-c）。
+	personas []persona.Persona
+}
 
 // NewReporter 创建报告生成器。
 func NewReporter() *Reporter { return &Reporter{} }
+
+// SetAnalyzer 注入 LLM 判定层（用于准确性检测）。
+func (r *Reporter) SetAnalyzer(a *llmanalysis.Analyzer) *Reporter { r.analyzer = a; return r }
+
+// SetPersonas 设置买家人设定义（用于分群测量）。
+func (r *Reporter) SetPersonas(ps []persona.Persona) *Reporter { r.personas = ps; return r }
 
 // Build 生成完整报告。
 func (r *Reporter) Build(profile BrandProfile, results []PromptResult, stats []EngineStats, score float64, grade, tier string, breakdown ScoreBreakdown) VisibilityReport {
@@ -39,7 +54,17 @@ func (r *Reporter) Build(profile BrandProfile, results []PromptResult, stats []E
 	}
 	report.ContentGaps = r.findContentGaps(results, profile)
 	report.CompetitorSOV = r.calcCompetitorSOV(results, profile)
+	// P1-b：加权竞品声量（按引擎覆盖/位置加权，比裸提及更可信）。
+	report.WeightedCompetitorSOV = r.calcCompetitorSOVWeighted(results, profile, stats)
 	report.NegativeMentions = r.findNegativeMentions(results, profile)
+	// P0-3：品牌准确性/幻觉检测（需 LLM 判定层）。
+	if r.analyzer != nil && r.analyzer.Enabled() {
+		report.AccuracyFlags = r.detectAccuracy(profile, results)
+	}
+	// P1-c：买家人设分群测量。
+	if len(r.personas) > 0 {
+		report.PersonaBreakdown = r.aggregatePersona(results, r.personas)
+	}
 	report.SeverityIssues = BuildSeverityIssues(breakdown)
 	// 业务类型→策略自动联动：检测行业并生成权重覆盖与运营建议
 	vl := LinkVertical(profile, breakdown, score)
@@ -445,4 +470,163 @@ func extractSnippet(text, name string, aliases []string, maxLen int) string {
 		return text[:maxLen] + "..."
 	}
 	return text
+}
+
+// ---------- P1-b：加权竞品声量份额 ----------
+
+// calcCompetitorSOVWeighted 计算加权竞品声量份额。
+//
+// 与 calcCompetitorSOV（裸提及计数）不同，这里对每次竞品提及按权重累加：
+//   - 引擎覆盖权重：引用型引擎（Perplexity/Gemini/ChatGPT 等）上的提及权重更高
+//   - 位置权重：靠前段落提及权重更高（位置 1 权重 1.0，逐段衰减）
+// 得到比"裸计数占比"更贴近真实声量的加权 SOV。
+func (r *Reporter) calcCompetitorSOVWeighted(results []PromptResult, profile BrandProfile, stats []EngineStats) []CompetitorSOV {
+	// 引擎配置权重：已配置 APIKey 的引擎视为"真实覆盖"，未配置（模拟）权重低
+	cfgWeight := map[models.EngineType]float64{}
+	for _, s := range stats {
+		if s.Configured {
+			cfgWeight[s.Engine] = 1.0
+		} else {
+			cfgWeight[s.Engine] = 0.3
+		}
+	}
+	brandW := 0.0
+	compW := map[string]float64{}
+	for _, res := range results {
+		if res.Error != "" {
+			continue
+		}
+		ew := cfgWeight[res.Engine]
+		if res.BrandMentioned {
+			brandW += ew * positionWeight(res.BrandPosition)
+		}
+		for _, cm := range res.CompetitorMentions {
+			w := ew * positionWeight(cm.Position)
+			compW[cm.Name] += w
+		}
+	}
+	total := brandW
+	for _, w := range compW {
+		total += w
+	}
+	sovs := []CompetitorSOV{{Name: profile.Name, MentionCount: int(brandW * 10)}}
+	if total > 0 {
+		sovs[0].SOV = brandW / total * 100
+	}
+	for name, w := range compW {
+		sov := CompetitorSOV{Name: name, MentionCount: int(w * 10)}
+		if total > 0 {
+			sov.SOV = w / total * 100
+		}
+		sovs = append(sovs, sov)
+	}
+	slices.SortFunc(sovs, func(a, b CompetitorSOV) int { return cmp.Compare(b.SOV, a.SOV) })
+	return sovs
+}
+
+// positionWeight 位置权重：第 1 段权重 1.0，之后每 2 段衰减 0.85 倍，最低 0.2。
+func positionWeight(pos int) float64 {
+	if pos <= 0 {
+		return 0.5 // 未定位（仅检测命中）给中性权重
+	}
+	w := 1.0
+	for i := 1; i < pos; i++ {
+		w *= 0.85
+	}
+	if w < 0.2 {
+		w = 0.2
+	}
+	return w
+}
+
+// ---------- P0-3：品牌准确性 / 幻觉检测 ----------
+
+// detectAccuracy 对品牌被提及的回答做准确性/幻觉检测。
+//
+// 事实来源：品牌画像（公司成立年/简介/产品/品类）+ 知识库（knowledge 包）的最佳匹配条目。
+// 仅对"品牌被提及"的回答调用 LLM 判定（其余无关），减少调用量。
+func (r *Reporter) detectAccuracy(profile BrandProfile, results []PromptResult) []llmanalysis.AccuracyFlag {
+	facts := buildBrandFacts(profile)
+	if len(facts) == 0 {
+		return nil
+	}
+	var flags []llmanalysis.AccuracyFlag
+	for _, res := range results {
+		if res.Error != "" || !res.BrandMentioned {
+			continue
+		}
+		fs, err := r.analyzer.Accuracy(context.Background(), profile.Name, res.Answer, facts)
+		if err == nil {
+			flags = append(flags, fs...)
+		}
+	}
+	return flags
+}
+
+// buildBrandFacts 从品牌画像与知识库构造已核验事实列表。
+func buildBrandFacts(profile BrandProfile) []llmanalysis.Fact {
+	var facts []llmanalysis.Fact
+	if profile.Company != nil {
+		c := profile.Company
+		if c.FoundedYear > 0 {
+			facts = append(facts, llmanalysis.Fact{
+				Statement: fmt.Sprintf("%s 成立于 %d 年", c.Name, c.FoundedYear),
+				Source:    "企业工商信息",
+			})
+		}
+		if c.Description != "" {
+			facts = append(facts, llmanalysis.Fact{
+				Statement: fmt.Sprintf("%s：%s", c.Name, c.Description),
+				Source:    "企业官方简介",
+			})
+		}
+		if c.Industry != "" {
+			facts = append(facts, llmanalysis.Fact{
+				Statement: fmt.Sprintf("%s 所属行业为%s", c.Name, c.Industry),
+			})
+		}
+	}
+	for _, p := range profile.Products {
+		if p != "" {
+			facts = append(facts, llmanalysis.Fact{
+				Statement: fmt.Sprintf("%s 提供产品/服务：%s", profile.Name, p),
+			})
+		}
+	}
+	// 知识库最佳匹配补充
+	if kb, err := knowledge.Load(); err == nil {
+		for _, sr := range kb.Search(profile.Name, 1) {
+			e := sr.Entry
+			if e.FoundedYear > 0 {
+				facts = append(facts, llmanalysis.Fact{
+					Statement: fmt.Sprintf("%s 成立于 %d 年", e.BrandName, e.FoundedYear),
+					Source:    e.CiteAs,
+				})
+			}
+			if e.DescriptionZh != "" {
+				facts = append(facts, llmanalysis.Fact{
+					Statement: fmt.Sprintf("%s：%s", e.BrandName, e.DescriptionZh),
+					Source:    e.CiteAs,
+				})
+			}
+		}
+	}
+	return facts
+}
+
+// ---------- P1-c：买家人设分群测量 ----------
+
+// aggregatePersona 把全量结果按人设聚合为分群可见度。
+func (r *Reporter) aggregatePersona(results []PromptResult, personas []persona.Persona) []persona.Segment {
+	prs := make([]persona.PersonaResult, 0, len(results))
+	for _, res := range results {
+		prs = append(prs, persona.PersonaResult{
+			Prompt:         res.Prompt,
+			Engine:         res.Engine,
+			BrandMentioned: res.BrandMentioned,
+			Sentiment:      res.Sentiment,
+			BrandPosition:  res.BrandPosition,
+		})
+	}
+	return persona.Aggregate(prs, personas)
 }

@@ -69,6 +69,18 @@ func (s *Server) handleBrandAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	// 审计成功，记录用量（计费启用时）。
 	s.recordAuditUsage(r)
+	// P1-a：Top Source 执行闭环——把"品牌缺失的权威源"转化为可运营行动项。
+	// 当 LLM 判定层可用时，缺失源基于语义识别（更准）；否则正则 URL。
+	if ts := topsource.Analyze(profile.Name, report.Results, profile.Domain); ts != nil && len(ts.Recommendations) > 0 {
+		report.Actions = append(report.Actions, brand.ActionItem{
+			Priority:       "medium",
+			Category:       "source",
+			Title:          "补齐品牌在权威源上的曝光缺口",
+			Detail:         fmt.Sprintf("AI 在回答中引用了 %d 个第三方域名，其中 %d 个品牌未曝光。入驻/外链这些站点是提升 AI 引用的高杠杆动作。", len(ts.TopSources), len(ts.MissingSources)),
+			Tasks:          ts.Recommendations,
+			ExpectedImpact: "预计相关查询的品牌引用率提升 10-20%",
+		})
+	}
 	writeJSON(w, http.StatusOK, report)
 }
 

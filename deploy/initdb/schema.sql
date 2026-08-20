@@ -1,29 +1,49 @@
--- deploy/initdb/02-schema.sql
+-- deploy/initdb/schema.sql
 --
--- GEO 系统建表初始化脚本（自包含、幂等）
+-- GEO 系统【全量全新 schema】（单文件，替代 01-databases.sql + 02-schema.sql）
 --
--- 依赖：先执行 01-databases.sql（建 geo 账号 + 5 个业务库 + 授权）。
+-- 适用场景：全新部署 / 首次初始化（本项目尚未上传数据，直接整库初始化即可）。
 --
--- 本文件做什么：
---   在单库 geo 中创建全部业务表（结构来自原 internal/migrate/sql/<db>/NNNN_*.sql，
---   已全部合并于此；应用内不再内嵌 migration，建表完全由本文件负责）。
---   5 库合并为 1 库：geo_auth / geo_billing / geo_history / geo_chinacheck / geo_offline
---   → geo（表名互不冲突，直接合并）。
+--   用法一（手动导入独立 MySQL）：
+--       mysql -h<host> -u<root> -p < deploy/initdb/schema.sql
+--   用法二（docker compose / mysql 容器挂载）：
+--       docker compose 中把本文件挂到 /docker-entrypoint-initdb.d/ 下，
+--       首次初始化数据卷时由 mysql 官方镜像以 root 自动执行。
 --
--- 适用场景：
---   1) mysql 容器 /docker-entrypoint-initdb.d：与 01 一起在首次初始化数据卷时
---      自动执行（文件按名称排序：01 → 02）。
---   2) 手动导入已有独立 MySQL 实例（先 01 后 02）：
---         mysql -h<host> -u<root> -p < deploy/initdb/01-databases.sql
---         mysql -h<host> -u<root> -p < deploy/initdb/02-schema.sql
+-- 特性：
+--   - 自包含：建应用账号 + 建 geo 库 + 授权 + 全部业务表 + 索引，一个文件跑完
+--   - 幂等：全部 CREATE xxx IF NOT EXISTS，可重复执行
+--   - 单库架构：auth / billing / history / chinacheck / offline 各模块表全部并入 geo 库
+--   - 应用内零建表迁移：DDL 完全由本文件负责，应用启动只做数据读写
+--   - app_settings 表结构在此定义；其默认值/描述由应用启动时（config.InitSettings seed=true）
+--     自动幂等写入，无需手工 INSERT
 --
--- 后续演进：新增业务表/字段时，把新的 CREATE/ALTER 语句追加到对应库的区块
--- （注意保持幂等或只在初始化时执行；线上库变更建议单独出增量 SQL 并人工执行）。
+-- 注意：
+--   - 下方 'geo' 账号初始密码为占位值 geoPass，生产环境请改为强口令，
+--     并与各 GEO_*_MYSQL_DSN 中的密码保持一致。
+--   - 若已用 MYSQL_USER/MYSQL_PASSWORD 创建过 geo 用户，
+--     CREATE USER IF NOT EXISTS 不会改动其现有密码，GRANT 仍可正常执行。
+
+-- ############################################################################
+-- 0) 应用账号 + 业务库 + 授权
+-- ############################################################################
+
+CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED BY 'geoPass';
+CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED BY 'geoPass';
+
+CREATE DATABASE IF NOT EXISTS geo
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+GRANT ALL PRIVILEGES ON geo.* TO 'geo'@'%';
+GRANT ALL PRIVILEGES ON geo.* TO 'geo'@'localhost';
+
+FLUSH PRIVILEGES;
+
+USE geo;
 
 -- ############################################################################
 -- 1) 账号体系（原 geo_auth）
 -- ############################################################################
-USE geo;
 
 CREATE TABLE IF NOT EXISTS users (
     id            VARCHAR(64) PRIMARY KEY,
@@ -32,7 +52,9 @@ CREATE TABLE IF NOT EXISTS users (
     display_name  VARCHAR(255) NOT NULL DEFAULT '',
     created_at    BIGINT NOT NULL,
     last_login_at BIGINT NOT NULL DEFAULT 0,
-    verified      TINYINT(1) NOT NULL DEFAULT 0
+    verified      TINYINT(1) NOT NULL DEFAULT 0,
+    -- 改密/管理员手动吊销时 +1，使该用户此前签发的全部 JWT 立即失效
+    token_version BIGINT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -80,9 +102,6 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
 
 CREATE INDEX idx_audit_time ON admin_audit_log(timestamp DESC);
 CREATE INDEX idx_audit_action ON admin_audit_log(action);
-
--- users.token_version：改密/管理员手动吊销时 +1，使该用户此前签发的全部 JWT 立即失效
-ALTER TABLE users ADD COLUMN token_version BIGINT NOT NULL DEFAULT 0;
 
 -- ############################################################################
 -- 2) 计费 / 订阅 / 订单 / 发票（原 geo_billing）
@@ -220,9 +239,10 @@ CREATE INDEX idx_companies_province ON companies(province);
 CREATE INDEX idx_companies_city ON companies(city);
 CREATE FULLTEXT INDEX ft_companies_name_scope ON companies(name, business_scope, legal_rep, address) WITH PARSER ngram;
 
--- 完成。应用启动不再执行任何建表迁移；schema 完全由 01 + 02 初始化。
+-- ############################################################################
+-- 6) 商业化增强：AI 引荐流量 / ROI 归因（P0-2）
+-- ############################################################################
 
--- 9) 商业化增强：AI 引荐流量/ROI 归因（P0-2）
 CREATE TABLE IF NOT EXISTS ai_traffic (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     brand_id    VARCHAR(191) NOT NULL,
@@ -248,26 +268,29 @@ CREATE TABLE IF NOT EXISTS ai_conversion (
     INDEX idx_ai_conversion_brand_day (brand_id, day)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 10) Prompt 版本管理 + 实验归因（P1-e）
+-- ############################################################################
+-- 7) Prompt 版本管理 + 实验归因（P1-e）
+-- ############################################################################
+
 CREATE TABLE IF NOT EXISTS tracked_prompts (
-    id             VARCHAR(191) PRIMARY KEY,
-    brand_id       VARCHAR(191) NOT NULL,
-    text           TEXT NOT NULL,
-    market         VARCHAR(32)  NOT NULL DEFAULT '',
-    language       VARCHAR(16)  NOT NULL DEFAULT '',
+    id              VARCHAR(191) PRIMARY KEY,
+    brand_id        VARCHAR(191) NOT NULL,
+    text            TEXT NOT NULL,
+    market          VARCHAR(32)  NOT NULL DEFAULT '',
+    language        VARCHAR(16)  NOT NULL DEFAULT '',
     current_version INT NOT NULL DEFAULT 1,
-    created_at     BIGINT NOT NULL,
+    created_at      BIGINT NOT NULL,
     INDEX idx_tracked_prompts_brand (brand_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS prompt_versions (
-    id                 BIGINT AUTO_INCREMENT PRIMARY KEY,
-    prompt_id          VARCHAR(191) NOT NULL,
-    version            INT NOT NULL,
-    content            TEXT NOT NULL,
+    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
+    prompt_id           VARCHAR(191) NOT NULL,
+    version             INT NOT NULL,
+    content             TEXT NOT NULL,
     baseline_visibility DECIMAL(6,2) NOT NULL DEFAULT 0,
-    note               VARCHAR(512) NOT NULL DEFAULT '',
-    created_at         BIGINT NOT NULL,
+    note                VARCHAR(512) NOT NULL DEFAULT '',
+    created_at          BIGINT NOT NULL,
     INDEX idx_prompt_versions_pid (prompt_id, version)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -284,7 +307,10 @@ CREATE TABLE IF NOT EXISTS prompt_experiments (
     INDEX idx_prompt_experiments_pid (prompt_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 11) 买家人设定义（P1-c）
+-- ############################################################################
+-- 8) 买家人设定义（P1-c）
+-- ############################################################################
+
 CREATE TABLE IF NOT EXISTS personas (
     id          VARCHAR(191) PRIMARY KEY,
     brand_id    VARCHAR(191) NOT NULL,
@@ -296,17 +322,25 @@ CREATE TABLE IF NOT EXISTS personas (
     INDEX idx_personas_brand (brand_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 12) 系统配置（DB 变量存储：管理后台可改，DB > 环境变量 > 默认值）
+-- ############################################################################
+-- 9) 系统配置（DB 变量存储：DB > 环境变量 > 默认值）
+-- ############################################################################
+-- 默认值 / 描述由应用启动时 config.InitSettings(seed=true) 幂等写入，无需手工 INSERT。
+
 CREATE TABLE IF NOT EXISTS app_settings (
-    skey            VARCHAR(191) PRIMARY KEY,
-    svalue          TEXT,
-    default_value   TEXT NOT NULL,
-    description     VARCHAR(512) NOT NULL DEFAULT '',
-    category        VARCHAR(64)  NOT NULL DEFAULT 'general',
-    stype           VARCHAR(32)  NOT NULL DEFAULT 'string',
-    is_secret       TINYINT(1)   NOT NULL DEFAULT 0,
-    is_bootstrap    TINYINT(1)   NOT NULL DEFAULT 0,
-    requires_restart TINYINT(1)  NOT NULL DEFAULT 0,
-    updated_at      BIGINT NOT NULL,
+    skey             VARCHAR(191) PRIMARY KEY,
+    svalue           TEXT,
+    default_value    TEXT NOT NULL,
+    description      VARCHAR(512) NOT NULL DEFAULT '',
+    category         VARCHAR(64)  NOT NULL DEFAULT 'general',
+    stype            VARCHAR(32)  NOT NULL DEFAULT 'string',
+    is_secret        TINYINT(1)   NOT NULL DEFAULT 0,
+    is_bootstrap     TINYINT(1)   NOT NULL DEFAULT 0,
+    requires_restart TINYINT(1)   NOT NULL DEFAULT 0,
+    updated_at       BIGINT NOT NULL,
     KEY idx_settings_category (category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- 完成。全部 19 张表 + 索引就绪；应用启动不再执行任何建表迁移。
+-- ============================================================================

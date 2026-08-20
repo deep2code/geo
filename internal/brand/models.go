@@ -15,6 +15,9 @@ package brand
 import (
 	"time"
 
+	"my-geo/internal/brand/attribution"
+	"my-geo/internal/brand/llmanalysis"
+	"my-geo/internal/brand/persona"
 	"my-geo/internal/models"
 )
 
@@ -129,6 +132,12 @@ type PromptResult struct {
 	GhostCitation bool `json:"ghost_citation"`
 	// 情感倾向：positive / neutral / negative。
 	Sentiment string `json:"sentiment"`
+	// 情感判定置信度 0-1（LLM 判定时填充，降级词典法时给固定值）。
+	SentimentConfidence float64 `json:"sentiment_confidence,omitempty"`
+	// 该结果是否经过 LLM 判定（true=LLM，false=词典法降级）。
+	LLMJudged bool `json:"llm_judged,omitempty"`
+	// LLM 识别出的回答"采信来源"实体（P1-a：源情报深化），降级时为正则提取的 URL。
+	ExtractedSources []llmanalysis.SourceClaim `json:"extracted_sources,omitempty"`
 	// 回答中提及的竞争对手列表。
 	CompetitorMentions []CompetitorMention `json:"competitor_mentions,omitempty"`
 	// 查询耗时。
@@ -218,6 +227,14 @@ type VisibilityReport struct {
 	ContentGaps []ContentGap `json:"content_gaps,omitempty"`
 	// 竞品整体声量。
 	CompetitorSOV []CompetitorSOV `json:"competitor_sov,omitempty"`
+	// 竞品声量份额（加权版）：按引擎覆盖/位置加权，比裸提及更可信。
+	WeightedCompetitorSOV []CompetitorSOV `json:"weighted_competitor_sov,omitempty"`
+	// 品牌准确性/幻觉检测标记（P0-3）：AI 回答与已核验事实的冲突/编造。
+	AccuracyFlags []llmanalysis.AccuracyFlag `json:"accuracy_flags,omitempty"`
+	// 买家人设分群测量（P1-c）：按人设聚合的可见度/情感。
+	PersonaBreakdown []persona.Segment `json:"persona_breakdown,omitempty"`
+	// AI 引荐流量 / ROI 归因（P0-2，可选，由外部流量源计算后注入）。
+	Attribution *attribution.AttributionReport `json:"attribution,omitempty"`
 	// 负面情感提及摘要。
 	NegativeMentions []NegativeMention `json:"negative_mentions,omitempty"`
 	// 运营行动建议（按优先级排序）。
