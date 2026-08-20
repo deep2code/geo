@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"my-geo/internal/config"
 )
 
 // GeneratePDF 将 GenerateHTML 的输出渲染为 PDF（A4，0.8 寸页边距）。
@@ -26,7 +26,7 @@ func GeneratePDF(ctx context.Context, html string) ([]byte, error) {
 		return nil, fmt.Errorf("report: 空 HTML 无法生成 PDF")
 	}
 	wait := 600
-	if s := os.Getenv("GEO_PDF_WAIT_MS"); s != "" {
+	if s := config.Env("GEO_PDF_WAIT_MS", ""); s != "" {
 		if n, err := parseInt(s); err == nil && n > 0 {
 			wait = n
 		}
@@ -37,7 +37,7 @@ func GeneratePDF(ctx context.Context, html string) ([]byte, error) {
 		chromedp.DisableGPU,
 		chromedp.Headless,
 	)
-	if cp := os.Getenv("GEO_CHROME_PATH"); cp != "" {
+	if cp := config.Env("GEO_CHROME_PATH", ""); cp != "" {
 		opts = append(opts, chromedp.ExecPath(cp))
 	}
 

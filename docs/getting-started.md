@@ -760,8 +760,8 @@ graph TB
 
 ```bash
 # 1. 初始化空库（部署时执行一次）：
-#    docker compose up -d mysql  # 自动执行 deploy/initdb（01建库+02建表+索引）
-#    或手动: mysql -uroot -p < deploy/initdb/01-databases.sql && mysql -uroot -p < deploy/initdb/02-schema.sql
+#    docker compose up -d mysql  # 自动执行 deploy/initdb/schema.sql（建账号+建库+全部表）
+#    或手动: mysql -uroot -p < deploy/initdb/schema.sql
 # 2A. 本地批量导入（推荐，全量）：
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
 #    打开「工商库导入」页 → 上传 ~/geo-erddb/Enterprise-Registration-Data/json/ 下的文件
@@ -998,7 +998,7 @@ MCP Server 已随 Web 服务同进程启动（默认 `:9090` `/mcp`），无需�
 - `GEO_AUTH_MYSQL_DSN`
 - `GEO_CHINACHECK_MYSQL_DSN`（或切换为 Redis：`GEO_CHINACHECK_REDIS_DSN`，分布式场景推荐）
 
-> 表结构由部署初始化完成（`deploy/initdb/01-databases.sql` + `02-schema.sql`，mysql 容器首次启动自动执行），应用内不内嵌迁移。
+> 表结构由部署初始化完成（`deploy/initdb/schema.sql` 单文件全量：建账号+建库+19 张表+索引，mysql 容器首次启动自动执行），应用内不内嵌迁移。
 
 ### Q: GEO 优化后多久能看到效果？
 

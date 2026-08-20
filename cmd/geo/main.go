@@ -120,12 +120,12 @@ func resolveAddr(portFlag string) string {
 //   - 自动检测 K8s 环境（KUBERNETES_SERVICE_HOST）时默认 JSON
 func initLogger() {
 	var level slog.Level = slog.LevelInfo
-	if v := strings.TrimSpace(os.Getenv("GEO_LOG_LEVEL")); v != "" {
+	if v := strings.TrimSpace(config.Env("GEO_LOG_LEVEL", "")); v != "" {
 		if err := level.UnmarshalText([]byte(v)); err != nil {
 			slog.Warn("GEO_LOG_LEVEL 无效，使用默认级别 info", slog.String("value", v), slog.Any("error", err))
 		}
 	}
-	format := strings.TrimSpace(os.Getenv("GEO_LOG_FORMAT"))
+	format := strings.TrimSpace(config.Env("GEO_LOG_FORMAT", ""))
 	if format == "" {
 		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
 			format = "json"

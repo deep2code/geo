@@ -43,8 +43,10 @@ CATEGORY_RULES = [
 
 BOOTSTRAP_SUFFIXES = ("_MYSQL_DSN", "_MYSQL_DB")
 # 引导变量：必须在 DB 加载前确定（连接/安全边界），DB 不覆盖，管理后台只读。
-# GEO_JWT_SECRET：签名密钥，改了会导致所有会话失效，须经环境变量注入。
-BOOTSTRAP_KEYS = {"GEO_JWT_SECRET"}
+# 引导变量（例外清单，仅两类，其余全部放配置表）：
+#   1) 数据库连接 DSN（_MYSQL_DSN 后缀）——DB 未连接前必须由环境变量提供
+#   2) 初始管理员账号（GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD）——首次启动预置用，管理后台只读
+BOOTSTRAP_KEYS = {"GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD"}
 
 SECRET_MARKERS = ("KEY", "SECRET", "PASSWORD", "TOKEN", "DSN", "CREDENTIAL")
 
@@ -57,7 +59,7 @@ def classify(key: str, default: str):
     is_secret = any(m in key for m in SECRET_MARKERS)
     is_bootstrap = key.endswith(BOOTSTRAP_SUFFIXES) or key in BOOTSTRAP_KEYS
     typ = "string"
-    if key in BOOTSTRAP_KEYS or is_secret:
+    if is_secret:
         typ = "secret"
     elif default.lower() in ("true", "false", "1", "0", "yes", "no"):
         typ = "bool"

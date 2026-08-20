@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+	"my-geo/internal/config"
 )
 
 // StripeProvider Stripe 支付渠道（海外）。纯标准库实现。
@@ -55,7 +55,7 @@ func (p *StripeProvider) CreateCheckout(ctx context.Context, o Order, returnURL 
 		currency = "cny"
 	}
 	if returnURL == "" {
-		returnURL = os.Getenv("GEO_BILLING_RETURN_URL")
+		returnURL = config.Env("GEO_BILLING_RETURN_URL", "")
 	}
 	body := map[string]any{
 		"mode":                "payment",

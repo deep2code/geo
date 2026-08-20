@@ -12,9 +12,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
+	"my-geo/internal/config"
 )
 
 // AlipayProvider 支付宝支付渠道（国内）。纯标准库实现，使用 RSA2（SHA256WithRSA）。
@@ -78,8 +78,8 @@ func (p *AlipayProvider) CreateCheckout(ctx context.Context, o Order, _ string) 
 		"sign_type":   "RSA2",
 		"timestamp":   alipayTimestamp(),
 		"version":     "1.0",
-		"notify_url":  os.Getenv("GEO_ALIPAY_NOTIFY_URL"),
-		"return_url":  os.Getenv("GEO_BILLING_RETURN_URL"),
+		"notify_url":  config.Env("GEO_ALIPAY_NOTIFY_URL", ""),
+		"return_url":  config.Env("GEO_BILLING_RETURN_URL", ""),
 		"biz_content": bizJSON,
 	}
 	sign, err := signRSA2(params, p.privateKey)

@@ -25,11 +25,11 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
 	"my-geo/internal/util"
+	"my-geo/internal/config"
 )
 
 // CheckResult 单项检查结果。
@@ -114,7 +114,7 @@ const maxBodyBytes = 2 << 20 // 2MB
 var insecureTLS = parseInsecureTLS()
 
 func parseInsecureTLS() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("GEO_READINESS_INSECURE_TLS")))
+	v := strings.ToLower(strings.TrimSpace(config.Env("GEO_READINESS_INSECURE_TLS", "")))
 	return v == "true" || v == "1" || v == "yes"
 }
 

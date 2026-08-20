@@ -22,6 +22,14 @@ func extraCatalog() []Setting {
 	for _, k := range engineKeys {
 		out = append(out, Setting{Key: k, Category: "engines", Type: "secret", IsSecret: true})
 	}
+	// GEO_JWT_SECRET 非例外（用户原则：仅数据库连接 + 初始管理员账号走环境变量）：
+	// 放配置表管理（DB > 环境变量 > 默认值）。签名密钥改动会使已签发 JWT 全部失效，
+	// 故标注需重启；长度校验见 config.Validate（env）与 InitSettings（DB 覆盖后）。
+	out = append(out, Setting{
+		Key: "GEO_JWT_SECRET", Category: "auth", Type: "secret", IsSecret: true,
+		Description:     "JWT 签名密钥（≥32 字节）。存配置表，修改后需重启且所有会话失效",
+		RequiresRestart: true,
+	})
 	for _, k := range engineBases {
 		out = append(out, Setting{Key: k, Category: "engines", Description: "引擎 API 基地址（默认走内置官方地址）"})
 	}

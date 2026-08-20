@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"my-geo/internal/config"
 )
 
 // DomesticSignalProvider 国内信号源统一接口。
@@ -64,7 +65,7 @@ type BaiduIndex struct {
 // NewBaiduIndex 从环境变量 GEO_BAIDU_INDEX_KEY 构造百度指数适配器。
 func NewBaiduIndex(client *http.Client) *BaiduIndex {
 	return &BaiduIndex{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_BAIDU_INDEX_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_BAIDU_INDEX_KEY", "")),
 		client: client,
 	}
 }
@@ -97,7 +98,7 @@ type WeChatIndex struct {
 // NewWeChatIndex 从环境变量 GEO_WECHAT_INDEX_KEY 构造微信指数适配器。
 func NewWeChatIndex(client *http.Client) *WeChatIndex {
 	return &WeChatIndex{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_WECHAT_INDEX_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_WECHAT_INDEX_KEY", "")),
 		client: client,
 	}
 }
@@ -126,7 +127,7 @@ type ZhihuHot struct {
 // NewZhihuHot 从环境变量 GEO_ZHIHU_HOT_KEY 构造知乎热榜适配器。
 func NewZhihuHot(client *http.Client) *ZhihuHot {
 	return &ZhihuHot{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_ZHIHU_HOT_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_ZHIHU_HOT_KEY", "")),
 		client: client,
 	}
 }
@@ -154,7 +155,7 @@ type Xiaohongshu struct {
 // NewXiaohongshu 从环境变量 GEO_XHS_KEY 构造小红书蒲公英适配器。
 func NewXiaohongshu(client *http.Client) *Xiaohongshu {
 	return &Xiaohongshu{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_XHS_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_XHS_KEY", "")),
 		client: client,
 	}
 }
@@ -182,7 +183,7 @@ type DouyinOcean struct {
 // NewDouyinOcean 从环境变量 GEO_DOUYIN_OCEAN_KEY 构造抖音云图适配器。
 func NewDouyinOcean(client *http.Client) *DouyinOcean {
 	return &DouyinOcean{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_DOUYIN_OCEAN_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_DOUYIN_OCEAN_KEY", "")),
 		client: client,
 	}
 }
@@ -210,7 +211,7 @@ type NewsWire struct {
 // NewNewsWire 从环境变量 GEO_NEWSWIRE_KEY 构造新闻通稿适配器。
 func NewNewsWire(client *http.Client) *NewsWire {
 	return &NewsWire{
-		apiKey: strings.TrimSpace(os.Getenv("GEO_NEWSWIRE_KEY")),
+		apiKey: strings.TrimSpace(config.Env("GEO_NEWSWIRE_KEY", "")),
 		client: client,
 	}
 }
@@ -240,8 +241,8 @@ type CRM struct {
 // NewCRM 从环境变量 GEO_CRM_TYPE 与 GEO_CRM_KEY 构造 CRM 适配器。
 func NewCRM(client *http.Client) *CRM {
 	return &CRM{
-		crmType: strings.ToLower(strings.TrimSpace(os.Getenv("GEO_CRM_TYPE"))),
-		apiKey:  strings.TrimSpace(os.Getenv("GEO_CRM_KEY")),
+		crmType: strings.ToLower(strings.TrimSpace(config.Env("GEO_CRM_TYPE", ""))),
+		apiKey:  strings.TrimSpace(config.Env("GEO_CRM_KEY", "")),
 		client:  client,
 	}
 }

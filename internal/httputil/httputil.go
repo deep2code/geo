@@ -14,10 +14,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"my-geo/internal/config"
 )
 
 // DefaultMaxBody 默认请求体上限（10MB，与历史 server 实现一致；
@@ -73,7 +73,7 @@ var (
 // LB 常见场景），与历史 server 中间件行为一致；企业生产应显式精确配置。
 func TrustedProxies() []netip.Prefix {
 	trustedProxyOnce.Do(func() {
-		raw := strings.TrimSpace(os.Getenv("GEO_TRUSTED_PROXIES"))
+		raw := strings.TrimSpace(config.Env("GEO_TRUSTED_PROXIES", ""))
 		if raw == "" {
 			raw = "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,fc00::/7"
 		}

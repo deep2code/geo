@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"my-geo/internal/auth"
+	"my-geo/internal/config"
 	"my-geo/internal/httputil"
 	"my-geo/internal/util"
 )
@@ -26,13 +27,8 @@ import (
 //   - 写操作（POST/DELETE/clear/import）在 CORS 设为具体源时始终校验 Origin（CSRF 防护）。
 //   - GEO_TRUSTED_PROXIES：可信代理列表（逗号分隔的 IP/CIDR）。设置后 X-Forwarded-For 仅在
 //     RemoteAddr 属于可信代理时才解析；否则直接用 RemoteAddr，避免 IP 伪造绕过限流/WAF。
-var (
-	corsOrigins = parseCORSOrigins()
-	apiKey      = strings.TrimSpace(os.Getenv("GEO_API_KEY"))
-)
-
 func parseCORSOrigins() map[string]bool {
-	raw := strings.TrimSpace(os.Getenv("GEO_CORS_ORIGINS"))
+	raw := strings.TrimSpace(config.Env("GEO_CORS_ORIGINS", ""))
 	m := map[string]bool{}
 	if raw == "" {
 		// 默认仅允许本地开发常用源
@@ -51,6 +47,11 @@ func parseCORSOrigins() map[string]bool {
 		}
 	}
 	return m
+}
+
+// corsOrigins 每次请求解析 CORS 白名单（读配置表/环境变量，改动即时生效）。
+func corsOrigins() map[string]bool {
+	return parseCORSOrigins()
 }
 
 // ===== 请求日志 =====
@@ -135,7 +136,7 @@ func (s *statusRecorder) WriteHeader(code int) {
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	cfg := auth.MiddlewareConfig{
 		Svc:          s.authSvc,
-		LegacyAPIKey: apiKey, // GEO_API_KEY 作为账号体系未启用时的回退
+		LegacyAPIKey: strings.TrimSpace(config.Env("GEO_API_KEY", "")), // GEO_API_KEY 作为账号体系未启用时的回退
 		PublicPaths: map[string]bool{
 			"/":              true,
 			"/legal/bot":     true,
@@ -205,14 +206,14 @@ func (s *Server) withAIGeneratedHeaders(h http.Handler) http.Handler {
 func (s *Server) withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if corsOrigins == nil {
+		if corsOrigins() == nil {
 			// 本地开发放行；非 localhost 默认拒绝
 			if isLocalhostOrigin(origin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 			// 非 localhost 且未配置白名单：不设 ACAO 头 → 浏览器拒绝跨域
-		} else if corsOrigins[origin] {
+		} else if corsOrigins()[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
@@ -260,8 +261,8 @@ func (s *Server) withCSRF(h http.Handler) http.Handler {
 			origin := r.Header.Get("Origin")
 			if origin != "" {
 				allowed := false
-				if corsOrigins != nil {
-					allowed = corsOrigins[origin]
+				if corsOrigins() != nil {
+					allowed = corsOrigins()[origin]
 				} else {
 					allowed = isLocalhostOrigin(origin)
 				}

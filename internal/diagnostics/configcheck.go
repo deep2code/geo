@@ -50,7 +50,7 @@ func ConfigCheck(rulesPath string) []CheckResult {
 // checkLogLevel 校验 GEO_LOG_LEVEL 取值。
 func checkLogLevel() CheckResult {
 	res := CheckResult{Name: "日志级别", Category: CategoryConfig}
-	v := strings.TrimSpace(os.Getenv("GEO_LOG_LEVEL"))
+	v := strings.TrimSpace(config.Env("GEO_LOG_LEVEL", ""))
 	if v == "" {
 		res.Status = SeverityInfo
 		res.Message = "未设置，使用默认 info"
@@ -69,7 +69,7 @@ func checkLogLevel() CheckResult {
 // checkLogFormat 校验 GEO_LOG_FORMAT 取值。
 func checkLogFormat() CheckResult {
 	res := CheckResult{Name: "日志格式", Category: CategoryConfig}
-	v := strings.TrimSpace(os.Getenv("GEO_LOG_FORMAT"))
+	v := strings.TrimSpace(config.Env("GEO_LOG_FORMAT", ""))
 	if v == "" {
 		res.Status = SeverityInfo
 		res.Message = "未设置，使用默认 text（K8s 环境自动 json）"
@@ -88,7 +88,7 @@ func checkLogFormat() CheckResult {
 // checkPort 校验服务端口可解析且在合法范围。
 func checkPort() CheckResult {
 	res := CheckResult{Name: "服务端口", Category: CategoryConfig}
-	v := strings.TrimSpace(os.Getenv("GEO_PORT"))
+	v := strings.TrimSpace(config.Env("GEO_PORT", ""))
 	if v == "" {
 		res.Status = SeverityInfo
 		res.Message = "未设置，使用默认 8080"
@@ -108,7 +108,7 @@ func checkPort() CheckResult {
 // checkBudget 校验月度 LLM 预算可解析且非负。
 func checkBudget() CheckResult {
 	res := CheckResult{Name: "LLM 月度预算", Category: CategoryConfig}
-	v := strings.TrimSpace(os.Getenv("GEO_LLM_BUDGET_USD"))
+	v := strings.TrimSpace(config.Env("GEO_LLM_BUDGET_USD", ""))
 	if v == "" {
 		res.Status = SeverityInfo
 		res.Message = "未设置（不启用预算熔断）"
@@ -142,7 +142,7 @@ func checkAuthBoot() CheckResult {
 // checkAdminKey 检查管理员接口鉴权密钥是否配置。
 func checkAdminKey() CheckResult {
 	res := CheckResult{Name: "管理员密钥", Category: CategoryConfig}
-	if strings.TrimSpace(os.Getenv("GEO_ADMIN_KEY")) == "" {
+	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) == "" {
 		res.Status = SeverityWarn
 		res.Message = "未配置 GEO_ADMIN_KEY，管理员接口（/api/v1/admin/*）默认全部拒绝"
 		return res
@@ -155,8 +155,8 @@ func checkAdminKey() CheckResult {
 // checkLLMConfig 检查 OpenAI 兼容 LLM 的 base/key 一致性。
 func checkLLMConfig() CheckResult {
 	res := CheckResult{Name: "LLM 基础配置", Category: CategoryConfig}
-	key := strings.TrimSpace(os.Getenv("GEO_LLM_KEY"))
-	base := strings.TrimSpace(os.Getenv("GEO_LLM_BASE"))
+	key := strings.TrimSpace(config.Env("GEO_LLM_KEY", ""))
+	base := strings.TrimSpace(config.Env("GEO_LLM_BASE", ""))
 	if key == "" && base != "" {
 		res.Status = SeverityWarn
 		res.Message = "配置了 GEO_LLM_BASE 但未配置 GEO_LLM_KEY，LLM 仍不可用"
@@ -184,7 +184,7 @@ func checkEngineKeys() CheckResult {
 			names = append(names, string(engine))
 		}
 	}
-	if configured == 0 && strings.TrimSpace(os.Getenv("GEO_LLM_KEY")) == "" {
+	if configured == 0 && strings.TrimSpace(config.Env("GEO_LLM_KEY", "")) == "" {
 		res.Status = SeverityWarn
 		res.Message = "未配置任何引擎/LLM Key，品牌审计与智能补全将不可用（仅规则化与离线能力）"
 		return res
@@ -224,7 +224,7 @@ func checkDSNs() CheckResult {
 // checkWhitelabel 校验白标主色是否为合法 hex 颜色。
 func checkWhitelabel() CheckResult {
 	res := CheckResult{Name: "白标主题色", Category: CategoryConfig}
-	v := strings.TrimSpace(os.Getenv("GEO_WL_PRIMARY_COLOR"))
+	v := strings.TrimSpace(config.Env("GEO_WL_PRIMARY_COLOR", ""))
 	if v == "" {
 		res.Status = SeverityInfo
 		res.Message = "未设置，使用默认 #3B82F6"
@@ -243,13 +243,13 @@ func checkWhitelabel() CheckResult {
 // checkSchedulerConfig 校验定时审计配置（启用时配置文件须存在）。
 func checkSchedulerConfig() CheckResult {
 	res := CheckResult{Name: "定时审计配置", Category: CategoryConfig}
-	enabled := strings.TrimSpace(os.Getenv("GEO_SCHEDULER_ENABLED"))
+	enabled := strings.TrimSpace(config.Env("GEO_SCHEDULER_ENABLED", ""))
 	if !(strings.EqualFold(enabled, "true") || enabled == "1" || strings.EqualFold(enabled, "on")) {
 		res.Status = SeverityInfo
 		res.Message = "未启用"
 		return res
 	}
-	path := strings.TrimSpace(os.Getenv("GEO_SCHEDULER_CONFIG"))
+	path := strings.TrimSpace(config.Env("GEO_SCHEDULER_CONFIG", ""))
 	if path == "" {
 		res.Status = SeverityWarn
 		res.Message = "定时审计已启用但未配置 GEO_SCHEDULER_CONFIG，调度器为空"

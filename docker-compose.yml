@@ -17,7 +17,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
-      # 首次初始化时自动建 5 个业务库并授权（见 deploy/initdb/01-databases.sql）
+      # 首次初始化自动建账号/库/全部表（见 deploy/initdb/schema.sql，单文件全量）
       - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
     ports:
       # 仅绑定本机，避免数据库端口暴露公网（应用容器经内部网络访问）

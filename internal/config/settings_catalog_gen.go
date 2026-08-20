@@ -5,9 +5,9 @@ package config
 
 func buildCatalog() []Setting {
 	return []Setting{
-		{Key: "GEO_ADMIN_EMAIL", DefaultValue: "", Description: "", Category: "admin", Type: "string", IsSecret: false, IsBootstrap: false},
-		{Key: "GEO_ADMIN_KEY", DefaultValue: "", Description: "管理员安全：未配置 GEO_ADMIN_KEY 时所有 /api/admin/* 将默认拒绝，此处统一打一次告警", Category: "admin", Type: "secret", IsSecret: true, IsBootstrap: false},
-		{Key: "GEO_ADMIN_PASSWORD", DefaultValue: "", Description: "", Category: "admin", Type: "secret", IsSecret: true, IsBootstrap: false},
+		{Key: "GEO_ADMIN_EMAIL", DefaultValue: "", Description: "", Category: "admin", Type: "string", IsSecret: false, IsBootstrap: true},
+		{Key: "GEO_ADMIN_KEY", DefaultValue: "", Description: "经 config.Env 读取：DB（管理后台可改）> 环境变量 > 默认值。", Category: "admin", Type: "secret", IsSecret: true, IsBootstrap: false},
+		{Key: "GEO_ADMIN_PASSWORD", DefaultValue: "", Description: "", Category: "admin", Type: "secret", IsSecret: true, IsBootstrap: true},
 		{Key: "GEO_ALIPAY_NOTIFY_URL", DefaultValue: "", Description: "", Category: "billing", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_ALLOW_REGISTER", DefaultValue: "false", Description: "注册通道开关（GEO_ALLOW_REGISTER，默认 false 关闭；管理员由部署预置）", Category: "auth", Type: "bool", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_API_KEY", DefaultValue: "", Description: "记录可观测但非阻断的配置提示", Category: "general", Type: "secret", IsSecret: true, IsBootstrap: false},
@@ -37,7 +37,7 @@ func buildCatalog() []Setting {
 		{Key: "GEO_EMBEDDING_MODEL", DefaultValue: "", Description: "", Category: "general", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_HISTORY_DB_ENABLED", DefaultValue: "true", Description: "", Category: "history", Type: "bool", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_HISTORY_MYSQL_DSN", DefaultValue: "", Description: "", Category: "history", Type: "secret", IsSecret: true, IsBootstrap: true},
-		{Key: "GEO_JWT_SECRET", DefaultValue: "", Description: "", Category: "auth", Type: "secret", IsSecret: true, IsBootstrap: true},
+		{Key: "GEO_JWT_SECRET", DefaultValue: "", Description: "", Category: "auth", Type: "secret", IsSecret: true, IsBootstrap: false},
 		{Key: "GEO_LLM_BASE", DefaultValue: "https://api.openai.com/v1", Description: "", Category: "llm", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_LLM_BUDGET_USD", DefaultValue: "", Description: "", Category: "llm", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_LLM_KEY", DefaultValue: "", Description: "", Category: "llm", Type: "secret", IsSecret: true, IsBootstrap: false},

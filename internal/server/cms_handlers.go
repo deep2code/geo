@@ -1,6 +1,7 @@
 package server
 
 import (
+	"my-geo/internal/config"
 	"my-geo/internal/util"
 	"net/http"
 	"strings"
@@ -83,11 +84,11 @@ func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
 			"security_headers":   []string{"X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "X-XSS-Protection", "Permissions-Policy", "Content-Security-Policy"},
 		},
 		"csrf": map[string]interface{}{
-			"enabled":       corsOrigins != nil,
+			"enabled":       corsOrigins() != nil,
 			"write_methods": []string{"POST", "PUT", "PATCH", "DELETE"},
 		},
 		"auth": map[string]interface{}{
-			"api_key_enabled": apiKey != "",
+			"api_key_enabled": strings.TrimSpace(config.Env("GEO_API_KEY", "")) != "",
 		},
 		"recovery": map[string]interface{}{
 			"panic_recovery": true,

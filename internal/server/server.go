@@ -113,7 +113,7 @@ func New(engine *geo.Engine, addr string) *Server {
 	be := newBrandEngineFromEnv(llmMgr)
 	if be == nil {
 		slog.Warn("品牌审计引擎未初始化（无可用适配器）；POST /api/v1/brand/audit 将返回 503。请配置各引擎 API Key 环境变量。")
-	} else if os.Getenv("GEO_LLM_KEY") == "" {
+	} else if config.Env("GEO_LLM_KEY", "") == "" {
 		slog.Warn("未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
 	}
 	// 管理员安全：未配置 GEO_ADMIN_KEY 时所有 /api/admin/* 将默认拒绝，此处统一打一次告警

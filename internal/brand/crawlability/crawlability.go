@@ -22,13 +22,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"my-geo/internal/util"
+	"my-geo/internal/config"
 )
 
 // ── 合规：审计用请求一律使用避风港 MyGEOBot UA，并在请求前对每主机做礼貌限频。 ──
@@ -139,7 +139,7 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 var insecureTLS = parseInsecureTLS()
 
 func parseInsecureTLS() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("GEO_READINESS_INSECURE_TLS")))
+	v := strings.ToLower(strings.TrimSpace(config.Env("GEO_READINESS_INSECURE_TLS", "")))
 	return v == "true" || v == "1" || v == "yes"
 }
 

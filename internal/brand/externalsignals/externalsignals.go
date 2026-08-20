@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"my-geo/internal/config"
 )
 
 // Source 标识数据来源。
@@ -98,8 +99,8 @@ type Client struct {
 //   - GEO_CC_BASE_URL（可选，默认 https://index.commoncrawl.org）：覆盖 Common Crawl 基址
 func NewFromEnv() *Client {
 	c := &Client{
-		dfsAPIKey:  strings.TrimSpace(os.Getenv("GEO_DFS_APIKEY")),
-		dfsEmail:   strings.TrimSpace(os.Getenv("GEO_DFS_EMAIL")),
+		dfsAPIKey:  strings.TrimSpace(config.Env("GEO_DFS_APIKEY", "")),
+		dfsEmail:   strings.TrimSpace(config.Env("GEO_DFS_EMAIL", "")),
 		dfsBaseURL: "https://api.dataforseo.com/v3",
 		ccBaseURL:  "https://index.commoncrawl.org",
 		httpClient: &http.Client{
@@ -110,10 +111,10 @@ func NewFromEnv() *Client {
 			},
 		},
 	}
-	if v := strings.TrimSpace(os.Getenv("GEO_DFS_BASE_URL")); v != "" {
+	if v := strings.TrimSpace(config.Env("GEO_DFS_BASE_URL", "")); v != "" {
 		c.dfsBaseURL = v
 	}
-	if v := strings.TrimSpace(os.Getenv("GEO_CC_BASE_URL")); v != "" {
+	if v := strings.TrimSpace(config.Env("GEO_CC_BASE_URL", "")); v != "" {
 		c.ccBaseURL = v
 	}
 	return c

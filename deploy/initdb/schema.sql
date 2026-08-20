@@ -1,6 +1,6 @@
 -- deploy/initdb/schema.sql
 --
--- GEO 系统【全量全新 schema】（单文件，替代 01-databases.sql + 02-schema.sql）
+-- GEO 系统【全量全新 schema】（单文件，替代原 01-databases.sql + 02-schema.sql）
 --
 -- 适用场景：全新部署 / 首次初始化（本项目尚未上传数据，直接整库初始化即可）。
 --

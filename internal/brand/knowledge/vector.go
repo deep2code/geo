@@ -20,12 +20,12 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+	"my-geo/internal/config"
 )
 
 // ============================================================
@@ -340,9 +340,9 @@ type OpenAIEmbedding struct {
 // NewOpenAIEmbedding 从环境变量创建 OpenAI 兼容 Embedding 客户端
 func NewOpenAIEmbedding() *OpenAIEmbedding {
 	return &OpenAIEmbedding{
-		apiKey:  strings.TrimSpace(os.Getenv("GEO_EMBEDDING_KEY")),
-		baseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("GEO_EMBEDDING_BASE")), "/"),
-		model:   strings.TrimSpace(os.Getenv("GEO_EMBEDDING_MODEL")),
+		apiKey:  strings.TrimSpace(config.Env("GEO_EMBEDDING_KEY", "")),
+		baseURL: strings.TrimRight(strings.TrimSpace(config.Env("GEO_EMBEDDING_BASE", "")), "/"),
+		model:   strings.TrimSpace(config.Env("GEO_EMBEDDING_MODEL", "")),
 		client:  &http.Client{Timeout: 30 * time.Second},
 	}
 }

@@ -14,9 +14,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+	"my-geo/internal/config"
 )
 
 // paymentHTTPClient 支付渠道共享的带超时 HTTP 客户端。
@@ -85,7 +85,7 @@ func (p *WeChatPayProvider) CreateCheckout(ctx context.Context, o Order, _ strin
 		"appid":        p.appID,
 		"description":  "GEO " + o.Plan + " 订阅",
 		"out_trade_no": o.ID,
-		"notify_url":   os.Getenv("GEO_WXPAY_NOTIFY_URL"),
+		"notify_url":   config.Env("GEO_WXPAY_NOTIFY_URL", ""),
 		"amount": map[string]any{
 			"total":    o.AmountCents,
 			"currency": "CNY",

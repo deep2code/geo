@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -53,17 +54,38 @@ func TestCatalogUniqueAndBootstrap(t *testing.T) {
 			t.Fatalf("catalog 存在重复 key: %s", s.Key)
 		}
 		seen[s.Key] = true
-		// bootstrap 必须同时是 secret（连接串/密钥类），避免误标
-		if s.IsBootstrap && !s.IsSecret {
-			t.Fatalf("bootstrap 项 %s 应为 secret 类", s.Key)
-		}
 	}
-	// 引导变量清单核对
-	for _, k := range []string{"GEO_AUTH_MYSQL_DSN", "GEO_JWT_SECRET"} {
+	// 例外清单（用户原则）：数据库连接 DSN + 初始管理员账号，其余全部放配置表。
+	for _, k := range []string{"GEO_AUTH_MYSQL_DSN", "GEO_HISTORY_MYSQL_DSN", "GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD"} {
 		if !seen[k] {
 			t.Fatalf("catalog 缺少引导变量 %s", k)
 		}
 	}
+	// 引导项必须同时在 catalog 中标记 IsBootstrap（管理后台只读）
+	for _, s := range settings.catalog {
+		if isBootstrapKey(s.Key) && !s.IsBootstrap {
+			t.Fatalf("%s 应标记 IsBootstrap（例外变量管理后台只读）", s.Key)
+		}
+	}
+	// JWT_SECRET 非例外：不应 bootstrap，管理后台可改（需重启）
+	for _, s := range settings.catalog {
+		if s.Key == "GEO_JWT_SECRET" {
+			if s.IsBootstrap {
+				t.Fatal("GEO_JWT_SECRET 不应是 bootstrap（非例外，放配置表）")
+			}
+			if !s.RequiresRestart {
+				t.Fatal("GEO_JWT_SECRET 应标注 RequiresRestart")
+			}
+		}
+	}
+}
+
+func isBootstrapKey(k string) bool {
+	switch k {
+	case "GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD":
+		return true
+	}
+	return strings.HasSuffix(k, "_MYSQL_DSN") || strings.HasSuffix(k, "_MYSQL_DB")
 }
 
 func TestEnvEngineKeysPresent(t *testing.T) {

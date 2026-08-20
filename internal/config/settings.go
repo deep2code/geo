@@ -136,6 +136,10 @@ func InitSettings(ctx context.Context, dsn string, seed bool) error {
 	settings.mu.Unlock()
 	n := len(settings.Overrides())
 	slog.Info("config: DB 配置已加载", slog.Int("overrides", n))
+	// 校验 DB 覆盖的 JWT 签名密钥强度（env 侧已在 config.Validate 校验过，DB 侧补一次）
+	if sec, ok := settings.Get("GEO_JWT_SECRET"); ok && len(strings.TrimSpace(sec)) < 32 {
+		slog.Warn("GEO_JWT_SECRET（配置表）长度不足 32 字节，签名强度偏弱，建议重新生成后更新配置表")
+	}
 	return nil
 }
 

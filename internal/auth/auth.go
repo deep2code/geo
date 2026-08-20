@@ -40,6 +40,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 
+	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
 	"my-geo/internal/util"
 )
@@ -215,10 +216,10 @@ type jwtClaims struct {
 	V           int64  `json:"v"`   // 用户 token 版本号（改密/手动吊销后 +1，旧 token 立即失效）
 }
 
-// getJWTSecret 从环境变量获取 JWT 密钥，缺省时每次启动生成一次性密钥。
-// 生产部署必须显式配置 GEO_JWT_SECRET（≥ 32 字节），否则重启后所有会话失效。
+// getJWTSecret 获取 JWT 签名密钥（DB 配置表 > 环境变量；两者都未配置时生成一次性启动密钥）。
+// 生产部署必须配置 GEO_JWT_SECRET（≥ 32 字节，可经管理后台写入配置表），否则重启后所有会话失效。
 func getJWTSecret() []byte {
-	s := strings.TrimSpace(os.Getenv("GEO_JWT_SECRET"))
+	s := strings.TrimSpace(config.Env("GEO_JWT_SECRET", ""))
 	if s == "" {
 		slog.Warn("未配置 GEO_JWT_SECRET，使用一次性启动密钥（重启后所有会话失效）。" +
 			"生产环境建议：export GEO_JWT_SECRET=$(openssl rand -hex 32)")
@@ -531,7 +532,7 @@ func OpenStore() (*Store, error) {
 		return nil, fmt.Errorf("set mysql session: %w", err)
 	}
 
-	// 数据库表结构由 deploy/initdb 初始化（01-databases.sql + 02-schema.sql），
+	// 数据库表结构由 deploy/initdb/schema.sql 全量初始化，
 	// 应用内不再内嵌 migration。
 	return &Store{dsn: dsn, db: db}, nil
 }
@@ -942,7 +943,7 @@ const (
 
 // NewService 构建认证服务。
 func NewService() (*Service, error) {
-	enabled := strings.EqualFold(strings.TrimSpace(os.Getenv("GEO_AUTH_ENABLED")), "true")
+	enabled := strings.EqualFold(strings.TrimSpace(config.Env("GEO_AUTH_ENABLED", "")), "true")
 	if !enabled {
 		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED=true）。仍使用 GEO_API_KEY / GEO_ADMIN_KEY 鉴权。")
 		return &Service{store: nil, enabled: false, loginFails: map[string]loginFailState{}}, nil
