@@ -152,7 +152,10 @@ func (c *Client) GetJob(ctx context.Context, id string) (*Job, error) {
 		job.Status = StatusPending
 	}
 	var p jobPayload
-	_ = json.Unmarshal(info.Payload, &p)
+	if err := json.Unmarshal(info.Payload, &p); err != nil {
+		slog.Warn("queue: 解析任务负载失败（数据可能损坏）",
+			slog.String("job", id), slog.Any("error", err))
+	}
 	job.WorkspaceID = p.WorkspaceID
 	job.BrandName = p.BrandName
 	job.Attempts = info.Retried
@@ -251,7 +254,10 @@ func (s *Server) processAudit(ctx context.Context, t *asynq.Task) error {
 	if err != nil {
 		return err
 	}
-	resultJSON, _ := json.Marshal(report)
+	resultJSON, err := json.Marshal(report)
+	if err != nil {
+		return fmt.Errorf("queue: 序列化审计结果失败: %w", err)
+	}
 	if rw := t.ResultWriter(); rw != nil {
 		if _, werr := rw.Write(resultJSON); werr != nil {
 			slog.Warn("queue: 写回结果失败", slog.String("job", p.ID), slog.Any("error", werr))

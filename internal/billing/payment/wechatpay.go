@@ -12,11 +12,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 )
+
+// paymentHTTPClient 支付渠道共享的带超时 HTTP 客户端。
+// http.DefaultClient 无超时，上游挂起时会永久占用 handler goroutine。
+var paymentHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // WeChatPayProvider 微信支付 v3 渠道（国内）。纯标准库实现。
 //
@@ -60,7 +65,11 @@ func init() {
 		if certPEM := envOrEmpty("GEO_WXPAY_WECHAT_PUBLIC_CERT"); certPEM != "" {
 			if pub, err := parseRSAPublicKey(certPEM); err == nil {
 				p.platCert = pub
+			} else {
+				slog.Warn("wechatpay: 平台证书解析失败，回调验签将被跳过", slog.Any("error", err))
 			}
+		} else {
+			slog.Warn("wechatpay: 未配置 GEO_WXPAY_WECHAT_PUBLIC_CERT，回调平台证书验签将被跳过（建议配置以满足微信官方安全要求）")
 		}
 		return p
 	})
@@ -94,12 +103,15 @@ func (p *WeChatPayProvider) CreateCheckout(ctx context.Context, o Order, _ strin
 	if err := p.signRequest(req, payload); err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := paymentHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("wechatpay: 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("wechatpay: 读取响应失败: %w", err)
+	}
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("wechatpay: HTTP %d: %s", resp.StatusCode, string(data))
 	}

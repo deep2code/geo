@@ -13,6 +13,10 @@ import (
 	"my-geo/internal/dbprovider"
 )
 
+// ErrOrderAlreadyPaid 表示订单已是 paid 状态（通常由 webhook 重复投递导致）。
+// 调用方应将其视为幂等成功，而非错误，避免支付宝/Stripe 重试风暴。
+var ErrOrderAlreadyPaid = errors.New("billing: 订单已支付")
+
 // Store 计费数据访问层。底层复用 MySQL（默认与账号体系同库）。
 type Store struct {
 	db  *sql.DB
@@ -270,7 +274,8 @@ func (s *Store) MarkOrderPaid(ctx context.Context, id, providerOrderID string) e
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("billing: 订单 %s 状态不可变更为 paid（可能已处理）", id)
+		// 订单已处于 paid（或 refunded）状态，视为幂等哨兵，由上层忽略。
+		return ErrOrderAlreadyPaid
 	}
 	o, err := s.GetOrder(ctx, id)
 	if err != nil {

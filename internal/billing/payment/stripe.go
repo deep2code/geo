@@ -87,12 +87,15 @@ func (p *StripeProvider) CreateCheckout(ctx context.Context, o Order, returnURL 
 	req.Header.Set("Authorization", "Bearer "+p.secretKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Stripe-Version", "2023-10-16")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := paymentHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("stripe: 请求失败: %w", err)
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("stripe: 读取响应失败: %w", err)
+	}
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("stripe: HTTP %d: %s", resp.StatusCode, string(data))
 	}

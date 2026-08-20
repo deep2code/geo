@@ -302,6 +302,14 @@ func (h HandlerSet) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// 支付宝 notify 网关要求响应体含字面量 "success" 才停止重试；
+	// 其他渠道（微信/Stripe）返回标准 JSON 即可。
+	if provider == "alipay" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("success"))
+		return
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "order_id": ev.OrderID, "status": ev.Status})
 }
 

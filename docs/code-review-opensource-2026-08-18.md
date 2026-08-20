@@ -222,3 +222,13 @@
 **决定**：保持现状（每 handler 内方法检查），不引入方法路由。若未来要彻底解决，正确做法是把 SPA 兜底从方法路由 mux 中剥离（如用独立 `http.ServeMux` 或在 handler 内显式 405 后再 fallback），而非简单改路由表。
 
 **附带产出**：为此写了 `TestMethodRouting` 等用例验证上述行为，确认劣化后已删除该测试并完整回滚 `registerRoutes`（build/vet/test 均通过）。
+
+---
+
+## 八、续审 2026-08-20（新增计费/支付/队列模块）
+
+8-19 落地的商业化新模块（billing / payment / queue / adapter）经二次审核，发现并修复 **1 个 P1 + 7 个 P2**，详见 **`docs/code-review-2026-08-20.md`**。要点：
+
+- **P1（实锤）**：支付宝 Webhook 因 `r.Body` 被二次读取，所有支付宝回调失败 → 改用 `url.ParseQuery(body)`
+- **P2**：Webhook 幂等（重试风暴）、金额浮点格式化、微信/Stripe HTTP 无超时、吞 `io.ReadAll` 错误、微信验签可选告警、队列序列化错误静默；并让支付宝响应体回 `success` 防重试
+- 验证：`go build ./...` / `go vet ./...` / `go test ./internal/billing/... ./internal/queue/...` 全绿

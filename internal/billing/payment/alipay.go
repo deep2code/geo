@@ -63,7 +63,7 @@ func (p *AlipayProvider) CreateCheckout(ctx context.Context, o Order, _ string) 
 	biz := map[string]any{
 		"out_trade_no": o.ID,
 		"product_code": "FAST_INSTANT_TRADE_PAY",
-		"total_amount": fmt.Sprintf("%.2f", float64(o.AmountCents)/100.0),
+		"total_amount": fmt.Sprintf("%d.%02d", o.AmountCents/100, o.AmountCents%100),
 		"subject":      "GEO " + o.Plan + " 订阅",
 	}
 	bizJSON, err := jsonMarshal(biz)
@@ -101,11 +101,15 @@ func (p *AlipayProvider) CreateCheckout(ctx context.Context, o Order, _ string) 
 // VerifyWebhook 校验支付宝异步通知签名并解析交易状态。
 // 通知为表单 POST；验签使用支付宝公钥对排序参数（排除 sign/sign_type）做 RSA2。
 func (p *AlipayProvider) VerifyWebhook(r *http.Request, body []byte) (*WebhookEvent, error) {
-	if err := r.ParseForm(); err != nil {
+	// 注意：调用方（handlers.go 的 HandleWebhook）已用 io.ReadAll 读空 r.Body，
+	// 此处必须解析已传入的 body，而非再次 r.ParseForm()——否则 PostForm 为空、
+	// 永远拿不到 sign，所有支付宝回调都会失败。微信/Stripe 的 VerifyWebhook 同样消费 body 参数。
+	vals, err := url.ParseQuery(string(body))
+	if err != nil {
 		return nil, fmt.Errorf("alipay: 解析表单失败: %w", err)
 	}
 	params := map[string]string{}
-	for k, v := range r.PostForm {
+	for k, v := range vals {
 		if len(v) > 0 {
 			params[k] = v[0]
 		}

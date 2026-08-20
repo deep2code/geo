@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -207,8 +208,14 @@ func (s *Service) MarkOrderPaidAndActivate(ctx context.Context, orderID, provide
 	if err != nil {
 		return err
 	}
-	if err := s.store.MarkOrderPaid(ctx, orderID, providerOrderID); err != nil {
-		return err
+	// 幂等：订单已支付则跳过重复标记（webhook 重试安全，避免支付宝/Stripe 重试风暴），
+	// 仅确保套餐已激活。MarkOrderPaid 返回 ErrOrderAlreadyPaid（并发重试命中）同样忽略。
+	if o.Status != "paid" {
+		if err := s.store.MarkOrderPaid(ctx, orderID, providerOrderID); err != nil {
+			if !errors.Is(err, ErrOrderAlreadyPaid) {
+				return err
+			}
+		}
 	}
 	period := 30
 	if o.Plan == PlanEnterprise {
