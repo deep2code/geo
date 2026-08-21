@@ -92,12 +92,7 @@ services:
       # 异步审计队列硬依赖 Redis
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/v1/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+    # 不做容器内周期健康探测（避免主动请求 /api/v1/health 刷日志；探活由编排层/外部完成）
     logging:
       driver: json-file
       options:

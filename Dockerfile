@@ -80,8 +80,8 @@ LABEL org.opencontainers.image.title="MyGEO" \
       org.opencontainers.image.source="https://github.com/deep2code/geo" \
       org.opencontainers.image.licenses="MIT"
 
-# 依赖：ca-certificates (HTTPS)、tzdata (时区)、curl (HEALTHCHECK)、libcap (cap_net_bind_service 低端口)
-RUN apk add --no-cache ca-certificates tzdata curl libcap && \
+# 依赖：ca-certificates (HTTPS)、tzdata (时区)、libcap (cap_net_bind_service 低端口)
+RUN apk add --no-cache ca-certificates tzdata libcap && \
     update-ca-certificates && \
     rm -rf /var/cache/apk/*
 
@@ -106,10 +106,6 @@ ENV GEO_DATA_DIR=/data/geo
 
 # 暴露 HTTP 端口
 EXPOSE 8080
-
-# 健康检查：使用 curl（alpine:3.20 默认自带），验证 /api/v1/health 端点返回
-HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-    CMD curl -fsS --max-time 2 http://localhost:8080/api/v1/health >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/app/geo"]
 CMD ["--port", "8080"]
