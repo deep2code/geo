@@ -1,7 +1,7 @@
 # docker-compose.yml - GEO 系统编排部署
 #
 # 使用：docker compose up -d
-# 一键启动 geo + MySQL 8.0 + Redis 7（异步审计队列后端 + 可选 chinacheck 缓存）
+# 一键启动 geo + MySQL 8.0 + Redis 7（异步审计队列后端）
 
 services:
   # ===== MySQL 数据库 =====
@@ -34,7 +34,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ===== Redis 缓存（可选，chinacheck_cache 用）=====
+  # ===== Redis 队列（异步审计任务）=====
   redis:
     image: redis:7-alpine
     container_name: geo-redis
@@ -70,21 +70,21 @@ services:
         required: false
     environment:
       - TZ=Asia/Shanghai
-      # 管理员密钥：留空时所有 /api/v1/admin/* 接口返回 403（默认安全）。
-      # 本地开发需管理员接口时：export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
-      - GEO_ADMIN_KEY=${GEO_ADMIN_KEY:-}
-      # MySQL DSN：单库架构，全部模块共用 geo 库（initdb 01 建库 + 02 建表）
-      - GEO_OFFLINE_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_HISTORY_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_AUTH_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_CHINACHECK_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
-      # Redis（异步审计队列后端；同时可作为 chinacheck 缓存）
+      # 账号体系（唯一鉴权方式）：启用后 API 需登录、管理接口按角色（Owner/Admin）鉴权。
+      # 未启用时 API 匿名放行、管理接口 403（默认安全）。生产请启用并配置 JWT_SECRET + 管理员。
+      - GEO_AUTH_ENABLED=${GEO_AUTH_ENABLED:-false}
+      - GEO_JWT_SECRET=${GEO_JWT_SECRET:-}
+      - GEO_ADMIN_EMAIL=${GEO_ADMIN_EMAIL:-}
+      - GEO_ADMIN_PASSWORD=${GEO_ADMIN_PASSWORD:-}
+      # MySQL DSN：单库架构，统一 GEO_MYSQL_DSN 即可覆盖全部模块（所有表在 geo 库）
+      - GEO_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
+      # Redis（异步审计队列后端，必需）
       - GEO_REDIS_ADDR=redis:6379
-      # 计费库（与 auth 同库；未配置时自动回退 GEO_AUTH_MYSQL_DSN）
-      - GEO_BILLING_MYSQL_DSN=geo:${GEO_MYSQL_PASSWORD:-geoPass}@tcp(mysql:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local
-      - GEO_CHINACHECK_CACHE_TYPE=mysql
-      # - GEO_CHINACHECK_CACHE_TYPE=redis
-      # - GEO_CHINACHECK_REDIS_DSN=redis://redis:6379/0
+      # 如需 Redis 密码：- GEO_REDIS_PASSWORD=${GEO_REDIS_PASSWORD:-}
+      # 外部系统提交接口密钥（留空则接口 401；在 .env 中配置才能启用）
+      - GEO_EXTERNAL_API_KEY=${GEO_EXTERNAL_API_KEY:-}
+      # 定时分析间隔（秒，默认 300）
+      - GEO_EXTERNAL_ANALYZE_INTERVAL=${GEO_EXTERNAL_ANALYZE_INTERVAL:-300}
     # 日志写在容器内（不挂卷，重启即清；容器日志由 logging 驱动采集）
     depends_on:
       mysql:

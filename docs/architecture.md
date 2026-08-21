@@ -499,10 +499,8 @@ graph TB
 ```mermaid
 graph TB
     subgraph 工厂层["🏭 dbprovider 工厂层"]
-        PT["ParseType()<br/>env → 类型"]
-        PF["PathFor()<br/>默认路径计算"]
+        PF["PathFor()<br/>模块 → DSN 解析（专属优先，统一 GEO_MYSQL_DSN 兜底）"]
         EN["EnabledFor()<br/>开关判断"]
-        RS["Resolve()<br/>类型校验+回退"]
     end
 
     subgraph 接口层["📋 抽象接口层"]
@@ -837,8 +835,8 @@ graph TB
     subgraph 生产["🟠 生产部署（大规模）"]
         direction LR
         BIN2["🛠 geo 二进制 / K8s Pods（多副本）"]
-        BIN2 --"GEO_*_MYSQL_DSN"--> MYC["🐬 MySQL 集群（主从）<br/>离线/历史/账号/缓存"]
-        BIN2 --"可选 GEO_CHINACHECK_REDIS_DSN"--> REDIS["🔴 Redis 哨兵<br/>缓存加速"]
+        BIN2 --"GEO_MYSQL_DSN"--> MYC["🐬 MySQL 集群（主从）<br/>离线/历史/账号/缓存"]
+        BIN2 --"GEO_REDIS_ADDR"--> REDIS["🔴 Redis 哨兵<br/>审计队列"]
         BIN2 --"GEO_SCHEDULER_WEBHOOK"--> WEB["📨 Webhook<br/>告警到飞书/钉钉"]
     end
 
@@ -870,9 +868,9 @@ graph TB
 | 组件 | 形态 | CPU 请求 / 限制 | 内存 请求 / 限制 | 磁盘 | 副本数建议 |
 |------|------|-----------------|------------------|------|------------|
 | `geo` 应用服务（API + SPA） | Deployment · 无状态 | 1 / 2 vCPU | 2 / 4 GB | 不需要持久卷 | 2 起步，按 QPS HPA 扩（CPU ≥ 70% 触发） |
-| 审计历史库 `GEO_HISTORY_DB_TYPE=mysql` | MySQL 主从 / 集群 | 4 / 8 vCPU | 8 / 16 GB | 200 GB+ nvme SSD（按 1 品牌审计 5MB 估算） | 主 1 + 从 1-2 |
-| 缓存层 `GEO_CHINACHECK_CACHE_TYPE=redis` | Redis 哨兵 / Cluster | 2 / 4 vCPU | 4 / 8 GB | 可选 AOF 持久化 20 GB | 3 节点哨兵起步 |
-| 离线工商库 `GEO_OFFLINE_DB_TYPE=duckdb` | StatefulSet（只读共享挂载） | 2 / 4 vCPU | 8 / 16 GB（按千万级记录需要内存 MAP） | 共享 SSD / NAS 100 GB+ | 1-2（读多写少） |
+| 审计历史库（MySQL，统一 `GEO_MYSQL_DSN`） | MySQL 主从 / 集群 | 4 / 8 vCPU | 8 / 16 GB | 200 GB+ nvme SSD（按 1 品牌审计 5MB 估算） | 主 1 + 从 1-2 |
+| Redis 队列（`GEO_REDIS_ADDR` / `GEO_REDIS_PASSWORD`） | Redis 哨兵 / Cluster | 2 / 4 vCPU | 4 / 8 GB | 可选 AOF 持久化 20 GB | 3 节点哨兵起步 |
+| 离线工商库（MySQL，统一 `GEO_MYSQL_DSN`） | StatefulSet（只读共享挂载） | 2 / 4 vCPU | 8 / 16 GB（按千万级记录需要内存 MAP） | 共享 SSD / NAS 100 GB+ | 1-2（读多写少） |
 | Ingress / LB | 云厂商 SLB / Nginx Ingress | — | — | — | 2 高可用 |
 
 **关键容量估算公式**（帮助采购核算）：
@@ -914,11 +912,8 @@ graph LR
         K4["GEO_QWEN_KEY 等..."]
     end
 
-    subgraph DBs["🟢 数据库 ×3 模块"]
-        OT["GEO_OFFLINE_MYSQL_DSN<br/>离线工商库 MySQL DSN"]
-        HT["GEO_HISTORY_MYSQL_DSN<br/>审计历史库 MySQL DSN"]
-        AT["GEO_AUTH_MYSQL_DSN<br/>账号/会话 MySQL DSN"]
-        CT["GEO_CHINACHECK_MYSQL_DSN<br/>缓存 MySQL DSN<br/>（可选切 Redis DSN）"]
+    subgraph DBs["🟢 数据库（MySQL 单库）"]
+        U["GEO_MYSQL_DSN<br/>唯一 MySQL DSN（全部模块共用 geo 库）"]
     end
 
     subgraph 调度["🔴 定时调度"]
@@ -927,12 +922,12 @@ graph LR
     end
 
     subgraph 安全白标["🛡 安全与白标"]
-        AK["GEO_API_KEY"]
-        ADM["GEO_ADMIN_KEY"]
+        AE["GEO_AUTH_ENABLED"]
+        JS["GEO_JWT_SECRET"]
         CO["GEO_CORS_ORIGINS"]
         RL["GEO_RATE_LIMIT_GLOBAL"]
-        WB["GEO_WHITELABEL_BRAND_NAME"]
-        WC["GEO_WHITELABEL_PRIMARY_COLOR"]
+        WB["GEO_WL_BRAND_NAME"]
+        WC["GEO_WL_PRIMARY_COLOR"]
     end
 
     subgraph 国内信号["📊 国内信号源"]

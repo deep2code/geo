@@ -80,7 +80,7 @@ func unquote(v string) string {
 // Validate 启动关键配置 fail-fast 校验。
 //
 // 规则（返回 error 即拒绝启动）：
-//   - GEO_AUTH_ENABLED=true 时必须配置 GEO_AUTH_MYSQL_DSN；
+//   - GEO_AUTH_ENABLED=true 时必须配置统一 GEO_MYSQL_DSN；
 //   - GEO_AUTH_ENABLED=true 时 GEO_JWT_SECRET 必须 ≥ 32 字节（弱密钥拒绝启动）；
 //   - 配置了 GEO_JWT_SECRET 但 < 32 字节 → 拒绝启动（防弱密钥，P1-9）；
 //   - 配置了 GEO_MCP_API_KEY 但 < 16 字节 → 拒绝启动（防弱 API Key）。
@@ -90,8 +90,8 @@ func Validate() error {
 	authEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("GEO_AUTH_ENABLED")), "true")
 
 	if authEnabled {
-		if strings.TrimSpace(os.Getenv("GEO_AUTH_MYSQL_DSN")) == "" {
-			return fmt.Errorf("配置校验失败：GEO_AUTH_ENABLED=true 时必须设置 GEO_AUTH_MYSQL_DSN")
+		if strings.TrimSpace(os.Getenv("GEO_MYSQL_DSN")) == "" {
+			return fmt.Errorf("配置校验失败：GEO_AUTH_ENABLED=true 时必须设置 GEO_MYSQL_DSN")
 		}
 	}
 
@@ -108,8 +108,8 @@ func Validate() error {
 	}
 
 	// 记录可观测但非阻断的配置提示
-	if os.Getenv("GEO_API_KEY") == "" && !authEnabled {
-		slog.Warn("未配置 GEO_API_KEY / 未启用账号体系：API 将匿名可访问，请仅用于本地开发或置于反向代理鉴权之后")
+	if !authEnabled {
+		slog.Warn("未启用账号体系（GEO_AUTH_ENABLED=true）：API 匿名可访问、管理接口全部 403，请仅用于本地开发或置于反向代理鉴权之后")
 	}
 	return nil
 }

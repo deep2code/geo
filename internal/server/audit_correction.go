@@ -12,8 +12,7 @@ import (
 // POST /api/v1/admin/audit/correction
 // 请求体: brand.CorrectResultInput（record_id / brand_name / index / 待修正字段 / reason）
 //
-// 权限：账号体系启用时要求 PermManageData（Owner/Admin，见 requireDataAdmin）；
-// legacy GEO_API_KEY 模式中 API Key 鉴权已通过即为全权。
+// 权限：要求 PermManageData（Owner/Admin，见 requireDataAdmin）；账号体系未启用时 403。
 //
 // 返回：重算后的完整 VisibilityReport（前端直接替换展示）。
 func (s *Server) handleAuditCorrection(w http.ResponseWriter, r *http.Request) {

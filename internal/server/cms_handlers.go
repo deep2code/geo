@@ -1,7 +1,6 @@
 package server
 
 import (
-	"my-geo/internal/config"
 	"my-geo/internal/util"
 	"net/http"
 	"strings"
@@ -88,7 +87,7 @@ func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
 			"write_methods": []string{"POST", "PUT", "PATCH", "DELETE"},
 		},
 		"auth": map[string]interface{}{
-			"api_key_enabled": strings.TrimSpace(config.Env("GEO_API_KEY", "")) != "",
+			"auth_enabled": s.authSvc != nil && s.authSvc.Enabled(),
 		},
 		"recovery": map[string]interface{}{
 			"panic_recovery": true,

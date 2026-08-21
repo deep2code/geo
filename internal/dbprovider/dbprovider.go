@@ -1,9 +1,9 @@
-// Package dbprovider 统一按功能模块选择 MySQL 后端的工厂层（仅 MySQL + Redis）。
+// Package dbprovider 统一按功能模块选择 MySQL 后端的工厂层。
 //
 // 原则：
-//  1. 本工程已移除 SQLite/JSONL/DuckDB，所有持久化模块统一使用 MySQL；
+//  1. 本工程所有持久化模块统一使用 MySQL 8.0+（无 SQLite/JSONL/DuckDB/Redis 后端）；
 //  2. 每个模块使用独立的 DSN 环境变量（也可复用同一个 MySQL 实例 + 不同库名）；
-//  3. 仅保留 Redis 作为 K/V 高性能可选后端（MySQL 是 chinacheck_cache 默认）。
+//  3. 单库架构只需配置统一的 GEO_MYSQL_DSN，各模块专属 *_MYSQL_DSN 可选覆盖。
 package dbprovider
 
 import (
@@ -11,41 +11,6 @@ import (
 	"strings"
 	"time"
 )
-
-// Type 数据库后端类型（现在仅 MySQL + Redis 有效）。
-type Type string
-
-const (
-	// TypeAuto 默认。
-	TypeAuto Type = ""
-	// TypeMySQL MySQL 8.0+（唯一持久化默认后端）。
-	TypeMySQL Type = "mysql"
-	// TypeRedis Redis（仅 chinacheck_cache 的可选后端）。
-	TypeRedis Type = "redis"
-)
-
-// Known 已知后端列表（用于 UI/验证）。
-var Known = []Type{TypeMySQL, TypeRedis}
-
-// String 返回小写形式。
-func (t Type) String() string { return string(t) }
-
-// RequiresExternal 是否需要外部服务/二进制依赖（MySQL/Redis 都需要外部服务）。
-func (t Type) RequiresExternal() bool {
-	switch t {
-	case TypeMySQL, TypeRedis:
-		return true
-	}
-	return false
-}
-
-// Fallback 保留接口（只有一个后端，返回自身即可）。
-func (t Type) Fallback() Type {
-	if t == TypeRedis {
-		return TypeMySQL // Redis 连不上时 chinacheck_cache 可回退 MySQL
-	}
-	return TypeMySQL
-}
 
 // NormalizeMySQLDSN 为 DSN 幂等追加性能与安全性参数（缺省即最佳实践）：
 //
@@ -118,7 +83,7 @@ func NormalizeMySQLDSN(raw string) string {
 // ConfigurePool 按 Go + MySQL 连接池最佳实践设置 *sql.DB 参数。
 // profile 预设：
 //   - "auth"     账号/权限：读多写少，低并发
-//   - "cache"    chinacheck/Redis 的 MySQL 回退：短 KV + TTL，高 QPS 但小事务
+//   - "cache"    chinacheck 缓存：短 KV + TTL，高 QPS 但小事务
 //   - "default"  审计历史：中等并发，偶尔批量导入
 //   - "offline"  离线库（companies）：导入期写密集、查询期读密集
 //

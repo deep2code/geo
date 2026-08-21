@@ -172,12 +172,12 @@ func TestDeepSeekToolType(t *testing.T) {
 	}
 }
 
-// TestDeepSeekResponsesWebSearch 验证 DeepSeek 联网时走 /responses 且解析 web_search_call 引用。
+// TestDeepSeekResponsesWebSearch 验证 DeepSeek 联网时走 /v1/responses 且解析 web_search_call 引用。
 func TestDeepSeekResponsesWebSearch(t *testing.T) {
 	var gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/responses" {
-			t.Errorf("应请求 /responses，实际 %s", r.URL.Path)
+		if r.URL.Path != "/v1/responses" {
+			t.Errorf("应请求 /v1/responses，实际 %s", r.URL.Path)
 		}
 		buf := make([]byte, r.ContentLength)
 		_, _ = r.Body.Read(buf)

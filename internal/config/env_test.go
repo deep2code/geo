@@ -56,11 +56,11 @@ func TestLoadDotEnvMissingFile(t *testing.T) {
 
 func TestValidateAuthEnabledRequiresDSN(t *testing.T) {
 	t.Setenv("GEO_AUTH_ENABLED", "true")
-	t.Setenv("GEO_AUTH_MYSQL_DSN", "")
+	t.Setenv("GEO_MYSQL_DSN", "")
 	t.Setenv("GEO_JWT_SECRET", "")
 	t.Setenv("GEO_MCP_API_KEY", "")
 	err := Validate()
-	if err == nil || !strings.Contains(err.Error(), "GEO_AUTH_MYSQL_DSN") {
+	if err == nil || !strings.Contains(err.Error(), "GEO_MYSQL_DSN") {
 		t.Fatalf("应报缺少 DSN 错误, got %v", err)
 	}
 }
@@ -96,7 +96,7 @@ func TestValidateOK(t *testing.T) {
 
 func TestValidateStrongSecretOK(t *testing.T) {
 	t.Setenv("GEO_AUTH_ENABLED", "true")
-	t.Setenv("GEO_AUTH_MYSQL_DSN", "geo:pass@tcp(127.0.0.1:3306)/geo_auth")
+	t.Setenv("GEO_MYSQL_DSN", "geo:pass@tcp(127.0.0.1:3306)/geo")
 	t.Setenv("GEO_JWT_SECRET", strings.Repeat("s", 40))
 	t.Setenv("GEO_MCP_API_KEY", strings.Repeat("k", 20))
 	if err := Validate(); err != nil {

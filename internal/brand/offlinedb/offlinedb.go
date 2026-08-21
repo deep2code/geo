@@ -62,11 +62,11 @@ type mysqlStore struct {
 }
 
 // Open 打开/创建 MySQL 离线工商数据库并完成 schema 初始化。
-// 保持原签名兼容：path 若非空视为 MySQL DSN（兼容）；否则读 env GEO_OFFLINE_MYSQL_DSN，缺省为内置默认。
+// 保持原签名兼容：path 若非空视为 MySQL DSN（兼容）；否则读 env GEO_MYSQL_DSN，缺省为内置默认。
 func Open(path string) (OfflineStore, error) {
 	dsn := path
 	if dsn == "" {
-		dsn = os.Getenv("GEO_OFFLINE_MYSQL_DSN")
+		dsn = os.Getenv("GEO_MYSQL_DSN")
 		if dsn == "" {
 			dsn = defaultMySQLDSN
 		}

@@ -37,7 +37,7 @@ func ConfigCheck(rulesPath string) []CheckResult {
 	results = append(results, checkPort())
 	results = append(results, checkBudget())
 	results = append(results, checkAuthBoot())
-	results = append(results, checkAdminKey())
+	results = append(results, checkAuthEnabled())
 	results = append(results, checkLLMConfig())
 	results = append(results, checkEngineKeys())
 	results = append(results, checkDSNs())
@@ -139,16 +139,17 @@ func checkAuthBoot() CheckResult {
 	return res
 }
 
-// checkAdminKey 检查管理员接口鉴权密钥是否配置。
-func checkAdminKey() CheckResult {
-	res := CheckResult{Name: "管理员密钥", Category: CategoryConfig}
-	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) == "" {
+// checkAuthEnabled 检查账号体系（JWT）是否启用；未启用时管理接口全部 403。
+func checkAuthEnabled() CheckResult {
+	res := CheckResult{Name: "账号体系（JWT）", Category: CategoryConfig}
+	enabled := strings.EqualFold(strings.TrimSpace(config.Env("GEO_AUTH_ENABLED", "")), "true")
+	if !enabled {
 		res.Status = SeverityWarn
-		res.Message = "未配置 GEO_ADMIN_KEY，管理员接口（/api/v1/admin/*）默认全部拒绝"
+		res.Message = "未启用账号体系（GEO_AUTH_ENABLED=true）：API 匿名放行、管理接口（/api/v1/admin/*）全部 403。生产部署请启用并配置 GEO_JWT_SECRET + GEO_ADMIN_EMAIL/PASSWORD"
 		return res
 	}
 	res.Status = SeverityOK
-	res.Message = "已配置（管理员接口可用）"
+	res.Message = "已启用（JWT + RBAC，管理接口按角色鉴权）"
 	return res
 }
 

@@ -18,7 +18,7 @@ func TestQueueRedisSmoke(t *testing.T) {
 	if addr == "" {
 		addr = "127.0.0.1:6390"
 	}
-	cli, err := NewClient(addr)
+	cli, err := NewClient(addr, os.Getenv("GEO_SMOKE_REDIS_PASSWORD"))
 	if err != nil {
 		t.Skipf("跳过：无法连接 Redis(%s): %v", addr, err)
 	}

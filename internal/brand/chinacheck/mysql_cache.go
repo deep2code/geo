@@ -31,7 +31,7 @@ func resolveDSN(filePath string) string {
 	if filePath != "" {
 		return filePath
 	}
-	if env := os.Getenv("GEO_CHINACHECK_MYSQL_DSN"); env != "" {
+	if env := os.Getenv("GEO_MYSQL_DSN"); env != "" {
 		return env
 	}
 	return defaultMySQLDSN

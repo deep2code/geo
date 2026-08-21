@@ -9,9 +9,9 @@
 //
 // 设计要点：
 //   - 数据库：使用 github.com/go-sql-driver/mysql（MySQL 8.0+），
-//     环境变量 GEO_AUTH_MYSQL_DSN 自定义连接串。
-//   - 向后兼容：未配置 GEO_AUTH_ENABLED=true 时，鉴权中间件降级为原
-//     GEO_API_KEY / GEO_ADMIN_KEY 机制，老部署无需迁移即可启动。
+//     环境变量 GEO_MYSQL_DSN 自定义连接串（单库架构唯一 DSN）。
+//   - 鉴权唯一方式：JWT 账号体系（GEO_AUTH_ENABLED=true）。未启用时中间件
+//     无鉴权放行（本地开发 / 反向代理场景），管理类接口一律 403。
 //   - 首用户注册引导：DB 无用户时允许首用户注册并自动设为 Owner
 //     （首个默认工作区 "Default Workspace"）。
 //   - WorkspaceID 注入 context：鉴权中间件解析出当前工作区后，
@@ -22,7 +22,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -483,13 +482,13 @@ type Store struct {
 
 // defaultAuthDSN 默认 MySQL 连接串。
 // 注意：账号体系默认不启用（GEO_AUTH_ENABLED=false）；一旦显式启用就必须
-// 配置 GEO_AUTH_MYSQL_DSN，绝不静默回退到弱口令默认值（防扫描爆破）。
+// 配置统一 GEO_MYSQL_DSN，绝不静默回退到弱口令默认值（防扫描爆破）。
 func defaultAuthDSN() (string, error) {
-	d := strings.TrimSpace(os.Getenv("GEO_AUTH_MYSQL_DSN"))
+	d := strings.TrimSpace(os.Getenv("GEO_MYSQL_DSN"))
 	if d != "" {
 		return d, nil
 	}
-	return "", errors.New("启用账号体系（GEO_AUTH_ENABLED=true）必须配置 GEO_AUTH_MYSQL_DSN，例如 geo:pass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local")
+	return "", errors.New("启用账号体系（GEO_AUTH_ENABLED=true）必须配置 GEO_MYSQL_DSN，例如 geo:pass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local")
 }
 
 // maskDSN 把 DSN 里的密码替换成 ***，避免在日志/响应中泄露凭据。
@@ -945,7 +944,7 @@ const (
 func NewService() (*Service, error) {
 	enabled := strings.EqualFold(strings.TrimSpace(config.Env("GEO_AUTH_ENABLED", "")), "true")
 	if !enabled {
-		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED=true）。仍使用 GEO_API_KEY / GEO_ADMIN_KEY 鉴权。")
+		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED=true）：API 匿名放行，管理接口 403。生产请启用账号体系。")
 		return &Service{store: nil, enabled: false, loginFails: map[string]loginFailState{}}, nil
 	}
 	st, err := OpenStore()
@@ -1239,14 +1238,13 @@ type AuthNResponse struct {
 // MiddlewareConfig 中间件配置。
 type MiddlewareConfig struct {
 	Svc *Service
-	// LegacyAPIKey: 保留的向后兼容——账号体系未启用时通过 GEO_API_KEY 鉴权
-	LegacyAPIKey string
 	// PublicPaths 公开路径（跳过鉴权）
 	PublicPaths map[string]bool
 }
 
 // WithAuthN 鉴权中间件（认证）。
-// 顺序：优先 Bearer JWT → 其次 GEO_API_KEY Bearer（legacy）→ 公开路径放行 → 401。
+// 顺序：账号体系启用时优先 Bearer JWT → Cookie → 公开路径放行 → 401；
+// 账号体系未启用时全部放行（本地开发 / 反向代理鉴权场景，生产必须启用账号体系）。
 // 认证通过后把 user/workspace/role 注入 context。
 func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 	public := cfg.PublicPaths
@@ -1257,19 +1255,10 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// 账号体系未启用 → 走 legacy GEO_API_KEY / GEO_ADMIN_KEY 路径（或完全放行）
+			// 账号体系未启用 → 无鉴权放行（本地开发 / 反向代理场景）。
+			// 管理类接口另有 requireDataAdmin 等角色守卫，未启用账号体系时一律 403。
 			if cfg.Svc == nil || !cfg.Svc.Enabled() {
-				if cfg.LegacyAPIKey == "" || public[path] || isServerPublicPath(path) {
-					h.ServeHTTP(w, r)
-					return
-				}
-				auth := r.Header.Get("Authorization")
-				if strings.HasPrefix(auth, "Bearer ") && subtle.ConstantTimeCompare(
-					[]byte(strings.TrimSpace(auth[7:])), []byte(cfg.LegacyAPIKey)) == 1 {
-					h.ServeHTTP(w, r)
-					return
-				}
-				writeErr(w, http.StatusUnauthorized, "未授权：无效或缺失的 API Key", "API_KEY_MISSING")
+				h.ServeHTTP(w, r)
 				return
 			}
 

@@ -154,7 +154,7 @@ func init() {
 			Summary:  "导入企业工商信息，丰富品牌画像",
 			Category: "features",
 			Order:    14,
-			Content:  "「离线工商库」可导入企业工商注册信息（支持上传 JSON 或直连 GitHub 数据集），用于丰富品牌画像与实体核验（如公司主体、地域、行业）。\n\n数据存储在独立 MySQL 库（GEO_OFFLINE_MYSQL_DSN），与审计主库隔离，便于大规模导入与管理。",
+			Content:  "「离线工商库」可导入企业工商注册信息（支持上传 JSON 或直连 GitHub 数据集），用于丰富品牌画像与实体核验（如公司主体、地域、行业）。\n\n数据存储于统一 MySQL 主库（GEO_MYSQL_DSN）的 geo 库中，与审计历史等共用实例，便于单库部署管理。",
 		},
 		{
 			ID:       "external-signals",
@@ -206,7 +206,7 @@ func init() {
 			Summary:  "租户、用量、系统信息与外部提交",
 			Category: "settings",
 			Order:    20,
-			Content:  "「管理后台」面向运维与运营，包含：\n\n- 租户管理：查看各租户品牌数 / 审计次数 / 邮件数，启停租户\n- 用量统计：总品牌、总审计、活跃租户等\n- 公告管理：发布系统通知 / 功能更新 / 维护公告\n- 系统信息：构建版本、Go 版本、资源监控\n- 系统设置：运行时配置（见上文）\n- 外部提交分析：查看与触发外部对话的分析（见功能详解）\n\n进入管理后台需在「管理员登录」配置管理员 Key（GEO_ADMIN_KEY 或账号体系 PermManageData 权限）。",
+			Content:  "「管理后台」面向运维与运营，包含：\n\n- 租户管理：查看各租户品牌数 / 审计次数 / 邮件数，启停租户\n- 用量统计：总品牌、总审计、活跃租户等\n- 公告管理：发布系统通知 / 功能更新 / 维护公告\n- 系统信息：构建版本、Go 版本、资源监控\n- 系统设置：运行时配置（见上文）\n- 外部提交分析：查看与触发外部对话的分析（见功能详解）\n\n进入管理后台需先启用账号体系（GEO_AUTH_ENABLED=true）并以 Owner/Admin 账号登录（登录页输入邮箱+密码），系统按 PermManageData 权限放行。",
 		},
 
 		// ───────────── 常见问题 ─────────────
@@ -216,7 +216,7 @@ func init() {
 			Summary:  "审计时长、数据存储、引擎支持等",
 			Category: "faq",
 			Order:    21,
-			Content:  "Q: 审计需要多长时间？\nA: 单次审计通常 1-3 分钟，取决于引擎数量与提示词数量；开启多次采样会相应增加。\n\nQ: 数据存储在哪里？\nA: 审计历史、来源研究、外部提交等分别存储在 MySQL（DSN 通过 GEO_HISTORY_MYSQL_DSN、GEO_SOURCE_MYSQL_DSN、GEO_EXTERNAL_MYSQL_DSN 等配置）。\n\nQ: 支持哪些 AI 引擎？\nA: 支持 GLM、通义千问、Doubao、文心一言、DeepSeek、ChatGPT、Claude、Gemini、Perplexity 等主流引擎，按服务端配置的 API Key 启用。\n\nQ: 如何获取 API 访问权限？\nA: 专业版及以上方案支持 API 访问，在「系统设置 / 管理员登录」获取对应 Key。\n\nQ: 联网搜索为什么有时没效果？\nA: 需确认对应引擎已正确配置 API Key 且支持联网；若接口返回错误，系统会自动降级为无网查询并在日志提示。",
+			Content:  "Q: 审计需要多长时间？\nA: 单次审计通常 1-3 分钟，取决于引擎数量与提示词数量；开启多次采样会相应增加。\n\nQ: 数据存储在哪里？\nA: 审计历史、来源研究、外部提交等统一存储在 MySQL 主库（GEO_MYSQL_DSN 指向的 geo 库，全部表由 deploy/initdb/schema.sql 初始化）。\n\nQ: 支持哪些 AI 引擎？\nA: 支持 GLM、通义千问、Doubao、文心一言、DeepSeek、ChatGPT、Claude、Gemini、Perplexity 等主流引擎，按服务端配置的 API Key 启用。\n\nQ: 如何获取 API 访问权限？\nA: 专业版及以上方案支持 API 访问，在「系统设置 / 登录」以管理员账号登录后获取。\n\nQ: 联网搜索为什么有时没效果？\nA: 需确认对应引擎已正确配置 API Key 且支持联网；若接口返回错误，系统会自动降级为无网查询并在日志提示。",
 		},
 	}
 }

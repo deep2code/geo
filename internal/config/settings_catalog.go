@@ -33,13 +33,17 @@ func extraCatalog() []Setting {
 			Description: "引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）",
 		})
 	}
-	// GEO_JWT_SECRET 非例外（用户原则：仅数据库连接 + 初始管理员账号走环境变量）：
-	// 放配置表管理（DB > 环境变量 > 默认值）。签名密钥改动会使已签发 JWT 全部失效，
-	// 故标注需重启；长度校验见 config.Validate（env）与 InitSettings（DB 覆盖后）。
+	// GEO_JWT_SECRET / GEO_AUTH_ENABLED 为引导类（2026-08-21 起）：运行参数只读 DB 后，
+	// 账号体系开关与签名密钥必须能通过环境变量一次性引导启动（否则未启用 AUTH 时后台 403，
+	// 无法从 DB 开启，形成死锁）。后台对其只读展示，改环境变量 + 重启生效。
 	out = append(out, Setting{
-		Key: "GEO_JWT_SECRET", Category: "auth", Type: "secret", IsSecret: true,
-		Description:     "JWT 签名密钥（≥32 字节）。存配置表，修改后需重启且所有会话失效",
+		Key: "GEO_JWT_SECRET", Category: "auth", Type: "secret", IsSecret: true, IsBootstrap: true,
+		Description:     "JWT 签名密钥（≥32 字节，引导类：环境变量设置 + 重启生效；改动后所有会话失效）",
 		RequiresRestart: true,
+	})
+	out = append(out, Setting{
+		Key: "GEO_AUTH_ENABLED", Category: "auth", Type: "bool", IsBootstrap: true,
+		Description: "账号体系开关（引导类：环境变量设置 + 重启生效；true 启用 JWT/RBAC）",
 	})
 	for _, k := range engineBases {
 		out = append(out, Setting{Key: k, Category: "engines", Description: "引擎 API 基地址（默认走内置官方地址）"})
@@ -69,6 +73,11 @@ func extraCatalog() []Setting {
 		{Key: "GEO_LLM_KEY_OPENAI", Category: "llm", Description: "OpenAI 兼容密钥（LLM 管理器）", Type: "secret", IsSecret: true},
 		{Key: "GEO_LLM_MODEL_OPENAI", Category: "llm", Description: "OpenAI 兼容模型", RequiresRestart: true},
 		{Key: "GEO_OPENAPI_KEY", Category: "admin", Description: "开放测量 API 鉴权 Key（X-GEO-API-Key）", Type: "secret", IsSecret: true},
+		// 运行时读取（handler 内 config.Env 每次调用），修改即时生效，无需重启。
+		{Key: "GEO_EXTERNAL_API_KEY", Category: "admin", Description: "外部提交接口鉴权 Key（X-GEO-External-Key；留空则该接口 401）", Type: "secret", IsSecret: true},
+		// 启动时一次性读取（中间件/httputil），修改后需重启。
+		{Key: "GEO_CORS_ORIGINS", Category: "general", Description: "CORS 白名单（逗号分隔 Origin；默认仅 localhost）", RequiresRestart: true},
+		{Key: "GEO_TRUSTED_PROXIES", Category: "general", Description: "可信代理 IP/CIDR（逗号分隔；用于正确解析客户端 IP）", RequiresRestart: true},
 	}
 	out = append(out, restartKeys...)
 	return out

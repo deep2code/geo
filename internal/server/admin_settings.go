@@ -10,8 +10,7 @@ import (
 
 // 系统设置管理接口（管理后台「系统设置」页）。
 //
-// 鉴权：与其它 /api/admin/* 一致，要求 X-Admin-Key 匹配 GEO_ADMIN_KEY
-// （DB 覆盖优先，见 config.Env）。
+// 鉴权：与其它 /api/admin/* 一致，要求 PermManageData（Owner/Admin）。
 //
 //	GET  /api/v1/admin/settings?category=&q=   列出全部可管理配置（secret 脱敏）
 //	PUT  /api/v1/admin/settings                更新单个配置（body: {"key","value"}）

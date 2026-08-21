@@ -9,7 +9,7 @@ import { Tabs, TabPane } from '@/components/Tabs'
 import SettingsTab from './SettingsTab'
 import ExternalSubmissions from './ExternalSubmissions'
 import { useAppStore } from '@/store/useAppStore'
-import api, { getAdminKey, getApiAuthToken } from '@/services/api'
+import api, { getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
 import './Admin.scss'
 
@@ -54,7 +54,6 @@ const Admin: React.FC = () => {
   const navigate = useNavigate()
   const showToast = useAppStore(s => s.showToast)
 
-  const hasAdminKey = Boolean(getAdminKey())
   const hasApiToken = Boolean(getApiAuthToken())
 
   // 租户管理状态
@@ -330,28 +329,17 @@ const Admin: React.FC = () => {
                 fontSize: 12,
                 padding: '2px 10px',
                 borderRadius: 999,
-                background: hasAdminKey ? 'var(--status-success-bg)' : 'var(--status-danger-bg)',
-                color: hasAdminKey ? 'var(--status-success)' : 'var(--status-danger)'
+                background: hasApiToken ? 'var(--status-success-bg)' : 'var(--status-danger-bg)',
+                color: hasApiToken ? 'var(--status-success)' : 'var(--status-danger)'
               }}
             >
-              {hasAdminKey ? '✓ 已配置管理员 Key' : '⚠️ 未配置管理员 Key'}
-            </span>
-            <span
-              style={{
-                fontSize: 12,
-                padding: '2px 10px',
-                borderRadius: 999,
-                background: hasApiToken ? 'var(--status-success-bg)' : 'var(--bg-tertiary)',
-                color: hasApiToken ? 'var(--status-success)' : 'var(--text-tertiary)'
-              }}
-            >
-              {hasApiToken ? '✓ 已配置 API Token' : '未配置 API Token（可选）'}
+              {hasApiToken ? '✓ 已登录（账号体系）' : '⚠️ 未登录：管理功能不可用（需 Owner/Admin）'}
             </span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="secondary" size="sm" onClick={() => navigate('/admin/login', { state: { from: '/admin' } })}>
-            🔑 管理员登录 / 切换 Key
+            🔑 登录
           </Button>
         </div>
       </div>

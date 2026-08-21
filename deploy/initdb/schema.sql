@@ -15,8 +15,9 @@
 --   - 幂等：全部 CREATE xxx IF NOT EXISTS，可重复执行
 --   - 单库架构：auth / billing / history / chinacheck / offline 各模块表全部并入 geo 库
 --   - 应用内零建表迁移：DDL 完全由本文件负责，应用启动只做数据读写
---   - app_settings 表结构在此定义；其默认值/描述由应用启动时（config.InitSettings seed=true）
---     自动幂等写入，无需手工 INSERT
+--   - app_settings 表结构与其默认值种子数据（INSERT IGNORE）都在本文件定义，
+--     建库即植入默认值；应用启动仅做读取与用户修改，不再写默认值。
+--     种子数据由 scripts/gen_app_settings_seed 生成（新增配置项后重跑并同步）。
 --
 -- 注意：
 --   - 下方 'geo' 账号初始密码为占位值 geoPass，生产环境请改为强口令，
@@ -376,9 +377,10 @@ CREATE TABLE IF NOT EXISTS personas (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ############################################################################
--- 9) 系统配置（DB 变量存储：DB > 环境变量 > 默认值）
+-- 9) 系统配置（DB 变量存储：运行参数只读 DB，默认值由下方种子数据在建库时植入）
 -- ############################################################################
--- 默认值 / 描述由应用启动时 config.InitSettings(seed=true) 幂等写入，无需手工 INSERT。
+-- 默认值种子（INSERT IGNORE：已存在的行不覆盖，用户修改保留）。
+-- 由 scripts/gen_app_settings_seed 生成，勿手改；新增配置项后重跑该工具并同步。
 
 CREATE TABLE IF NOT EXISTS app_settings (
     skey             VARCHAR(191) PRIMARY KEY,
@@ -393,6 +395,118 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at       BIGINT NOT NULL,
     KEY idx_settings_category (category)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO app_settings
+  (skey, svalue, default_value, description, category, stype, is_secret, is_bootstrap, requires_restart, updated_at)
+VALUES
+  ('GEO_ADMIN_EMAIL', '', '', '', 'admin', 'string', 0, 1, 0, 0),
+  ('GEO_ADMIN_PASSWORD', '', '', '', 'admin', 'secret', 1, 1, 0, 0),
+  ('GEO_ALIPAY_NOTIFY_URL', '', '', '', 'billing', 'string', 0, 0, 0, 0),
+  ('GEO_ALLOW_REGISTER', 'false', 'false', '注册通道开关（GEO_ALLOW_REGISTER，默认 false 关闭；管理员由部署预置）', 'auth', 'bool', 0, 0, 0, 0),
+  ('GEO_AUTH_ENABLED', '', '', '账号体系开关（引导类：环境变量设置 + 重启生效；true 启用 JWT/RBAC）', 'auth', 'bool', 0, 1, 0, 0),
+  ('GEO_BAIDU_INDEX_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_BILLING_RETURN_URL', '', '', '', 'billing', 'string', 0, 0, 0, 0),
+  ('GEO_CC_BASE_URL', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_CACHE_ENABLED', 'true', 'true', '---------- 缓存层（默认启用 MySQL K/V）----------', 'chinacheck', 'bool', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_CACHE_MAX_ITEMS', '', '', '', 'chinacheck', 'string', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_CACHE_TTL_HOURS', '', '', '', 'chinacheck', 'string', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_ENABLED', 'true', 'true', '', 'chinacheck', 'bool', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_LANG', '', '', '', 'chinacheck', 'string', 0, 0, 0, 0),
+  ('GEO_CHINACHECK_URL', '', '', '', 'chinacheck', 'string', 0, 0, 0, 0),
+  ('GEO_CHROME_PATH', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_CORS_ORIGINS', '', '', 'CORS 白名单（逗号分隔 Origin；默认仅 localhost）', 'general', 'string', 0, 0, 1, 0),
+  ('GEO_CRM_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_CRM_TYPE', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_DFS_APIKEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_DFS_BASE_URL', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_DFS_EMAIL', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_DOUYIN_OCEAN_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_EMBEDDING_BASE', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_EMBEDDING_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_EMBEDDING_MODEL', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_HISTORY_DB_ENABLED', 'true', 'true', '', 'history', 'bool', 0, 0, 0, 0),
+  ('GEO_JWT_SECRET', '', '', 'JWT 签名密钥（≥32 字节，引导类：环境变量设置 + 重启生效；改动后所有会话失效）', 'auth', 'secret', 1, 1, 1, 0),
+  ('GEO_LLM_BASE', 'https://api.openai.com/v1', 'https://api.openai.com/v1', '默认 LLM API 基地址', 'llm', 'string', 0, 0, 1, 0),
+  ('GEO_LLM_BUDGET_USD', '', '', 'LLM 月度预算上限（USD，0=不限）', 'llm', 'float', 0, 0, 0, 0),
+  ('GEO_LLM_KEY', '', '', '默认 LLM API Key', 'llm', 'secret', 1, 0, 0, 0),
+  ('GEO_LLM_MODEL', 'gpt-4o-mini', 'gpt-4o-mini', '默认 LLM 模型名', 'llm', 'string', 0, 0, 1, 0),
+  ('GEO_LOG_FORMAT', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_LOG_LEVEL', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_MCP_API_KEY', '', '', '', 'mcp', 'secret', 1, 0, 0, 0),
+  ('GEO_MCP_PORT', '9090', '9090', 'MCP Server 监听端口', 'mcp', 'int', 0, 0, 1, 0),
+  ('GEO_MYSQL_DSN', '', '', '单库架构唯一 MySQL DSN（全部模块共用 geo 库）', 'db', 'secret', 1, 1, 0, 0),
+  ('GEO_NEWSWIRE_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_OFFLINE_DB_ENABLED', 'true', 'true', '', 'offline', 'bool', 0, 0, 0, 0),
+  ('GEO_OPENAPI_KEY', '', '', '开放测量 API 鉴权 Key（X-GEO-API-Key）', 'admin', 'secret', 1, 0, 0, 0),
+  ('GEO_PDF_WAIT_MS', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_PORT', '8080', '8080', 'HTTP 监听端口', 'server', 'int', 0, 0, 1, 0),
+  ('GEO_READINESS_INSECURE_TLS', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_REDIS_ADDR', '127.0.0.1:6379', '127.0.0.1:6379', 'Redis 地址（asynq 队列）', 'queue', 'string', 0, 0, 1, 0),
+  ('GEO_RULES', '', '', '', 'server', 'string', 0, 0, 0, 0),
+  ('GEO_SCHEDULER_CONFIG', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_SCHEDULER_ENABLED', 'false', 'false', '', 'general', 'bool', 0, 0, 0, 0),
+  ('GEO_SCHEDULER_WEBHOOK', '', '', '', 'general', 'string', 0, 0, 0, 0),
+  ('GEO_SMTP_FROM', '', '', '', 'mail', 'string', 0, 0, 0, 0),
+  ('GEO_SMTP_HOST', '', '', 'SMTP 服务器', 'mail', 'string', 0, 0, 1, 0),
+  ('GEO_SMTP_PASSWORD', '', '', 'SMTP 密码', 'mail', 'secret', 1, 0, 1, 0),
+  ('GEO_SMTP_PORT', '587', '587', 'SMTP 端口', 'mail', 'int', 0, 0, 1, 0),
+  ('GEO_SMTP_TLS', 'auto', 'auto', '', 'mail', 'string', 0, 0, 0, 0),
+  ('GEO_SMTP_USER', '', '', 'SMTP 用户名', 'mail', 'string', 0, 0, 1, 0),
+  ('GEO_TRUSTED_PROXIES', '', '', '可信代理 IP/CIDR（逗号分隔；用于正确解析客户端 IP）', 'general', 'string', 0, 0, 1, 0),
+  ('GEO_WECHAT_INDEX_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_WL_AGENCY_NAME', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_BRAND_NAME', 'GEO', 'GEO', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_DOMAIN', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_FAVICON_URL', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_LOGO_URL', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_PRIMARY_COLOR', '#3B82F6', '#3B82F6', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_SUPPORT_EMAIL', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_TENANT_ID', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WXPAY_NOTIFY_URL', '', '', '', 'billing', 'string', 0, 0, 0, 0),
+  ('GEO_XHS_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_ZHIHU_HOT_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
+  ('GEO_OPENAI_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_PERPLEXITY_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_GEMINI_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_CLAUDE_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_GROK_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_QWEN_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_GLM_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_DEEPSEEK_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_KIMI_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_ERNIE_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_DOUBAO_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_XIAOMI_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_XUNFEI_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_YUANBAO_KEY', '', '', '', 'engines', 'secret', 1, 0, 0, 0),
+  ('GEO_OPENAI_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_PERPLEXITY_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_GEMINI_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_CLAUDE_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_GROK_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_QWEN_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_GLM_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_DEEPSEEK_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_KIMI_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_ERNIE_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_DOUBAO_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_XIAOMI_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_XUNFEI_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_YUANBAO_WEB_SEARCH', 'true', 'true', '引擎联网搜索开关（模拟 App 联网提问；端点不支持自动降级无网查询）', 'engines', 'bool', 0, 0, 0, 0),
+  ('GEO_ERNIE_BASE', '', '', '引擎 API 基地址（默认走内置官方地址）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_QWEN_BASE', '', '', '引擎 API 基地址（默认走内置官方地址）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_KIMI_BASE', '', '', '引擎 API 基地址（默认走内置官方地址）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_DOUBAO_BASE', '', '', '引擎 API 基地址（默认走内置官方地址）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_ERNIE_MODEL', '', '', '引擎模型名（默认走内置默认模型）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_QWEN_MODEL', '', '', '引擎模型名（默认走内置默认模型）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_KIMI_MODEL', '', '', '引擎模型名（默认走内置默认模型）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_DOUBAO_MODEL', '', '', '引擎模型名（默认走内置默认模型）', 'engines', '', 0, 0, 0, 0),
+  ('GEO_AUDIT_SAMPLES', '1', '1', '品牌审计采样次数（每个查询×引擎重复查询 N 次多数票判定，1=单次；建议 3；单个请求可用 profile.samples 覆盖）', 'server', 'int', 0, 0, 1, 0),
+  ('GEO_REDIS_PASSWORD', '', '', 'Redis 密码', 'queue', '', 1, 0, 1, 0),
+  ('GEO_REDIS_DB', '', '', 'Redis DB 编号', 'queue', 'int', 0, 0, 1, 0),
+  ('GEO_LLM_KEY_OPENAI', '', '', 'OpenAI 兼容密钥（LLM 管理器）', 'llm', 'secret', 1, 0, 0, 0),
+  ('GEO_LLM_MODEL_OPENAI', '', '', 'OpenAI 兼容模型', 'llm', '', 0, 0, 1, 0),
+  ('GEO_EXTERNAL_API_KEY', '', '', '外部提交接口鉴权 Key（X-GEO-External-Key；留空则该接口 401）', 'admin', 'secret', 1, 0, 0, 0);
 
 -- ============================================================================
 -- 完成。全部 20 张表 + 索引就绪；应用启动不再执行任何建表迁移。

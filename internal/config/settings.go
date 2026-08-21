@@ -13,15 +13,15 @@ import (
 	_ "github.com/go-sql-driver/mysql" // MySQL 驱动（注册 sql.Open("mysql")）
 )
 
-// 配置三级读取链：DB（管理后台可改）> 环境变量 > 代码默认值。
+// 配置读取（2026-08-21 用户要求：运行参数只读 DB，默认值由建库 SQL 植入）。
 //
 // 设计要点：
 //   - config.Env(key, fallback) 是全局唯一读取入口；本包维护一个内存覆盖表，
-//     启动时从 MySQL app_settings 表加载（见 InitSettings），读取顺序为：
-//     非 bootstrap 项：DB 值非空 → 环境变量 → fallback；
-//     bootstrap 项（连接/安全引导变量）：跳过 DB，始终用环境变量 → fallback。
-//   - 未调用 InitSettings（无 DB 或调用失败）时，Get 返回 "", false，行为与旧版完全一致。
-//   - bootstrap 变量在 DB 加载前已决定系统引导（如 DSN 自身），管理后台对其只读展示。
+//     启动时从 MySQL app_settings 表加载（见 InitSettings）：
+//     非引导项：只读 DB（默认值由 deploy/initdb/schema.sql 种子 INSERT 建库时植入）→ fallback，
+//     **不回退环境变量**；引导项（DSN/初始管理员/AUTH 开关/JWT 密钥）：始终用环境变量 → fallback。
+//   - 未调用 InitSettings（无 DB 或调用失败）时：非引导项仅返回 fallback，引导项读环境变量。
+//   - 引导项在 DB 加载前已决定系统引导（如 DSN 自身、账号体系开关），管理后台对其只读展示。
 //
 // 表结构见 deploy/initdb/02-schema.sql（app_settings），应用内零建表。
 
@@ -100,13 +100,13 @@ func (m *SettingsManager) Loaded() bool { m.mu.RLock(); defer m.mu.RUnlock(); re
 // InitSettings 连接 MySQL 并加载 app_settings 覆盖表（幂等）。
 //
 // dsn 为空时跳过（等价未初始化）。DB 不可达时返回错误但**不 panic**——
-// 调用方应记录告警并继续启动（配置回退环境变量/默认值）。
-// seed=true 时把注册表默认值幂等写入 DB（INSERT ... ON DUPLICATE KEY UPDATE
-// default_value，不覆盖用户已修改的 value）。
+// 调用方应记录告警并继续启动（非引导项退回代码默认值，引导项仍读环境变量）。
+// seed=true 时把注册表元信息（默认值/描述/分类/类型等）幂等同步到 DB
+// （INSERT ... ON DUPLICATE KEY UPDATE 元信息，不写 svalue、不覆盖用户修改）。
 func InitSettings(ctx context.Context, dsn string, seed bool) error {
 	dsn = strings.TrimSpace(dsn)
 	if dsn == "" {
-		slog.Info("config: 未配置设置库 DSN，跳过 DB 配置加载（使用环境变量 + 默认值）")
+		slog.Info("config: 未配置设置库 DSN，跳过 DB 配置加载（非引导项使用代码默认值，引导项读环境变量）")
 		return nil
 	}
 	db, err := sql.Open("mysql", dsn)
@@ -253,10 +253,12 @@ func ListSettings() []Setting {
 	for _, s := range settings.catalog {
 		cur := s
 		cur.Value = ""
+		// 非引导项：只读 DB（初始化时默认值已植入，用户改过则显示 DB 值）。
+		// 引导项（DSN/管理员/AUTH/JWT）：环境变量引导，后台只读展示。
 		if dbv, ok := overrides[s.Key]; ok && !s.IsBootstrap {
 			cur.Value = dbv
 			cur.Source = "db"
-		} else if ev := os.Getenv(s.Key); ev != "" {
+		} else if ev := os.Getenv(s.Key); ev != "" && s.IsBootstrap {
 			cur.Value = ev
 			cur.Source = "env"
 		} else if s.DefaultValue != "" {
@@ -290,6 +292,9 @@ func seedSettings(ctx context.Context, db *sql.DB) error {
 	defer stmt.Close()
 	now := time.Now().Unix()
 	for _, s := range cats {
+		// 默认值由 deploy/initdb/schema.sql 的种子 INSERT 在建库时植入（见
+		// scripts/gen_app_settings_seed），此处仅同步元信息、不写 svalue；
+		// 已存在的行保持用户修改值不动。
 		if _, err := stmt.ExecContext(ctx, s.Key, s.DefaultValue, s.Description,
 			s.Category, s.Type, boolInt(s.IsSecret), boolInt(s.IsBootstrap),
 			boolInt(s.RequiresRestart), now); err != nil {

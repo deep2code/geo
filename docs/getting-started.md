@@ -1029,7 +1029,7 @@ MCP Server 已随 Web 服务同进程启动（默认 `:9090` `/mcp`），无需�
 - **引擎对比**：同一批查询下，各引擎来源偏好差异（如知乎在 Kimi 上被引用多、ChatGPT 少）
 - 可按品牌 / 引擎 / 类别（评测站 / 社交 / 新闻 / 博客…）/ 近 N 天过滤
 
-研究接口：`GET /api/v1/admin/engine-sources/top`、`/trend`、`/compare`。数据源可独立配置：`GEO_SOURCE_MYSQL_DSN`（缺省回退 `GEO_HISTORY_MYSQL_DSN`）。
+研究接口：`GET /api/v1/admin/engine-sources/top`、`/trend`、`/compare`。数据统一存储在 `GEO_MYSQL_DSN` 指向的 geo 主库。
 
 > 这回答运营最关心的问题之一："想被 AI 推荐，该去哪些平台发内容"——直接看每个大模型的引用偏好历史，比拍脑袋准。
 
@@ -1041,13 +1041,10 @@ MCP Server 已随 Web 服务同进程启动（默认 `:9090` `/mcp`），无需�
 - 账号/会话库（用户、工作区、刷新令牌）
 - China-Check 查询缓存（KV 表 + TTL + expire_at 索引）
 
-通过环境变量分别配置 DSN：
-- `GEO_OFFLINE_MYSQL_DSN`
-- `GEO_HISTORY_MYSQL_DSN`
-- `GEO_AUTH_MYSQL_DSN`
-- `GEO_CHINACHECK_MYSQL_DSN`（或切换为 Redis：`GEO_CHINACHECK_REDIS_DSN`，分布式场景推荐）
+通过环境变量配置 DSN（单库架构只配一个统一 `GEO_MYSQL_DSN`）：
+- `GEO_MYSQL_DSN`（唯一 MySQL DSN，全部模块共用 geo 库）
 
-> 表结构由部署初始化完成（`deploy/initdb/schema.sql` 单文件全量：建账号+建库+19 张表+索引，mysql 容器首次启动自动执行），应用内不内嵌迁移。
+> 表结构由部署初始化完成（`deploy/initdb/schema.sql` 单文件全量：建账号+建库+21 张表+索引，mysql 容器首次启动自动执行），应用内不内嵌迁移。
 
 ### Q: GEO 优化后多久能看到效果？
 

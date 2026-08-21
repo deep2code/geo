@@ -120,12 +120,7 @@ func New(engine *geo.Engine, addr string) *Server {
 	} else if config.Env("GEO_LLM_KEY", "") == "" {
 		slog.Warn("未配置 GEO_LLM_KEY，品牌智能补全（autocomplete）将不可用。")
 	}
-	// 管理员安全：未配置 GEO_ADMIN_KEY 时所有 /api/admin/* 将默认拒绝，此处统一打一次告警
-	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) == "" {
-		slog.Warn("未配置 GEO_ADMIN_KEY，管理员接口（/api/admin/*）默认全部拒绝访问。" +
-			"如需启用请：export GEO_ADMIN_KEY=$(openssl rand -hex 16)")
-	}
-	// 初始化账号体系（GEO_AUTH_ENABLED=true 时启用，缺省降级为 legacy API Key）
+	// 初始化账号体系（GEO_AUTH_ENABLED=true 时启用；未启用时 API 匿名放行、管理接口 403）
 	var authSvc *auth.Service
 	if as, err := auth.NewService(); err != nil {
 		slog.Warn("账号体系初始化失败（将不启用 JWT/工作区/RBAC）", slog.Any("error", err))
@@ -312,8 +307,7 @@ func pickJudgeAdapter(adapters map[models.EngineType]adapter.Adapter) adapter.Ad
 // 环境变量：
 //
 //	GEO_HISTORY_DB_ENABLED=true/false     总开关（默认 true）
-//	GEO_HISTORY_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  DSN（优先）
-//	GEO_HISTORY_DB_PATH=...                兼容旧变量：若形如 user:pass@tcp(...) 则作为 DSN
+//	GEO_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  统一 MySQL DSN（单库架构，全部模块共用）
 func newHistoryDBFromEnv() history.DB {
 	enabled := config.Env("GEO_HISTORY_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -334,7 +328,7 @@ func newHistoryDBFromEnv() history.DB {
 // 环境变量：
 //
 //	GEO_SOURCE_DB_ENABLED=true/false     总开关（默认 true）
-//	GEO_SOURCE_MYSQL_DSN=user:pass@tcp(...)  DSN（优先；缺省回退 GEO_HISTORY_MYSQL_DSN）
+//	GEO_MYSQL_DSN=user:pass@tcp(...)  统一 MySQL DSN（单库架构，全部模块共用）
 //
 // 打开失败时仅告警降级（不阻断审计主流程）。
 func newSourceStudyFromEnv() sourcestudy.Store {
@@ -391,11 +385,9 @@ func newSchedulerFromEnv(be *brand.Engine) *scheduler.Scheduler {
 //	GEO_CHINACHECK_URL=https://...               自定义 MCP endpoint
 //	GEO_CHINACHECK_LANG=zh/en/ja/...             enum 字段翻译语言（默认 zh）
 //	GEO_CHINACHECK_CACHE_ENABLED=true/false      缓存开关（默认 true）
-//	GEO_CHINACHECK_MYSQL_DSN=user:pass@tcp(...)/geo?...  MySQL 缓存 DSN（优先）
-//	GEO_CHINACHECK_CACHE_PATH=...                兼容旧变量（若含 @tcp(...) 则视为 DSN）
+//	GEO_MYSQL_DSN=user:pass@tcp(...)/geo?...  统一 MySQL DSN（单库架构，缓存共用）
 //	GEO_CHINACHECK_CACHE_MAX_ITEMS=20000         最大缓存条目（默认 10000）
 //	GEO_CHINACHECK_CACHE_TTL_HOURS=720           单条目 TTL 小时（默认 720=30 天）
-//	GEO_CHINACHECK_CACHE_TYPE=mysql/redis        后端类型（默认 mysql）
 func newChinaCheckFromEnv() *chinacheck.Client {
 	enabled := config.Env("GEO_CHINACHECK_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -448,8 +440,7 @@ func newChinaCheckFromEnv() *chinacheck.Client {
 // 环境变量：
 //
 //	GEO_OFFLINE_DB_ENABLED=true/false         总开关（默认 true）
-//	GEO_OFFLINE_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  DSN（优先）
-//	GEO_OFFLINE_DB_PATH=...                   兼容旧变量（形如 user:pass@tcp(...) 视为 DSN）
+//	GEO_MYSQL_DSN=user:pass@tcp(127.0.0.1:3306)/geo?...  统一 MySQL DSN（单库架构，全部模块共用）
 func newOfflineDBFromEnv() offlinedb.DB {
 	enabled := config.Env("GEO_OFFLINE_DB_ENABLED", "true")
 	if strings.EqualFold(enabled, "false") || strings.EqualFold(enabled, "0") || strings.EqualFold(enabled, "off") {
@@ -559,8 +550,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/healthz", s.handleLiveness)
 	s.mux.HandleFunc("/readyz", s.handleReadiness)
 	// 可观测性：Prometheus 指标（免鉴权）+ pprof 性能剖析。
-	// pprof 不加入鉴权白名单——启用 GEO_API_KEY / GEO_AUTH 时受保护；
-	// 未配置任何密钥时与 /healthz 一样公开（仅限单机内网部署）。
+	// pprof 不加入鉴权白名单——启用账号体系（GEO_AUTH_ENABLED=true）时受保护；
+	// 未启用账号体系时与 /healthz 一样公开（仅限单机内网部署）。
 	s.mux.HandleFunc("/metrics", s.handleMetrics)
 	s.mux.Handle("/debug/pprof/", http.DefaultServeMux)
 	// REST API（/api/v1/health, /api/v1/ready 复用同一实现，保持向后兼容）
@@ -1158,15 +1149,12 @@ func (s *Server) handleExternalTrigger(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"processed": n})
 }
 
-// requireDataAdmin 校验"数据清理类"接口的权限（P2-9）。
-// 双模式：账号体系启用时要求 PermManageData（Owner/Admin），否则 403；
-// legacy GEO_API_KEY 模式中 API Key 鉴权已通过即为全权，直接放行。
+// requireDataAdmin 校验"数据管理类"接口的权限：要求 PermManageData（Owner/Admin）。
+// 账号体系未启用时 context 无角色注入，一律 403（生产必须启用账号体系）。
 func (s *Server) requireDataAdmin(w http.ResponseWriter, r *http.Request) bool {
-	if s.authSvc != nil && s.authSvc.Enabled() {
-		if err := auth.RequirePermission(r.Context(), auth.PermManageData); err != nil {
-			writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
-			return false
-		}
+	if err := auth.RequirePermission(r.Context(), auth.PermManageData); err != nil {
+		writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
+		return false
 	}
 	return true
 }

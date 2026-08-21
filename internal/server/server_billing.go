@@ -16,22 +16,22 @@ import (
 
 // newBillingFromEnv 初始化计费服务与异步队列。
 //
-// DSN 解析：GEO_BILLING_MYSQL_DSN 优先；缺失时直接回退 GEO_AUTH_MYSQL_DSN
-// （单库架构，全部模块共用 geo 库，无需改写库名）。
-// 任一不可达则计费降级为不可用，不影响其他功能启动。
+// DSN 解析：统一读取 GEO_MYSQL_DSN（单库架构，全部模块共用 geo 库）。
+// 未配置或不可达则计费降级为不可用，不影响其他功能启动。
 func newBillingFromEnv(be *brand.Engine, authSvc *auth.Service) (*billing.Service, billing.HandlerSet, *queue.Client, *queue.Server) {
 	// 异步队列（Redis 背书，独立于计费库）。
 	var qClient *queue.Client
 	var qServer *queue.Server
 	if be != nil {
 		redisAddr := config.Env("GEO_REDIS_ADDR", "127.0.0.1:6379")
-		qc, qerr := queue.NewClient(redisAddr)
+		redisPassword := config.Env("GEO_REDIS_PASSWORD", "")
+		qc, qerr := queue.NewClient(redisAddr, redisPassword)
 		if qerr != nil {
 			slog.Warn("异步审计队列未启用：Redis 不可达", slog.String("addr", redisAddr), slog.Any("error", qerr))
 		} else {
 			qClient = qc
 			workers := atoiEnv("GEO_QUEUE_WORKERS", 2)
-			if qs, serr := queue.NewServer(redisAddr, be, workers); serr != nil {
+			if qs, serr := queue.NewServer(redisAddr, redisPassword, be, workers); serr != nil {
 				slog.Warn("异步审计队列 worker 启动失败", slog.Any("error", serr))
 				_ = qc.Close()
 				qClient = nil
@@ -43,14 +43,10 @@ func newBillingFromEnv(be *brand.Engine, authSvc *auth.Service) (*billing.Servic
 		slog.Warn("品牌引擎未初始化，异步审计队列不可用。")
 	}
 
-	// 计费（MySQL）：与队列解耦，可独立启停。优先用 GEO_BILLING_MYSQL_DSN，
-	// 缺失时回退 GEO_AUTH_MYSQL_DSN（单库架构共用 geo 库）。
-	dsn := config.Env("GEO_BILLING_MYSQL_DSN", "")
+	// 计费（MySQL）：与队列解耦，可独立启停。DSN 统一 GEO_MYSQL_DSN（单库架构共用 geo 库）。
+	dsn := config.Env("GEO_MYSQL_DSN", "")
 	if dsn == "" {
-		dsn = config.Env("GEO_AUTH_MYSQL_DSN", "")
-	}
-	if dsn == "" {
-		slog.Warn("计费未启用：未配置 GEO_BILLING_MYSQL_DSN 或 GEO_AUTH_MYSQL_DSN。订阅/配额/支付将不可用。")
+		slog.Warn("计费未启用：未配置 GEO_MYSQL_DSN。订阅/配额/支付将不可用。")
 		return nil, billing.HandlerSet{}, qClient, qServer
 	}
 	store, err := billing.OpenStore(dsn)

@@ -68,7 +68,7 @@ func openTestStore(t *testing.T) *Store {
 	}
 	// 把 user:pass@tcp(host)/?xxx 改造成 user:pass@tcp(host)/dbname?xxx
 	dsn := injectDB(rootDSN, dbName)
-	t.Setenv("GEO_AUTH_MYSQL_DSN", dsn)
+	t.Setenv("GEO_MYSQL_DSN", dsn)
 	s, err := OpenStore()
 	if err != nil {
 		_, _ = root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
@@ -284,8 +284,13 @@ func TestJWT_BadSignature(t *testing.T) {
 	t.Setenv("GEO_JWT_SECRET", "test-secret-xyz-00000000000000000000000000000000")
 	c := jwtClaims{Sub: "u1", Exp: time.Now().Add(time.Hour).Unix(), Type: "access"}
 	tok, _ := signJWT(c)
-	// 破坏最后一个字符
-	bad := tok[:len(tok)-1] + "A"
+	// 篡改 signature 中部一个字符（确保与原字符不同，避免 bad==tok 导致篡改检测失效）
+	mid := len(tok) / 2
+	rep := byte('A')
+	if tok[mid] == 'A' {
+		rep = 'B'
+	}
+	bad := tok[:mid] + string(rep) + tok[mid+1:]
 	if _, err := parseJWT(bad); err == nil {
 		t.Error("tampered JWT should fail parse")
 	}

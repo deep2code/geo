@@ -10,7 +10,7 @@ import './BrandDBImport.scss'
  * 离线工商库导入（替代原 `geo brand db import-*` CLI）。
  * - 上传本地 JSON 文件（JSON 数组 / JSONL 自动识别）导入；
  * - 或直连 GitHub 按年份+省份下载并导入。
- * 需管理员权限（X-Admin-Key）。
+ * 需管理员权限（Owner/Admin 角色，账号体系）。
  */
 const BrandDBImport: React.FC = () => {
   const { t } = useTranslation()

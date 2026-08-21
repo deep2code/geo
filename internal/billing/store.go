@@ -25,12 +25,11 @@ type Store struct {
 
 // OpenStore 打开（或复用）billing 数据库连接。
 //
-// dsn 为空时返回错误：调用方需先解析 GEO_BILLING_MYSQL_DSN，缺失时回退
-// GEO_AUTH_MYSQL_DSN（见 server.go 的 newBillingFromEnv）。
-// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
+// dsn 为空时返回错误：调用方需先解析统一 GEO_MYSQL_DSN（见 server.go 的 newBillingFromEnv）。
+// 表结构由 deploy/initdb 初始化（schema.sql），应用内不再内嵌 migration。
 func OpenStore(dsn string) (*Store, error) {
 	if dsn == "" {
-		return nil, errors.New("billing: 未配置 GEO_BILLING_MYSQL_DSN 且未回退到 GEO_AUTH_MYSQL_DSN")
+		return nil, errors.New("billing: 未配置 GEO_MYSQL_DSN")
 	}
 	dsn = dbprovider.NormalizeMySQLDSN(dsn)
 	db, err := sql.Open("mysql", dsn)

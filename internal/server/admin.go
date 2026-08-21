@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/sha1"
-	"crypto/subtle"
 	"encoding/binary"
 	"fmt"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"my-geo/internal/config"
 	"my-geo/internal/diagnostics"
 	"my-geo/internal/httputil"
 	"my-geo/internal/llm"
@@ -55,30 +53,6 @@ var (
 	tenantStatusMu  sync.Mutex
 	tenantStatusMap = map[string]string{} // 租户 ID → 状态（覆盖模拟默认值）
 )
-
-// checkAdminKey 校验管理员请求头。
-// ⚠️ 未配置 GEO_ADMIN_KEY 时拒绝访问（生产默认安全）。
-// 开发/本地 Demo 需要管理员接口时，务必显式配置：
-//
-//	export GEO_ADMIN_KEY="$(openssl rand -hex 16)"
-func (s *Server) checkAdminKey(r *http.Request) bool {
-	// 经 config.Env 读取：DB（管理后台可改）> 环境变量 > 默认值。
-	key := strings.TrimSpace(config.Env("GEO_ADMIN_KEY", ""))
-	if key == "" {
-		// 只在启动阶段打一次 warning 即可，这里避免每请求刷日志
-		return false
-	}
-	// 恒定时间比较（避免时序攻击）
-	return subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Key")), []byte(key)) == 1
-}
-
-// adminForbidden 返回未授权错误。
-func (s *Server) adminForbidden(w http.ResponseWriter) {
-	writeJSON(w, http.StatusForbidden, ErrorResponse{
-		Error: "管理员鉴权失败：X-Admin-Key 不匹配",
-		Code:  "ADMIN_FORBIDDEN",
-	})
-}
 
 // hashToInt 将字符串确定性映射为非负整数（用于生成稳定的模拟数据）。
 func hashToInt(s string, mod int) int {
@@ -140,8 +114,7 @@ func nilCtx() context.Context {
 // handleAdminTenants 租户列表（支持 ?status=&plan= 过滤，?page=&limit= 分页）。
 // GET /api/v1/admin/tenants
 func (s *Server) handleAdminTenants(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -192,8 +165,7 @@ func (s *Server) handleAdminTenants(w http.ResponseWriter, r *http.Request) {
 // GET    /api/v1/admin/tenants/{id}
 // PUT    /api/v1/admin/tenants/{id}/status
 func (s *Server) handleAdminTenantDetail(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/tenants/")
@@ -263,8 +235,7 @@ func (s *Server) handleAdminTenantDetail(w http.ResponseWriter, r *http.Request)
 // handleAdminUsage 全局用量统计。
 // GET /api/v1/admin/usage
 func (s *Server) handleAdminUsage(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -321,8 +292,7 @@ func (s *Server) handleAdminUsage(w http.ResponseWriter, r *http.Request) {
 // GET  /api/v1/admin/announcements
 // POST /api/v1/admin/announcements
 func (s *Server) handleAdminAnnouncements(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	switch r.Method {
@@ -388,8 +358,7 @@ func (s *Server) handleAdminAnnouncements(w http.ResponseWriter, r *http.Request
 // handleAdminAnnouncementDelete 删除公告。
 // DELETE /api/v1/admin/announcements/{id}
 func (s *Server) handleAdminAnnouncementDelete(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/api/v1/admin/announcements/")
@@ -416,8 +385,7 @@ func (s *Server) handleAdminAnnouncementDelete(w http.ResponseWriter, r *http.Re
 // handleAdminSystem 系统信息。
 // GET /api/v1/admin/system
 func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -459,8 +427,7 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminCost 返回 LLM 成本仪表盘数据（按模型聚合的 token 与美元成本 + 预算状态）。
 func (s *Server) handleAdminCost(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -476,18 +443,14 @@ func (s *Server) handleAdminCost(w http.ResponseWriter, r *http.Request) {
 
 // handleAdminSelfCheck 返回系统自检报告（关键业务健康 + 属性/参数/配置校验 + 运行时快照）。
 //
-// 鉴权策略对新手友好：
-//   - 服务端**未配置** GEO_ADMIN_KEY（开箱即用 / 本地 Demo）→ 自检端点直接开放，无需鉴权；
-//   - 服务端**已配置** GEO_ADMIN_KEY（生产加固）→ 要求 X-Admin-Key，避免配置/密钥存在性
-//     信息泄露给未授权用户。
-// 该策略仅作用于自检端点；成本等其它 /admin 端点仍强制鉴权。
+// 鉴权策略：与管理后台一致，要求 PermManageData（Owner/Admin）；账号体系未启用时 403。
+// 自检报告含配置/密钥存在性信息，不应暴露给未授权用户。
 func (s *Server) handleAdminSelfCheck(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
-	if strings.TrimSpace(config.Env("GEO_ADMIN_KEY", "")) != "" && !s.checkAdminKey(r) {
-		s.adminForbidden(w)
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
 	if s.engine == nil {

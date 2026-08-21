@@ -73,16 +73,19 @@ func TestWriteInternalErrorWithMsg(t *testing.T) {
 	}
 }
 
-// TestRequireDataAdminLegacyPassthrough 验证 legacy 模式（authSvc 为 nil）
-// 下数据清理类接口直接放行、不写 403 响应（P2-9 双模式保证）。
-func TestRequireDataAdminLegacyPassthrough(t *testing.T) {
-	s := &Server{} // authSvc == nil → legacy GEO_API_KEY 模式
+// TestRequireDataAdminRequiresAuth 验证账号体系未启用（authSvc == nil）时，
+// 数据管理类接口一律 403（无角色注入），不允许匿名全权访问。
+func TestRequireDataAdminRequiresAuth(t *testing.T) {
+	s := &Server{} // authSvc == nil → 账号体系未启用
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/data/clear", nil)
-	if !s.requireDataAdmin(rec, req) {
-		t.Fatal("legacy 模式下 requireDataAdmin 应放行")
+	if s.requireDataAdmin(rec, req) {
+		t.Fatal("账号体系未启用时 requireDataAdmin 应拒绝")
 	}
-	if rec.Body.Len() != 0 {
-		t.Errorf("legacy 模式不应写响应, 实际: %s", rec.Body.String())
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "未登录") {
+		t.Errorf("应提示未登录, 实际: %s", rec.Body.String())
 	}
 }

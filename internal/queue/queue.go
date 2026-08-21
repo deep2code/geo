@@ -7,7 +7,8 @@
 // 本项目此前把审计任务放在 MySQL（零额外依赖），现将队列独立到 Redis，
 // 与计费库（MySQL）解耦——二者可各自独立启停。
 //
-// 连接通过环境变量 GEO_REDIS_ADDR 注入（默认 127.0.0.1:6379）。
+// 连接通过环境变量注入：GEO_REDIS_ADDR（默认 127.0.0.1:6379）、
+// GEO_REDIS_PASSWORD（可选，服务端开启 requirepass 时必填）。
 package queue
 
 import (
@@ -72,13 +73,13 @@ type Client struct {
 }
 
 // NewClient 构建 Redis 背书的队列客户端，并做一次连通性校验。
-// addr 为空时回退到 127.0.0.1:6379。
-func NewClient(addr string) (*Client, error) {
+// addr 为空时回退到 127.0.0.1:6379；password 可空。
+func NewClient(addr, password string) (*Client, error) {
 	if addr == "" {
 		addr = "127.0.0.1:6379"
 	}
 	// 启动期连通性校验：连不上就直接禁用队列，避免运行期 503 抖动。
-	rc := redis.NewClient(&redis.Options{Addr: addr})
+	rc := redis.NewClient(&redis.Options{Addr: addr, Password: password})
 	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	err := rc.Ping(pingCtx).Err()
 	cancel()
@@ -86,7 +87,7 @@ func NewClient(addr string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("queue: 无法连接 Redis(%s): %w", addr, err)
 	}
-	opt := asynq.RedisClientOpt{Addr: addr}
+	opt := asynq.RedisClientOpt{Addr: addr, Password: password}
 	return &Client{
 		rdb:  asynq.NewClient(opt),
 		insp: asynq.NewInspector(opt),
@@ -196,8 +197,8 @@ type Server struct {
 	stop   sync.Once
 }
 
-// NewServer 构建 worker。concurrency 为并发处理数（≤0 时默认 2）。
-func NewServer(addr string, engine *brand.Engine, concurrency int) (*Server, error) {
+// NewServer 构建 worker。concurrency 为并发处理数（≤0 时默认 2）；password 可空。
+func NewServer(addr, password string, engine *brand.Engine, concurrency int) (*Server, error) {
 	if addr == "" {
 		addr = "127.0.0.1:6379"
 	}
@@ -205,7 +206,7 @@ func NewServer(addr string, engine *brand.Engine, concurrency int) (*Server, err
 		concurrency = 2
 	}
 	srv := asynq.NewServer(
-		asynq.RedisClientOpt{Addr: addr},
+		asynq.RedisClientOpt{Addr: addr, Password: password},
 		asynq.Config{
 			Concurrency:     concurrency,
 			Queues:          map[string]int{QueueAudit: 1},

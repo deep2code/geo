@@ -7,8 +7,7 @@ import "time"
 // 数据特征：K/V 语义，单条目 TTL，读写比约 5:1，上限 ≤ 10 万条。
 // 按功能选型：
 //   - MySQL（默认，基于 MySQL 的持久化缓存）
-//   - JSONL 文件（零依赖本地文件；纯 Go）
-//   - Redis（高并发场景，需外部服务）— 通过 build tag "geo_redis" 启用
+//   - JSONL 文件（零依赖本地文件；纯 Go，供内部/调试使用）
 type CacheStore interface {
 	// Path/DSN 用于日志与统计，返回实际后端的地址或文件路径。
 	Path() string
@@ -77,13 +76,12 @@ func WithTTL(ttl time.Duration) CacheOption {
 
 // --- 兼容构造入口 ---
 
-// NewCache 创建 CacheStore 实现（默认 MySQL 后端）。
-// 保持与旧签名完全一致：filePath 若非空直接当 DSN；否则 env `GEO_CHINACHECK_MYSQL_DSN`；缺省默认 DSN。
+// NewCache 创建 CacheStore 实现（固定 MySQL 后端）。
+// 保持与旧签名完全一致：filePath 若非空直接当 DSN；否则 env `GEO_MYSQL_DSN`；
+// 全缺省时用内置默认 DSN。
 // 返回类型使用 Cache 别名（= CacheStore），调用方无需改动。
 //
-// 如需切换到 Redis，请使用 NewRedisCache（geo_redis build tag 提供），或通过
-// 环境变量 GEO_CHINACHECK_CACHE_TYPE=redis 结合上层 factory。
-// 如需使用 JSONL 后端，请直接调用 newJSONLCache。
+// 如需使用 JSONL 后端，请直接调用 newJSONLCache（同包内部使用）。
 func NewCache(filePath string, opts ...CacheOption) (CacheStore, error) {
 	return newMySQLCache(filePath, opts...)
 }

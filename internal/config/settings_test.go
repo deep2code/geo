@@ -6,17 +6,26 @@ import (
 	"testing"
 )
 
-func TestEnvFallbackOrder_NoDB(t *testing.T) {
-	// 未初始化 DB 时：环境变量 > 默认值（与旧版行为一致）
+func TestEnvIgnoresEnvWithoutDB(t *testing.T) {
+	// 未初始化 DB 时：非引导项只读 DB（初始化后才有效），环境变量不再参与
 	const k = "GEO_TEST_ORDER"
 	os.Unsetenv(k)
 	defer os.Unsetenv(k)
 	if got := Env(k, "fallback"); got != "fallback" {
-		t.Fatalf("无 env 时应返回 fallback，得到 %q", got)
+		t.Fatalf("无 DB 且无值时应返回 fallback，得到 %q", got)
 	}
 	os.Setenv(k, "envvalue")
-	if got := Env(k, "fallback"); got != "envvalue" {
-		t.Fatalf("env 优先于 fallback，得到 %q", got)
+	if got := Env(k, "fallback"); got != "fallback" {
+		t.Fatalf("非引导项应忽略环境变量（只读 DB），得到 %q", got)
+	}
+}
+
+func TestEnvBootstrapReadsEnv(t *testing.T) {
+	// 引导类（数据库连接/管理员/AUTH/JWT）：环境变量仍生效（避免后台未开启时死锁）
+	os.Setenv("GEO_AUTH_ENABLED", "true")
+	defer os.Unsetenv("GEO_AUTH_ENABLED")
+	if got := Env("GEO_AUTH_ENABLED", "false"); got != "true" {
+		t.Fatalf("引导项应读环境变量，得到 %q", got)
 	}
 }
 
@@ -30,15 +39,15 @@ func TestListSettingsSource(t *testing.T) {
 			t.Fatalf("未知 key 不应出现在 catalog 中: %s", k)
 		}
 	}
-	// 已登记的 key：env 优先
+	// 已登记的 key：无 DB 时非引导项来源为 default（不读环境变量）
 	os.Setenv("GEO_ALLOW_REGISTER", "true")
 	items = ListSettings()
 	found := false
 	for _, it := range items {
 		if it.Key == "GEO_ALLOW_REGISTER" {
 			found = true
-			if it.Source != "env" || it.Value != "true" {
-				t.Fatalf("env 值应标记 source=env，得到 %s/%s", it.Source, it.Value)
+			if it.Source != "default" || it.Value != "false" {
+				t.Fatalf("非引导项应忽略环境变量显示默认值，得到 %s/%s", it.Source, it.Value)
 			}
 		}
 	}
@@ -56,7 +65,7 @@ func TestCatalogUniqueAndBootstrap(t *testing.T) {
 		seen[s.Key] = true
 	}
 	// 例外清单（用户原则）：数据库连接 DSN + 初始管理员账号，其余全部放配置表。
-	for _, k := range []string{"GEO_AUTH_MYSQL_DSN", "GEO_HISTORY_MYSQL_DSN", "GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD"} {
+	for _, k := range []string{"GEO_MYSQL_DSN", "GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD"} {
 		if !seen[k] {
 			t.Fatalf("catalog 缺少引导变量 %s", k)
 		}
@@ -67,15 +76,19 @@ func TestCatalogUniqueAndBootstrap(t *testing.T) {
 			t.Fatalf("%s 应标记 IsBootstrap（例外变量管理后台只读）", s.Key)
 		}
 	}
-	// JWT_SECRET 非例外：不应 bootstrap，管理后台可改（需重启）
+	// JWT_SECRET / AUTH_ENABLED 为引导类（2026-08-21 起：运行参数只读 DB 后，
+	// 账号体系开关与签名密钥必须走环境变量引导，否则未启用 AUTH 时后台 403 无法从 DB 开启）
 	for _, s := range settings.catalog {
 		if s.Key == "GEO_JWT_SECRET" {
-			if s.IsBootstrap {
-				t.Fatal("GEO_JWT_SECRET 不应是 bootstrap（非例外，放配置表）")
+			if !s.IsBootstrap {
+				t.Fatal("GEO_JWT_SECRET 应为引导类（IsBootstrap=true，环境变量引导）")
 			}
 			if !s.RequiresRestart {
 				t.Fatal("GEO_JWT_SECRET 应标注 RequiresRestart")
 			}
+		}
+		if s.Key == "GEO_AUTH_ENABLED" && !s.IsBootstrap {
+			t.Fatal("GEO_AUTH_ENABLED 应为引导类（IsBootstrap=true，环境变量引导）")
 		}
 	}
 }
@@ -130,14 +143,24 @@ func TestWebSearchConfigKeys(t *testing.T) {
 			t.Fatalf("catalog 缺少 %s", k)
 		}
 	}
-	// envBool 解析
+	// envBool 解析：非引导项只读 DB（无 DB 时用默认值；DB 覆盖生效）
 	os.Unsetenv("GEO_TEST_WEB")
 	if !envBool("GEO_TEST_WEB", true) {
 		t.Fatal("默认值 true 应生效")
 	}
-	os.Setenv("GEO_TEST_WEB", "false")
+	// 模拟 DB 覆盖（同包注入 overrides + loaded）
+	settings.mu.Lock()
+	settings.loaded = true
+	settings.overrides["GEO_TEST_WEB"] = "false"
+	settings.mu.Unlock()
+	defer func() {
+		settings.mu.Lock()
+		settings.loaded = false
+		delete(settings.overrides, "GEO_TEST_WEB")
+		settings.mu.Unlock()
+	}()
 	if envBool("GEO_TEST_WEB", true) {
-		t.Fatal("false 应覆盖默认")
+		t.Fatal("DB 覆盖 false 应生效")
 	}
 	os.Unsetenv("GEO_TEST_WEB")
 }

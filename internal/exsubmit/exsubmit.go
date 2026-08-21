@@ -72,16 +72,13 @@ type mysqlStore struct {
 
 // Open 打开外部提交 MySQL 库并连接。
 //
-// path 语义：非空时 path 即为 DSN；空时按回退链解析：
-// GEO_EXTERNAL_MYSQL_DSN → GEO_HISTORY_MYSQL_DSN → 默认 geo 主库 DSN。
+// path 语义：非空时 path 即为 DSN；空时读 GEO_MYSQL_DSN，缺省为内置默认 DSN。
 func Open(path string) (Store, error) {
 	var dsn string
 	if path != "" {
 		dsn = path
-	} else if env := os.Getenv("GEO_EXTERNAL_MYSQL_DSN"); env != "" {
+	} else if env := os.Getenv("GEO_MYSQL_DSN"); env != "" {
 		dsn = env
-	} else if hist := os.Getenv("GEO_HISTORY_MYSQL_DSN"); hist != "" {
-		dsn = hist
 	} else {
 		dsn = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 	}

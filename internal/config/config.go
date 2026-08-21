@@ -496,16 +496,25 @@ func LLMAdaptersFromEnv() (adapters map[models.EngineType]adapter.Adapter, errs 
 	return adapters, errs
 }
 
-// Env 读取字符串环境变量，未设置时返回 fallback。
-// Env 读取配置：DB（管理后台可改，非 bootstrap 项）> 环境变量 > 默认值。
+// Env 读取配置。
 //
-// 调用 InitSettings 前（或未配置设置库时）行为与旧版完全一致：环境变量 > 默认值。
+// 读取策略（2026-08-21 用户要求）：
+//   - 非引导项（LLM/CORS/可信代理/端口/外部提交等运行参数）：**只读 DB**（app_settings，
+//     默认值由 deploy/initdb/schema.sql 种子数据在建库时植入），不再回退环境变量；
+//   - 引导项（IsBootstrap：数据库连接/初始管理员/账号体系开关/JWT 密钥）：读环境变量（DB
+//     加载前就需要，且避免"后台未开启时无法从 DB 开启"的死锁）；
+//   - 均未设置时返回 fallback（代码默认值）。
+//
+// 调用 InitSettings 前（或未配置设置库时）：引导项读环境变量，非引导项仅返回 fallback。
 func Env(key, fallback string) string {
 	if v, ok := settings.Get(key); ok && v != "" {
 		return v
 	}
-	if v := os.Getenv(key); v != "" {
-		return v
+	// 引导类（DSN/管理员/AUTH/JWT）：环境变量是唯一来源
+	if settings.isBootstrapLocked(key) {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
 	}
 	return fallback
 }

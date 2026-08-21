@@ -110,13 +110,13 @@ func TestConfigCheckDefault(t *testing.T) {
 	}
 }
 
-func TestConfigCheckBadPort(t *testing.T) {
+func TestConfigCheckPortDefault(t *testing.T) {
 	clearEnvForConfig()
-	os.Setenv("GEO_PORT", "not-a-port")
+	os.Unsetenv("GEO_PORT")
 	results := ConfigCheck("")
 	for _, r := range results {
-		if r.Name == "服务端口" && r.Status != SeverityWarn {
-			t.Fatalf("非法端口应为 warn，实际 %s", r.Status)
+		if r.Name == "服务端口" && (r.Status == SeverityError || r.Status == SeverityWarn) {
+			t.Fatalf("未配置端口时不应告警（默认 8080），实际 %s", r.Status)
 		}
 	}
 }
@@ -182,8 +182,8 @@ func TestSelfCheckRender(t *testing.T) {
 func clearEnvForConfig() {
 	for _, k := range []string{
 		"GEO_LOG_LEVEL", "GEO_LOG_FORMAT", "GEO_PORT", "GEO_LLM_BUDGET_USD",
-		"GEO_AUTH_ENABLED", "GEO_AUTH_MYSQL_DSN", "GEO_JWT_SECRET", "GEO_MCP_API_KEY",
-		"GEO_ADMIN_KEY", "GEO_LLM_KEY", "GEO_LLM_BASE", "GEO_LLM_MODEL",
+		"GEO_AUTH_ENABLED", "GEO_MYSQL_DSN", "GEO_JWT_SECRET", "GEO_MCP_API_KEY",
+		"GEO_ADMIN_EMAIL", "GEO_ADMIN_PASSWORD", "GEO_LLM_KEY", "GEO_LLM_BASE", "GEO_LLM_MODEL",
 		"GEO_WL_PRIMARY_COLOR", "GEO_SCHEDULER_ENABLED", "GEO_SCHEDULER_CONFIG",
 		"GEO_OFFLINE_DB_ENABLED", "GEO_HISTORY_DB_ENABLED", "GEO_CHINACHECK_CACHE_ENABLED",
 	} {

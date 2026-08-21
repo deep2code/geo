@@ -204,10 +204,10 @@ mindmap
 
 | 模块 | 数据特征 | 🛢 生产级后端（默认） | 🚀 可选分布式 | 环境变量 |
 |---|---|---|---|---|
-| 离线工商库 | 千万级行 + 中文全文检索 | MySQL 8.0 FULLTEXT(ngram) | — | `GEO_OFFLINE_MYSQL_DSN` |
-| 审计历史库 | 时序写入 + JSON 快照 | MySQL 8.0 复合索引 | — | `GEO_HISTORY_MYSQL_DSN` |
-| CC 查询缓存 | K/V + TTL + 高频读 | MySQL KV 表 | Redis | `GEO_CHINACHECK_MYSQL_DSN` |
-| 账号 / 会话 | 用户 + 工作区 + 刷新令牌 | MySQL 8.0 | — | `GEO_AUTH_MYSQL_DSN` |
+| 离线工商库 | 千万级行 + 中文全文检索 | MySQL 8.0 FULLTEXT(ngram) | — | `GEO_MYSQL_DSN` |
+| 审计历史库 | 时序写入 + JSON 快照 | MySQL 8.0 复合索引 | — | `GEO_MYSQL_DSN` |
+| CC 查询缓存 | K/V + TTL + 高频读 | MySQL KV 表 | — | `GEO_MYSQL_DSN` |
+| 账号 / 会话 | 用户 + 工作区 + 刷新令牌 | MySQL 8.0 | — | `GEO_MYSQL_DSN` |
 
 > **前置依赖**：首次部署需要一个可访问的 MySQL 8.0+ 实例（docker / 云 RDS / 本地服务均可），账号需具备 `CREATE TABLE / INDEX / DML` 权限。
 
@@ -239,9 +239,10 @@ go install ./cmd/geo
 make build    # 产物 bin/geo
 
 # 方式三：Docker（开箱即用）
-docker compose up -d    # 自动建 4 个业务库（initdb）+ 构建镜像，访问 http://localhost:8080
+docker compose up -d    # 自动建库（initdb）+ 构建镜像，访问 http://localhost:8080
 # 注意：.env 为可选覆盖文件（缺失不报错，使用 compose 内置默认值即可一键启动）；
-#       管理员接口默认 403（需 export GEO_ADMIN_KEY="$(openssl rand -hex 16)" 后才可用）。
+#       未启用账号体系（GEO_AUTH_ENABLED=true）时管理接口默认 403，API 匿名放行。
+#       生产启用账号体系并配置 GEO_JWT_SECRET + GEO_ADMIN_EMAIL/GEO_ADMIN_PASSWORD 预置管理员。
 
 # 一键启动冒烟校验（CI 同款）：构建→探活→/metrics→成本端点鉴权
 bash scripts/smoke-compose.sh
@@ -303,7 +304,7 @@ cd .. && make build    # 或 go build ./cmd/geo
 > - **属性/参数/配置校验**：日志级别与格式、服务端口、LLM 预算、鉴权与弱密钥、管理员密钥、LLM/引擎 Key、各 DSN 格式、白标主题色、定时审计配置、外部规则集合法性。
 > - **系统自检**：运行时快照（Go 版本 / OS / CPU / goroutine / 内存）+ 上述两类聚合 + 整体健康等级。
 >
-> 新手无需命令行：左侧导航「🩺 系统自检」即可一键运行，按健康/隐患/问题分组展示并给出修复建议。端点 `GET /api/v1/admin/selfcheck` 在**服务端未配置 `GEO_ADMIN_KEY` 时开放**（开箱即用）；一旦配置了管理员密钥则要求 `X-Admin-Key`。
+> 新手无需命令行：左侧导航「🩺 系统自检」即可一键运行，按健康/隐患/问题分组展示并给出修复建议。端点 `GET /api/v1/admin/selfcheck` 需 **Owner/Admin 角色（账号体系）**；未登录/角色不足返回 403。
 
 ---
 

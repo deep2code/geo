@@ -4,6 +4,34 @@ export interface HealthResponse {
   version: string
 }
 
+// ===== 账号体系（JWT）=====
+export interface AuthTokenPair {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  expires_in: number
+  refresh_expires_in: number
+}
+
+export interface AuthUser {
+  id: string
+  email: string
+  display_name?: string
+  created_at?: string
+}
+
+export interface AuthWorkspace {
+  workspace_id: string
+  workspace_name?: string
+  role?: string
+}
+
+export interface AuthLoginResponse {
+  tokens: AuthTokenPair
+  user: AuthUser
+  workspaces: AuthWorkspace[]
+}
+
 export interface ReadyCheck {
   status: 'ready' | 'not_ready'
   checks: Record<string, string>

@@ -44,7 +44,8 @@ import type {
   OfflineDBImportResult,
   OfflineDBImportGitHubRequest,
   ExternalSubmission,
-  ExternalSubmissionsResponse
+  ExternalSubmissionsResponse,
+  AuthLoginResponse
 } from '@/types/api'
 
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
@@ -55,10 +56,8 @@ const API_BASE: string = (
   '/api/v1'
 ).replace(/\/+$/, '')
 
-// 前端鉴权 Token 存储 Key（与后端 GEO_API_KEY 对应 Bearer token）。
+// 前端鉴权 Token 存储 Key（JWT access token，对应 Authorization: Bearer）。
 const AUTH_TOKEN_KEY = 'geo_api_token'
-// 前端管理员 Key 存储 Key（与后端 GEO_ADMIN_KEY 对应 X-Admin-Key header）。
-const ADMIN_KEY = 'geo_admin_key'
 
 /** 401/403 全局拦截回调。UI 层（App/AppRoutes）注册统一跳转逻辑。 */
 type AuthErrorHandler = (info: { status: 401 | 403; path: string }) => void
@@ -97,7 +96,7 @@ export const setApiAuthToken = (token: string | null): void => {
 export const getApiAuthToken = (): string => {
   let tok = sessionStorage.getItem(AUTH_TOKEN_KEY)
   if (!tok) {
-    // P0-2 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
+    // 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
     const legacy = localStorage.getItem(AUTH_TOKEN_KEY)
     if (legacy) {
       sessionStorage.setItem(AUTH_TOKEN_KEY, legacy)
@@ -108,35 +107,10 @@ export const getApiAuthToken = (): string => {
   return tok ?? ''
 }
 
-/** 统一设置/清除管理员 Key（管理员登录/退出时调用）。 */
-export const setAdminKey = (key: string | null): void => {
-  if (!key) {
-    sessionStorage.removeItem(ADMIN_KEY)
-    return
-  }
-  sessionStorage.setItem(ADMIN_KEY, key)
-}
-
-export const getAdminKey = (): string => {
-  let key = sessionStorage.getItem(ADMIN_KEY)
-  if (!key) {
-    // P0-2 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
-    const legacy = localStorage.getItem(ADMIN_KEY)
-    if (legacy) {
-      sessionStorage.setItem(ADMIN_KEY, legacy)
-      localStorage.removeItem(ADMIN_KEY)
-      key = legacy
-    }
-  }
-  return key ?? ''
-}
-
 export interface RequestOptions extends RequestInit {
   timeout?: number
   /** 跳过自动注入 Authorization（如公开登录/注册）。 */
   skipAuth?: boolean
-  /** 跳过自动注入 X-Admin-Key（即便本地已保存）。 */
-  skipAdminKey?: boolean
   /** 跳过 401/403 自动跳转（给登录校验接口用）。 */
   skipAuthRedirect?: boolean
 }
@@ -155,13 +129,12 @@ async function request<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeout = 120000, headers, skipAuth, skipAdminKey, skipAuthRedirect, ...rest } = options
+  const { timeout = 120000, headers, skipAuth, skipAuthRedirect, ...rest } = options
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
 
-  // 合并默认头 + 注入鉴权 + 注入管理员 Key。
-  // 注意：不直接对 Record<string,string> 做展开，避免 headers 对象（可能带非字符串原型方法）污染类型。
+  // 合并默认头 + 注入 Bearer 鉴权。
   const mergedHeaders: Record<string, string> = Object.create(null)
   mergedHeaders['Content-Type'] = 'application/json'
   if (headers) {
@@ -172,10 +145,6 @@ async function request<T>(
   if (!skipAuth) {
     const tok = getApiAuthToken()
     if (tok) mergedHeaders['Authorization'] = `Bearer ${tok}`
-  }
-  if (!skipAdminKey) {
-    const ak = getAdminKey()
-    if (ak) mergedHeaders['X-Admin-Key'] = ak
   }
 
   try {
@@ -340,16 +309,34 @@ export const api = {
   historyBrands: () =>
     request<{ brands: string[] }>('/brand/history/brands', { method: 'GET' }),
 
-  // 管理员登录（其实是 Key 校验，避免假 Key 保存后全站 403 跳转死循环）。
-  // 注意：这里显式用传入的 adminKey 临时注入 Header，并跳过自动重定向，
-  // 以便 UI 层展示"管理员 Key 错误"的提示。
-  adminVerify: (adminKey: string) =>
-    request<SchedulerStatus>('/brand/scheduler/status', {
-      method: 'GET',
-      skipAdminKey: true,
-      skipAuthRedirect: true,
-      headers: { 'X-Admin-Key': adminKey }
-    }),
+  // ===== 账号体系（JWT）=====
+  // 登录：成功后返回 tokens/user/workspaces，调用方应保存 access_token。
+  auth: {
+    login: (payload: { email: string; password: string; workspace_id?: string }) =>
+      request<AuthLoginResponse>('/auth/login', {
+        method: 'POST',
+        skipAuth: true,
+        skipAuthRedirect: true,
+        body: JSON.stringify(payload)
+      }),
+    register: (payload: {
+      email: string
+      password: string
+      display_name?: string
+      workspace_name?: string
+    }) =>
+      request<AuthLoginResponse>('/auth/register', {
+        method: 'POST',
+        skipAuth: true,
+        skipAuthRedirect: true,
+        body: JSON.stringify(payload)
+      }),
+    logout: (refresh_token: string) =>
+      request<{ ok: boolean }>('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token })
+      })
+  },
 
   driftAudit: (brand: string, from_time?: string, to_time?: string) =>
     request<DriftReport>('/brand/drift', {
@@ -546,8 +533,8 @@ export const api = {
       fd.append('file', file)
       if (batch) fd.append('batch', String(batch))
       const headers: Record<string, string> = {}
-      const ak = getAdminKey()
-      if (ak) headers['X-Admin-Key'] = ak
+      const tok = getApiAuthToken()
+      if (tok) headers['Authorization'] = `Bearer ${tok}`
       const res = await fetch(`${API_BASE}/brand/offlinedb/import`, {
         method: 'POST',
         body: fd,

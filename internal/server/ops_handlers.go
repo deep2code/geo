@@ -254,7 +254,7 @@ func (s *Server) handleOfflineDBImport(w http.ResponseWriter, r *http.Request) {
 	}
 	odb := s.brandEngineOfflineDB()
 	if odb == nil {
-		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "离线工商库未启用（请配置 GEO_OFFLINE_MYSQL_DSN）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "离线工商库未启用（请配置 GEO_MYSQL_DSN）"})
 		return
 	}
 	if err := r.ParseMultipartForm(64 << 20); err != nil {
@@ -308,7 +308,7 @@ func (s *Server) handleOfflineDBImportGitHub(w http.ResponseWriter, r *http.Requ
 	}
 	odb := s.brandEngineOfflineDB()
 	if odb == nil {
-		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "离线工商库未启用（请配置 GEO_OFFLINE_MYSQL_DSN）"})
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "离线工商库未启用（请配置 GEO_MYSQL_DSN）"})
 		return
 	}
 	var body struct {

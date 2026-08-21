@@ -21,7 +21,7 @@ type mysqlStore struct {
 }
 
 // Open 打开/创建 MySQL 历史数据库并完成 schema 初始化。
-// path 语义：非空时 path 即为 DSN；空时走 GEO_HISTORY_MYSQL_DSN 环境变量或默认 DSN。
+// path 语义：非空时 path 即为 DSN；空时走 GEO_MYSQL_DSN 环境变量或默认 DSN。
 //
 // 返回值类型：兼容别名 DB（= Store）。上游代码无需任何修改。
 func Open(path string) (Store, error) {
@@ -29,7 +29,7 @@ func Open(path string) (Store, error) {
 	if path != "" {
 		dsn = path
 	} else {
-		if envDSN := os.Getenv("GEO_HISTORY_MYSQL_DSN"); envDSN != "" {
+		if envDSN := os.Getenv("GEO_MYSQL_DSN"); envDSN != "" {
 			dsn = envDSN
 		} else {
 			dsn = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"

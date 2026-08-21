@@ -11,8 +11,7 @@ import './SystemCheck.scss'
  * 系统自检页（对标原 `geo doctor` CLI，但面向新手，纯前端界面驱动）。
  *
  * - 一键运行：调用 GET /api/v1/admin/selfcheck，按健康/隐患/问题分组展示；
- * - 服务端未配置 GEO_ADMIN_KEY 时端点开放（开箱即用）；配置了则要求管理员登录；
- * - 403 时页面内引导去管理员登录，而非被全局拦截器踢走；
+ * - 需 Owner/Admin 角色（账号体系）访问；403 时页面内引导去登录页，而非被全局拦截器踢走；
  * - 对 warn/error 项给出"为什么 / 怎么修"的新手友好提示。
  */
 
@@ -30,7 +29,7 @@ const FIX_HINTS: Record<string, string> = {
   '日志格式': 'GEO_LOG_FORMAT 应为 text / json 之一。',
   'LLM 月度预算': 'GEO_LLM_BUDGET_USD 应为非负浮点数（0 表示不限制预算熔断）。',
   '账号体系/鉴权配置': '鉴权配置未通过启动校验，见下方「Detail」；请修改默认弱密钥 / 示例口令。',
-  '管理员密钥': '建议先设置 GEO_ADMIN_KEY（如 openssl rand -hex 16）再启动服务；否则所有 /admin 接口默认 403。',
+  '账号体系（JWT）': '未启用账号体系（GEO_AUTH_ENABLED=true）时 API 匿名放行、管理接口全部 403。生产请启用并配置 GEO_JWT_SECRET 与 GEO_ADMIN_EMAIL/PASSWORD（首次启动自动建管理员）。',
   'LLM 基础配置': '配置了 GEO_LLM_BASE 但未配置 GEO_LLM_KEY，LLM 仍不可用，请补上 Key。',
   '引擎 API Key': '未配置任何引擎 / LLM Key，品牌审计与智能补全将不可用；请在环境变量中配置对应引擎的 Key。',
   '数据库 DSN 格式': '对应模块 DSN 格式异常，应形如 user:pass@tcp(host:3306)/dbname。',
@@ -135,15 +134,14 @@ const SystemCheck: React.FC = () => {
             <div style={{ fontSize: 32, marginBottom: 8 }}>🔐</div>
             <div className="sc-forbidden-title">需要管理员权限</div>
             <p className="sc-forbidden-text">
-              当前服务已配置 <code>GEO_ADMIN_KEY</code>，系统自检属于管理后台能力，需先以管理员身份登录。
-              请在右上角「管理员登录」中填入该密钥；若你就是部署者，可在服务端环境变量找到它（如 <code>openssl rand -hex 16</code> 生成的值）。
+              系统自检属于管理后台能力，需以 <code>Owner/Admin</code> 账号登录。请在右上角「登录」输入部署时预置的管理员邮箱与密码（<code>GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD</code>）。
             </p>
             <Button
               variant="primary"
               size="md"
               onClick={() => navigate('/admin/login?redirect=/system-check')}
             >
-              前往管理员登录
+              前往登录
             </Button>
           </div>
         </Card>

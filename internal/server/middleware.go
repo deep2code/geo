@@ -23,7 +23,7 @@ import (
 //
 // 安全模型：
 //   - GEO_CORS_ORIGINS：允许的跨域源（逗号分隔），默认仅 localhost。设为 "*" 表示全开放（仅限本地开发）。
-//   - GEO_API_KEY：API 密钥。设置后，除 health/web 外的所有接口需 Bearer token。未设置则不鉴权（向后兼容）。
+//   - GEO_AUTH_ENABLED：账号体系（JWT）。启用后除公开路径外均需登录；未启用时 API 匿名放行（本地开发/反代场景）。
 //   - 写操作（POST/DELETE/clear/import）在 CORS 设为具体源时始终校验 Origin（CSRF 防护）。
 //   - GEO_TRUSTED_PROXIES：可信代理列表（逗号分隔的 IP/CIDR）。设置后 X-Forwarded-For 仅在
 //     RemoteAddr 属于可信代理时才解析；否则直接用 RemoteAddr，避免 IP 伪造绕过限流/WAF。
@@ -135,8 +135,7 @@ func (s *statusRecorder) WriteHeader(code int) {
 // cors(+CSRF) → auth(JWT+legacy API Key) → aiGeneratedHeaders → handler
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	cfg := auth.MiddlewareConfig{
-		Svc:          s.authSvc,
-		LegacyAPIKey: strings.TrimSpace(config.Env("GEO_API_KEY", "")), // GEO_API_KEY 作为账号体系未启用时的回退
+		Svc: s.authSvc,
 		PublicPaths: map[string]bool{
 			"/":              true,
 			"/legal/bot":     true,
