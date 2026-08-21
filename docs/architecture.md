@@ -825,10 +825,10 @@ graph TB
         BIN --> MY8["🐬 MySQL 8.0<br/>离线库/历史库/账号/缓存"]
     end
 
-    subgraph Docker["🔵 Docker Compose 部署（推荐团队）"]
-        DC["⚙️ docker-compose（已含 MySQL 服务）"]
+    subgraph Docker["🔵 Docker 部署"]
+        DC["⚙️ docker build + docker run<br/>（Alpine 单容器）"]
         DC --> C["🐳 Alpine 容器<br/>非root用户"]
-        DC --> MY["🐬 MySQL 8.0 容器<br/>数据 Volume 持久化"]
+        DC --> MY["🐬 MySQL 8.0 外部实例<br/>（GEO_MYSQL_DSN 指向）"]
         C --> MY
     end
 

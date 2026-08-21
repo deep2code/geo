@@ -86,12 +86,3 @@ jobs:
             echo "✓ ${osarch}"
           done
 
-  deploy-smoke:
-    name: Deploy Smoke (docker compose up)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Docker compose up 一键启动冒烟
-        run: bash scripts/smoke-compose.sh
-

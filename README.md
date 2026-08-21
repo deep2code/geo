@@ -238,14 +238,16 @@ go install ./cmd/geo
 # 方式二：Makefile
 make build    # 产物 bin/geo
 
-# 方式三：Docker（开箱即用）
-docker compose up -d    # 自动建库（initdb）+ 构建镜像，访问 http://localhost:8080
-# 注意：.env 为可选覆盖文件（缺失不报错，使用 compose 内置默认值即可一键启动）；
-#       未启用账号体系（GEO_AUTH_ENABLED=true）时管理接口默认 403，API 匿名放行。
-#       生产启用账号体系并配置 GEO_JWT_SECRET + GEO_ADMIN_EMAIL/GEO_ADMIN_PASSWORD 预置管理员。
+# 方式三：Docker（构建 + 运行单容器）
+docker build -t geo:latest .   # 或 make docker-build
+docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
+# 注意：.env 为环境变量文件（cp .env.example .env 后按需编辑）：
+#       引导类（GEO_MYSQL_DSN / GEO_AUTH_ENABLED / GEO_JWT_SECRET / GEO_ADMIN_* / GEO_REDIS_ADDR）
+#       走环境变量；其余运行参数只读 DB（app_settings），登录后在「系统设置」修改。
+#       数据库需先执行 deploy/initdb/schema.sql 建库建表。
 
-# 一键启动冒烟校验（CI 同款）：构建→探活→/metrics→成本端点鉴权
-bash scripts/smoke-compose.sh
+# 二进制直接运行（无 Docker 亦可）
+bin/geo   # 或 go run ./cmd/geo（.env 同目录自动加载）
 ```
 
 ### Web 前端构建（Vite + React + go:embed）

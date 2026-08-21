@@ -96,12 +96,16 @@ deploy_docker() {
         return
     fi
 
-    step "启动服务（docker compose）"
-    if command -v docker-compose &>/dev/null; then
-        docker-compose up -d
-    else
-        docker compose up -d
-    fi
+    step "启动服务（docker run 单容器）"
+    # 环境变量从 .env 透传（引导类生效；运行参数读取链见应用配置策略）
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker run -d --name "$CONTAINER_NAME" \
+        --restart unless-stopped \
+        -p "${SERVICE_PORT}:8080" \
+        --env-file "$PROJECT_DIR/.env" \
+        -e TZ=Asia/Shanghai \
+        "${IMAGE_NAME}:${IMAGE_TAG}"
+    info "容器已启动: ${CONTAINER_NAME}"
 
     sleep 2
     step "健康检查"
@@ -196,13 +200,8 @@ stop_service() {
         sudo systemctl stop geo
         info "已停止 geo 服务"
     fi
-    step "停止 Docker 服务"
-    cd "$PROJECT_DIR"
-    if command -v docker-compose &>/dev/null; then
-        docker-compose down 2>/dev/null || true
-    else
-        docker compose down 2>/dev/null || true
-    fi
+    step "停止 Docker 容器"
+    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     info "已停止 Docker 容器"
 }
 
@@ -213,12 +212,9 @@ restart_service() {
         sudo systemctl restart geo
         info "已重启 systemd 服务"
     else
-        cd "$PROJECT_DIR"
-        if command -v docker-compose &>/dev/null; then
-            docker-compose restart
-        else
-            docker compose restart
-        fi
+        step "重启 Docker 容器"
+        docker restart "$CONTAINER_NAME" 2>/dev/null || docker run -d --name "$CONTAINER_NAME" --restart unless-stopped \
+            -p "${SERVICE_PORT}:8080" --env-file "$PROJECT_DIR/.env" -e TZ=Asia/Shanghai "${IMAGE_NAME}:${IMAGE_TAG}"
         info "已重启 Docker 容器"
     fi
 }

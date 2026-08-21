@@ -17,7 +17,7 @@
 #   ./backup.sh restore --latest  # 恢复全部库到最新备份
 #   ./backup.sh restore --db geo --file backups/geo-20260819-093000.sql.gz
 #
-# 环境变量（缺省值已对齐 docker-compose.yml）：
+# 环境变量（缺省值对应 MySQL 部署约定）：
 #   GEO_MYSQL_HOST     默认 mysql
 #   GEO_MYSQL_PORT     默认 3306
 #   GEO_MYSQL_USER     默认 geo

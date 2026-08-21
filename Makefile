@@ -70,17 +70,12 @@ docker-build: ## 构建 Docker 镜像
 	@echo "✓ 镜像已构建: $(DOCKER_IMAGE)"
 
 .PHONY: docker-run
-docker-run: ## 运行 Docker 容器（端口 8080）
+docker-run: ## 运行 Docker 容器（端口 8080，环境变量从 .env 读取）
 	docker run --rm -p 8080:8080 --env-file .env $(DOCKER_IMAGE)
 
-.PHONY: docker-up
-docker-up: ## 通过 docker-compose 启动
-	docker compose up -d
-	@echo "✓ 服务已启动: http://localhost:8080"
-
-.PHONY: docker-down
-docker-down: ## 停止 docker-compose
-	docker compose down
+.PHONY: docker-stop
+docker-stop: ## 停止 Docker 容器
+	-docker rm -f geo-server 2>/dev/null || true
 
 .PHONY: deploy
 deploy: ## 一键部署（执行部署脚本）

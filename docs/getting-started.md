@@ -293,7 +293,7 @@ graph TB
     end
 
     subgraph C["🟠 方式三：Docker<br/>推荐运维"]
-        C1["docker compose up -d"]
+        C1["docker build + docker run -d"]
         C2["内置 Web + API"]
         C3["无需安装 Go 环境"]
     end
@@ -313,7 +313,8 @@ make build        # 产物在 bin/geo
 go install ./cmd/geo
 
 # 方式三：Docker
-docker compose up -d    # 访问 http://localhost:8080
+docker build -t geo:latest . && docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
+# 访问 http://localhost:8080（数据库需先执行 deploy/initdb/schema.sql 建库）
 ```
 
 ### 第二步：配置 LLM（可选但推荐）
@@ -785,8 +786,7 @@ graph TB
 
 ```bash
 # 1. 初始化空库（部署时执行一次）：
-#    docker compose up -d mysql  # 自动执行 deploy/initdb/schema.sql（建账号+建库+全部表）
-#    或手动: mysql -uroot -p < deploy/initdb/schema.sql
+#    mysql -uroot -p < deploy/initdb/schema.sql  # 建账号+建库+全部表+默认值
 # 2A. 本地批量导入（推荐，全量）：
 git clone --depth 1 -b json https://github.com/guichong/- ~/geo-erddb
 #    打开「工商库导入」页 → 上传 ~/geo-erddb/Enterprise-Registration-Data/json/ 下的文件

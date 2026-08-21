@@ -39,7 +39,7 @@
 
 | # | 事项 | 优先级 | 说明 |
 |---|------|--------|------|
-| 20 | 生产部署脚本 / 一键 Helm Chart | P1 | 当前 `deploy.sh`/`docker-compose.yml` 偏开发用，需要 k8s 版本与水平扩容。 |
+| 20 | 生产部署脚本 / 一键 Helm Chart | P1 | 当前 `deploy.sh` 偏开发用，需要 k8s 版本与水平扩容。 |
 | 21 | 配置中心与密钥管理 | P1 | SMTP / LLM Key / DB 密码改用 Vault 或 KMS，不直接走 `.env`。 |
 | 22 | 可观测性（Logging / Tracing / Metrics） | P1 | 接入 OpenTelemetry + Prometheus + Grafana；当前有 slog 结构化日志，需补 Tracing/Metrics。 |
 | 23 | 健康检查与告警 | P1 | `/healthz`、`/readyz`；数据库 / Chromium / SMTP 连通性自检并钉钉/飞书告警。 |
