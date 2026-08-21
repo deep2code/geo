@@ -84,7 +84,7 @@ func Open(path string) (OfflineStore, error) {
 		_ = sqldb.Close()
 		return nil, fmt.Errorf("离线库 MySQL ping 失败: %w", err)
 	}
-	if _, err := sqldb.ExecContext(ctx, `SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON`); err != nil {
+	if _, err := sqldb.ExecContext(ctx, `SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'`); err != nil {
 		_ = sqldb.Close()
 		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)
 	}

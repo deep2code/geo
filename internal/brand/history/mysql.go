@@ -47,7 +47,7 @@ func Open(path string) (Store, error) {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: MySQL ping 失败: %w", err)
 	}
-	if _, err := sqldb.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	if _, err := sqldb.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"); err != nil {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: MySQL 初始化会话失败: %w", err)
 	}

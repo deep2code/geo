@@ -526,7 +526,7 @@ func OpenStore() (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("auth db ping: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("set mysql session: %w", err)
 	}

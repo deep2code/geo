@@ -39,11 +39,6 @@ RUN setcap cap_net_bind_service=+ep /app/geo && \
 # 切换非 root 用户
 USER geo
 
-# 数据持久化：所有模块使用外部 MySQL 8.0+（GEO_MYSQL_DSN），本地不存数据文件。
-# 日志/临时文件写入容器可写层（不挂 VOLUME，重启即清；需要持久化日志请用
-# docker 日志驱动/外部采集）。
-ENV GEO_DATA_DIR=/data/geo
-
 # 暴露 HTTP 端口
 EXPOSE 8080
 

@@ -59,8 +59,10 @@ func extraCatalog() []Setting {
 			RequiresRestart: true},
 		{Key: "GEO_PORT", Category: "server", Description: "HTTP 监听端口", Type: "int", RequiresRestart: true},
 		{Key: "GEO_MCP_PORT", Category: "mcp", Description: "MCP Server 监听端口", Type: "int", RequiresRestart: true},
-		{Key: "GEO_REDIS_ADDR", Category: "queue", Description: "Redis 地址（asynq 队列）", RequiresRestart: true},
-		{Key: "GEO_REDIS_PASSWORD", Category: "queue", Description: "Redis 密码", IsSecret: true, RequiresRestart: true},
+		// Redis 与 MySQL DSN 同属"连接引导类"（IsBootstrap）：环境变量引导（compose 内
+		// 用服务名 redis:6379，本地用 127.0.0.1:6379），避免"运行参数只读 DB"导致部署环境失效。
+		{Key: "GEO_REDIS_ADDR", Category: "queue", Description: "Redis 地址（asynq 队列）", IsBootstrap: true, RequiresRestart: true},
+		{Key: "GEO_REDIS_PASSWORD", Category: "queue", Description: "Redis 密码", IsSecret: true, IsBootstrap: true, RequiresRestart: true},
 		{Key: "GEO_REDIS_DB", Category: "queue", Description: "Redis DB 编号", Type: "int", RequiresRestart: true},
 		{Key: "GEO_LLM_BASE", Category: "llm", Description: "默认 LLM API 基地址", RequiresRestart: true},
 		{Key: "GEO_LLM_MODEL", Category: "llm", Description: "默认 LLM 模型名", RequiresRestart: true},

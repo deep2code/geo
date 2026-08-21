@@ -60,7 +60,7 @@ func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("chinacheck/mysql: ping failed: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', innodb_strict_mode=ON"); err != nil {
+	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("chinacheck/mysql: set session failed: %w", err)
 	}
