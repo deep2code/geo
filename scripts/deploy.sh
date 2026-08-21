@@ -70,7 +70,7 @@ check_env_file() {
             warn "⚠ .env 中仍存在默认弱密码（geoPass），已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
         else
             error "检测到默认弱密码（geoPass）：生产部署禁止使用默认口令！"
-            error "请修改 .env 中的 GEO_MYSQL_PASSWORD / GEO_*_MYSQL_DSN 后重试；"
+            error "请修改 .env 中的 GEO_MYSQL_PASSWORD / GEO_MYSQL_DSN 后重试；"
             error "或设置 GEO_ALLOW_WEAK_PASSWORD=1 强制放行（仅限本地开发，不推荐）。"
             exit 1
         fi
