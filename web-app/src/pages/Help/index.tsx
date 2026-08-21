@@ -28,48 +28,77 @@ interface ArticleItem {
 // 默认分类列表
 const defaultCategories: Category[] = [
   { code: 'quickstart', name: '快速开始', icon: '🚀' },
-  { code: 'audit', name: '审计', icon: '🔍' },
+  { code: 'audit', name: '品牌审计', icon: '🔍' },
+  { code: 'features', name: '功能详解', icon: '🧩' },
   { code: 'report', name: '报告', icon: '📄' },
-  { code: 'settings', name: '设置', icon: '⚙️' },
+  { code: 'settings', name: '系统设置', icon: '⚙️' },
   { code: 'faq', name: 'FAQ', icon: '❓' }
 ]
 
-// 默认文章模拟数据
+// 默认文章模拟数据（API 不可用时的兜底；分类与后端保持一致）
 const mockArticles: ArticleItem[] = [
   {
-    id: '1',
-    title: '5 分钟快速上手 MyGEO',
-    summary: '了解 MyGEO 平台核心概念，完成首次品牌审计',
+    id: 'overview',
+    title: '平台功能总览',
+    summary: '一张图看懂 MyGEO 能为你做什么',
     category: 'quickstart',
-    content: '欢迎使用 MyGEO！本指南帮助你在 5 分钟内完成首次品牌审计。\n\n## 1. 添加品牌\n进入「品牌管理」页面，点击「添加品牌」并填写品牌名称、域名等信息。\n\n## 2. 配置查询词\n为品牌添加业务查询词（Prompts），这些是客户可能向 AI 提问的问题。\n\n## 3. 开始审计\n进入「品牌审计」页面，选择品牌并点击「开始审计」，系统将在 30-60 秒内完成多引擎可见度检测。\n\n## 4. 查看报告\n审计完成后可查看 BVS 评分、引擎统计、内容缺口等详细分析。'
+    content: 'MyGEO 是面向生成式引擎优化（GEO）的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。核心模块：品牌管理、品牌审计、内容优化器、关键词发现、竞品对标、引擎来源研究、外部提交分析、报告导出、告警邮件、管理后台。'
   },
   {
-    id: '2',
-    title: '理解 BVS 品牌可见度评分',
-    summary: 'BVS 评分的 7 个维度与计算逻辑详解',
+    id: 'getting-started',
+    title: '5 分钟快速开始',
+    summary: '创建品牌 → 执行审计 → 查看报告',
+    category: 'quickstart',
+    content: '四步完成首次审计：1) 品牌管理创建品牌；2) 补充查询词；3) 品牌审计选择引擎开始；4) 报告导出查看 BVS 与建议。'
+  },
+  {
+    id: 'run-audit',
+    title: '执行品牌审计',
+    summary: '模拟真实提问，检测 AI 中的品牌可见度',
     category: 'audit',
-    content: 'BVS（Brand Visibility Score）是 MyGEO 的核心评分体系，从 7 个维度衡量品牌在 AI 搜索引擎中的可见度。\n\n## 七大维度\n- 内容质量（权重 20%）\n- 技术 SEO（权重 15%）\n- 站内 SEO（权重 15%）\n- 结构化数据（权重 10%）\n- 页面性能（权重 10%）\n- AI 就绪（权重 20%）\n- 图像优化（权重 10%）\n\n## 评级标准\n- A（90+）：头部品牌\n- B（80-89）：中坚品牌\n- C（70-79）：潜力品牌\n- D（60-69）：待优化\n- F（<60）：长尾品牌'
+    content: '在品牌审计页面选择品牌与引擎，点击开始审计。系统针对提示词模拟提问，检测提及率、引用率、情感与位置，汇总为 BVS 分数。'
   },
   {
-    id: '3',
-    title: '如何导出审计报告',
-    summary: '支持 HTML / PDF 两种格式，可邮件发送',
+    id: 'understand-bvs',
+    title: '理解 BVS 分数',
+    summary: 'BVS 评分维度与 A-F 等级说明',
+    category: 'audit',
+    content: 'BVS 范围 0-100，对应 A-F 等级。由提及率、引用率、引用位置、情感、实体识别等加权计算，区分「被提及」与「被引用」。'
+  },
+  {
+    id: 'external-submissions',
+    title: '外部提交分析',
+    summary: '采集真实用户与 AI 的对话',
+    category: 'features',
+    content: '外部系统提交大模型对话，后台定时抽取情感、主题、来源域名等，反哺优化。在管理后台「外部提交分析」Tab 查看与触发。'
+  },
+  {
+    id: 'content-optimizer',
+    title: '内容优化器',
+    summary: '针对单篇内容给出优化建议',
+    category: 'features',
+    content: '粘贴内容并选择目标引擎，系统给出提升 AI 可见度的结构、实体、引用信号等建议。'
+  },
+  {
+    id: 'export-report',
+    title: '导出与分享报告',
+    summary: 'HTML / PDF 在线报告与邮件发送',
     category: 'report',
-    content: '审计完成后，你可以通过「报告导出」页面生成报告。\n\n## 支持格式\n- HTML 报告：浏览器直接查看\n- PDF 报告：A4 格式，适合打印归档\n\n## 邮件发送\n填写收件人后可一键发送，支持同时附上 PDF 和 HTML。'
+    content: '审计完成后在报告导出页面查看 HTML 报告、下载 PDF 或邮件发送，包含分数、引擎对比与优化建议。'
   },
   {
-    id: '4',
+    id: 'api-keys',
     title: '配置 AI 引擎 API Key',
-    summary: '在后端环境变量中配置各引擎的 API Key',
+    summary: '在服务端环境变量配置各引擎密钥',
     category: 'settings',
-    content: 'MyGEO 支持多种 AI 引擎，需在服务端配置对应的 API Key。\n\n## 环境变量\n- GEO_CHATGPT_KEY\n- GEO_CLAUDE_KEY\n- GEO_PERPLEXITY_KEY\n- GEO_GEMINI_KEY\n- GEO_QWEN_KEY\n- GEO_GLM_KEY\n- GEO_DEEPSEEK_KEY\n\n在「设置 > API」页面可查看各引擎的配置状态。'
+    content: '在服务端环境变量配置 GEO_CHATGPT_KEY、GEO_GLM_KEY、GEO_DEEPSEEK_KEY 等。未配置的引擎审计时自动跳过。'
   },
   {
-    id: '5',
+    id: 'faq',
     title: '常见问题解答',
-    summary: '审计失败、报告导出异常等问题排查',
+    summary: '审计时长、数据存储、引擎支持等',
     category: 'faq',
-    content: '## 审计失败怎么办？\n请检查目标引擎的 API Key 是否配置正确，网络是否能正常访问对应引擎。\n\n## 报告导出为空？\n确保对应品牌已完成至少一次审计，且审计历史库可正常访问。\n\n## 邮件发送失败？\n检查 SMTP 配置（host/port/from），在「告警邮件」页面可查看邮件服务状态。'
+    content: '审计通常 1-3 分钟；数据存于 MySQL；支持 GLM、通义、Doubao、文心、DeepSeek、ChatGPT 等主流引擎。'
   }
 ]
 
@@ -97,7 +126,9 @@ const Help: React.FC = () => {
   const loadArticles = async (category: string) => {
     try {
       const res = await api.help.articles(category)
-      if (res?.items) setArticles(res.items)
+      // 后端返回 { total, articles }；兼容旧字段 items。
+      const list = (res as any)?.articles ?? (res as any)?.items
+      if (Array.isArray(list) && list.length > 0) setArticles(list)
     } catch {
       // API 不可用时使用本地过滤
       setArticles(mockArticles.filter(a => a.category === category))
@@ -122,9 +153,11 @@ const Help: React.FC = () => {
   const loadOnboarding = async () => {
     try {
       const res = await api.help.onboarding()
-      if (res?.completed_steps) {
+      // 后端返回 { total, completed, steps:[{step,completed}] }
+      const steps = (res as any)?.steps
+      if (Array.isArray(steps)) {
         const state: Record<number, boolean> = {}
-        res.completed_steps.forEach((s: number) => { state[s] = true })
+        steps.forEach((s: { step: number; completed?: boolean }) => { state[s.step] = !!s.completed })
         setOnboardingState(state)
       }
     } catch {

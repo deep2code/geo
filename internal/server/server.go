@@ -33,6 +33,7 @@ import (
 	"my-geo/internal/brand/sourcestudy"
 	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
+	"my-geo/internal/exsubmit"
 	"my-geo/internal/httputil"
 	"my-geo/internal/queue"
 	"my-geo/internal/llm"
@@ -85,6 +86,8 @@ type Server struct {
 	whitelabel  Whitelabel
 	llmMgr      *llm.Manager // 全局 LLM 管理器（/metrics 与品牌引擎复用同一实例）
 	promptStore *promptversion.MemoryStore // Prompt 版本/实验归因存储（P1-e，内存）
+	externalStore exsubmit.Store            // 外部提交存储（未启用时为 nil）
+	externalWorker *exsubmit.Worker         // 外部提交定时分析 worker（未启用时为 nil）
 	addr        string
 	mux         *http.ServeMux
 	httpServer  *http.Server // 用于 graceful shutdown
@@ -170,7 +173,39 @@ func New(engine *geo.Engine, addr string) *Server {
 		s.startQueue(context.Background())
 	}
 	s.registerRoutes()
+	// 外部系统提交分析（默认开启；需配置 GEO_EXTERNAL_DB_ENABLED 且 DB 可用）。
+	if estore := newExternalStoreFromEnv(); estore != nil {
+		s.externalStore = estore
+		// 复用判定模型（与品牌引擎同一优先级），未配置时抽取器自动降级。
+		adaptersAdm, _ := config.BrandAdaptersFromEnv()
+		judge := pickJudgeAdapter(adaptersAdm)
+		s.externalWorker = exsubmit.NewWorker(estore, exsubmit.NewAnalyzer(judge), externalIntervalFromEnv())
+		s.externalWorker.Start()
+	}
 	return s
+}
+
+// externalIntervalFromEnv 读取定时分析间隔（秒），默认 300（5 分钟）。
+func externalIntervalFromEnv() time.Duration {
+	if v := config.IntEnv("GEO_EXTERNAL_ANALYZE_INTERVAL", 300); v > 0 {
+		return time.Duration(v) * time.Second
+	}
+	return 5 * time.Minute
+}
+
+// newExternalStoreFromEnv 打开外部提交 MySQL 库（默认开启，回退历史库 DSN）。
+func newExternalStoreFromEnv() exsubmit.Store {
+	if !dbprovider.EnabledFor(dbprovider.ModuleExternalSubmissions) {
+		slog.Info("外部提交分析已通过 GEO_EXTERNAL_DB_ENABLED=false 禁用。")
+		return nil
+	}
+	store, err := exsubmit.Open(dbprovider.PathFor(dbprovider.ModuleExternalSubmissions))
+	if err != nil {
+		slog.Warn("外部提交 MySQL 库打开失败（将不采集外部提交）", slog.Any("error", err))
+		return nil
+	}
+	slog.Info("外部提交分析已启用", slog.String("dsn", maskDSN(store.Path())))
+	return store
 }
 
 // newBrandEngineFromEnv 从环境变量构建品牌可见度引擎。
@@ -497,6 +532,9 @@ func (s *Server) Close() {
 	if s.scheduler != nil {
 		s.scheduler.Stop()
 	}
+	if s.externalWorker != nil {
+		s.externalWorker.Stop()
+	}
 	if s.queueServer != nil {
 		s.queueServer.Stop()
 	}
@@ -650,6 +688,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/engine-sources/top", s.handleEngineSourcesTop)
 	s.mux.HandleFunc("/api/v1/admin/engine-sources/trend", s.handleEngineSourcesTrend)
 	s.mux.HandleFunc("/api/v1/admin/engine-sources/compare", s.handleEngineSourcesCompare)
+	// 外部系统提交的大模型对话采集与分析
+	s.mux.HandleFunc("/api/v1/external/submissions", s.handleExternalSubmit)                 // POST 外部系统提交
+	s.mux.HandleFunc("/api/v1/admin/external-submissions", s.handleExternalSubmissionsAdmin) // GET 管理后台列表/统计
+	s.mux.HandleFunc("/api/v1/admin/external-submissions/trigger", s.handleExternalTrigger) // POST 手动触发分析
 	// 系统设置（DB 变量存储：管理后台可改）
 	s.mux.HandleFunc("/api/v1/admin/settings", s.handleAdminSettingsList)     // GET 列出 / PUT 更新
 	s.mux.HandleFunc("/api/v1/admin/settings/reset", s.handleAdminSettingsReset) // POST 恢复默认
@@ -975,6 +1017,145 @@ func writeInternalError(w http.ResponseWriter, err error, msg string) {
 // readJSON 解析 JSON 请求体（实现见 httputil，默认上限 10MB）。
 func readJSON(r *http.Request, v interface{}) error {
 	return httputil.ReadJSON(r, v)
+}
+
+// ---------- 外部系统提交的大模型对话采集与分析 ----------
+
+// checkExternalKey 校验外部系统密钥（X-GEO-External-Key 头）。未配置则不可用。
+func (s *Server) checkExternalKey(r *http.Request) bool {
+	key := config.Env("GEO_EXTERNAL_API_KEY", "")
+	if key == "" {
+		return false
+	}
+	return strings.EqualFold(r.Header.Get("X-GEO-External-Key"), key)
+}
+
+// externalSubmitRequest 外部提交的请求体。
+type externalSubmitRequest struct {
+	ModelName string `json:"model_name"`
+	Question  string `json:"question"`
+	Answer    string `json:"answer"`
+	ShareLink string `json:"share_link"`
+}
+
+// handleExternalSubmit 接收外部系统提交的大模型对话。
+//
+// POST /api/v1/external/submissions
+// 请求头：X-GEO-External-Key（与 GEO_EXTERNAL_API_KEY 一致）
+// 请求体：{ "model_name":"...", "question":"...", "answer":"...", "share_link":"..." }
+// 返回：{ "id":..., "status":"pending" }
+func (s *Server) handleExternalSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+	if !s.checkExternalKey(r) {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "未授权：缺少或错误的 X-GEO-External-Key（请配置 GEO_EXTERNAL_API_KEY）"})
+		return
+	}
+	srv := s.externalStore
+	if srv == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "外部提交分析未启用（请配置 GEO_EXTERNAL_DB_ENABLED 与数据库）"})
+		return
+	}
+	var req externalSubmitRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "请求体解析失败：" + err.Error()})
+		return
+	}
+	modelName := strings.TrimSpace(req.ModelName)
+	answer := strings.TrimSpace(req.Answer)
+	if modelName == "" || answer == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "model_name 与 answer 为必填字段"})
+		return
+	}
+	if req.ShareLink != "" {
+		if safe, ok := safeURL(req.ShareLink); !ok {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "share_link 必须为 http/https 链接"})
+			return
+		} else {
+			req.ShareLink = safe
+		}
+	}
+	sub := &exsubmit.Submission{
+		ModelName:  modelName,
+		Question:   req.Question,
+		Answer:     answer,
+		ShareLink:  req.ShareLink,
+		Status:     "pending",
+		CreatedAt:  time.Now().Unix(),
+	}
+	id, err := srv.Save(r.Context(), sub)
+	if err != nil {
+		writeInternalError(w, err, "保存外部提交")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "status": "pending"})
+}
+
+// handleExternalSubmissionsAdmin 管理后台查看提交列表与统计。
+//
+// GET /api/v1/admin/external-submissions?status=&limit=
+// 需要数据管理权限（与 audit/correction 对齐）。
+func (s *Server) handleExternalSubmissionsAdmin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
+	srv := s.externalStore
+	if srv == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "外部提交分析未启用"})
+		return
+	}
+	status := r.URL.Query().Get("status")
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	list, err := srv.List(r.Context(), status, limit)
+	if err != nil {
+		writeInternalError(w, err, "查询外部提交")
+		return
+	}
+	total, pending, analyzed, err := srv.Stats(r.Context())
+	if err != nil {
+		writeInternalError(w, err, "统计外部提交")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"items":    list,
+		"total":    total,
+		"pending":  pending,
+		"analyzed": analyzed,
+	})
+}
+
+// handleExternalTrigger 手动触发一次分析批次（无需等待定时）。
+//
+// POST /api/v1/admin/external-submissions/trigger
+func (s *Server) handleExternalTrigger(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
+	if s.externalWorker == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "外部提交分析未启用"})
+		return
+	}
+	n, err := s.externalWorker.ProcessOnce(r.Context())
+	if err != nil {
+		writeInternalError(w, err, "触发分析")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"processed": n})
 }
 
 // requireDataAdmin 校验"数据清理类"接口的权限（P2-9）。

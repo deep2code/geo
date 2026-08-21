@@ -7,6 +7,7 @@ import { Input, Textarea } from '@/components/Input'
 import { Table, type TableColumn } from '@/components/Table'
 import { Tabs, TabPane } from '@/components/Tabs'
 import SettingsTab from './SettingsTab'
+import ExternalSubmissions from './ExternalSubmissions'
 import { useAppStore } from '@/store/useAppStore'
 import api, { getAdminKey, getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
@@ -534,6 +535,11 @@ const Admin: React.FC = () => {
         {/* Tab 5: 系统设置（DB 变量存储，管理后台可改） */}
         <TabPane tabKey="settings" tab={`⚙️ ${t('admin.tabSettings')}`}>
           <SettingsTab />
+        </TabPane>
+
+        {/* Tab 6: 外部提交分析（外部系统提交的大模型对话 + 定时分析） */}
+        <TabPane tabKey="ext-submissions" tab={`📥 ${t('admin.tabExternalSubmissions')}`}>
+          <ExternalSubmissions />
         </TabPane>
       </Tabs>
     </div>

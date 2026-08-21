@@ -239,6 +239,33 @@ CREATE INDEX idx_src_brand_time ON engine_source_citations(workspace_id, brand_n
 CREATE INDEX idx_src_domain_time ON engine_source_citations(source_domain, cited_at);
 
 -- ############################################################################
+-- 21) 外部系统提交的大模型对话采集与分析（external_submissions）
+--     外部系统（如浏览器插件、Chat 前端）提交「大模型名称 / 问题 / 回答 / 分享链接」，
+--     后台定时抽取结构化结论（情感 / 主题 / 来源域名 / 实体提及 / 摘要）。
+CREATE TABLE IF NOT EXISTS external_submissions (
+    id              BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    model_name      VARCHAR(64)     NOT NULL DEFAULT '',
+    question        MEDIUMTEXT      NOT NULL,
+    answer          MEDIUMTEXT      NOT NULL,
+    share_link      VARCHAR(1024)   NOT NULL DEFAULT '',
+    status          VARCHAR(16)     NOT NULL DEFAULT 'pending', -- pending / analyzed / failed
+    summary         TEXT,
+    sentiment       VARCHAR(16)     NOT NULL DEFAULT '',        -- positive / neutral / negative
+    category        VARCHAR(64)     NOT NULL DEFAULT '',
+    mentions        TEXT,                                    -- JSON 数组：被提及的实体
+    source_domains  TEXT,                                    -- JSON 数组：回答内引用域名
+    analysis_json   TEXT,                                    -- 完整结构化分析结果（JSON）
+    error_msg       VARCHAR(512)    NOT NULL DEFAULT '',
+    workspace_id    VARCHAR(255),
+    created_at      BIGINT          NOT NULL,
+    analyzed_at     BIGINT          NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_ext_status_time ON external_submissions(status, created_at);
+CREATE INDEX idx_ext_model_time   ON external_submissions(model_name, created_at);
+CREATE INDEX idx_ext_cat_time     ON external_submissions(category, created_at);
+
+-- ############################################################################
 -- 5) 离线工商注册库（原 geo_offline）
 -- ############################################################################
 

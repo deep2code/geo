@@ -22,6 +22,9 @@ const (
 	// ModuleSourceStudy 引擎来源偏好研究（大模型引用来源的记录与历史趋势）。
 	// 表与审计历史同库（geo 主库）；默认回退 GEO_HISTORY_MYSQL_DSN。
 	ModuleSourceStudy ModuleKind = "source_study"
+	// ModuleExternalSubmissions 外部系统提交的大模型对话采集与分析。
+	// 表与审计历史同库（geo 主库）；默认回退 GEO_HISTORY_MYSQL_DSN。
+	ModuleExternalSubmissions ModuleKind = "external_submissions"
 )
 
 // moduleConfig：各模块的 DSN 环境变量。
@@ -60,6 +63,12 @@ var moduleConfig = map[ModuleKind]struct {
 		typeEnv:     "GEO_SOURCE_DB_TYPE",
 		dsnEnv:      "GEO_SOURCE_MYSQL_DSN",
 		oldPathEnv:  "GEO_SOURCE_DB_PATH",
+		defaultType: TypeMySQL,
+	},
+	ModuleExternalSubmissions: {
+		typeEnv:     "GEO_EXTERNAL_DB_TYPE",
+		dsnEnv:      "GEO_EXTERNAL_MYSQL_DSN",
+		oldPathEnv:  "GEO_EXTERNAL_DB_PATH",
 		defaultType: TypeMySQL,
 	},
 }
@@ -129,6 +138,8 @@ func EnabledFor(mod ModuleKind) bool {
 		suffix = "GEO_BILLING_DB_ENABLED"
 	case ModuleSourceStudy:
 		suffix = "GEO_SOURCE_DB_ENABLED"
+	case ModuleExternalSubmissions:
+		suffix = "GEO_EXTERNAL_DB_ENABLED"
 	}
 	v := config.Env(suffix, "true")
 	return !(strings.EqualFold(v, "false") || strings.EqualFold(v, "0") || strings.EqualFold(v, "off"))

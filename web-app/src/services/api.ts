@@ -42,7 +42,9 @@ import type {
   EvaluateResponse,
   OfflineDBStats,
   OfflineDBImportResult,
-  OfflineDBImportGitHubRequest
+  OfflineDBImportGitHubRequest,
+  ExternalSubmission,
+  ExternalSubmissionsResponse
 } from '@/types/api'
 
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
@@ -490,7 +492,17 @@ export const api = {
       request<any>('/admin/settings/reset', {
         method: 'POST',
         body: JSON.stringify({ key })
-      })
+      }),
+    // 外部系统提交列表 + 统计（status 过滤：''=全部 / pending / analyzed / failed）
+    externalSubmissions: (params?: { status?: string; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.status) qs.set('status', params.status)
+      if (params?.limit) qs.set('limit', String(params.limit))
+      return request<ExternalSubmissionsResponse>(`/admin/external-submissions?${qs.toString()}`, { method: 'GET' })
+    },
+    // 手动触发一次外部提交分析（无需等待定时）
+    externalSubmissionsTrigger: () =>
+      request<{ processed: number }>('/admin/external-submissions/trigger', { method: 'POST' })
   },
 
   // 规则集管理（替代原 `geo rules` CLI）

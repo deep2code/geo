@@ -19,8 +19,15 @@ import (
 
 // handleAdminSettingsList 列出配置项（支持分类过滤与关键字搜索）。
 func (s *Server) handleAdminSettingsList(w http.ResponseWriter, r *http.Request) {
+	// /api/v1/admin/settings 同时承载「GET 列出」与「PUT 更新」（文件头注释承诺）。
+	// PUT 委托给 handleAdminSettingsUpdate，避免重复实现；该处理函数此前漏接路由，
+	// 导致管理后台「保存设置」实际返回 405。此处补上接线，消除死代码并修复更新功能。
+	if r.Method == http.MethodPut {
+		s.handleAdminSettingsUpdate(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / PUT"})
 		return
 	}
 	category := strings.TrimSpace(r.URL.Query().Get("category"))

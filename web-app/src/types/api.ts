@@ -213,6 +213,33 @@ export interface EngineSource {
   top_sources: SourceStat[]
 }
 
+// 外部系统提交的大模型对话（含分析结果）。
+export interface ExternalSubmission {
+  id: number
+  model_name: string
+  question: string
+  answer: string
+  share_link: string
+  status: 'pending' | 'analyzed' | 'failed'
+  summary: string
+  sentiment: string // positive / neutral / negative
+  category: string
+  mentions: string[]
+  source_domains: string[]
+  analysis_json: string
+  error_msg: string
+  workspace_id?: string
+  created_at: number
+  analyzed_at: number
+}
+
+export interface ExternalSubmissionsResponse {
+  items: ExternalSubmission[]
+  total: number
+  pending: number
+  analyzed: number
+}
+
 export interface EngineStats {
   engine: string
   total_prompts: number
