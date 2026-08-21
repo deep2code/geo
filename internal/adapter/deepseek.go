@@ -12,7 +12,7 @@ import (
 //
 // 接口演进（2026 更新）：
 //   - 默认走 OpenAI 兼容 Chat Completions（POST /chat/completions），兼容旧部署。
-//   - 开启联网搜索（WebSearch=true）时，改走 **Responses API**（POST /responses）：
+//   - 开启联网搜索（WebSearch=true）时，改走 **Responses API**（POST /v1/responses）：
 //     DeepSeek 2026 新增服务端执行的 web_search 工具（tools:[{type:"web_search"}]），
 //     一次请求内由服务端自动完成"搜索→开页→合成答案"闭环（目前 deepseek-v4-flash 支持）。
 //     Chat Completions 端点无服务端搜索（仅 function calling），故联网必须走 Responses。
@@ -108,7 +108,7 @@ func (a *DeepSeekAdapter) queryResponses(ctx context.Context, query string) (*mo
 		return nil, fmt.Errorf("序列化 DeepSeek Responses 请求体失败: %w", err)
 	}
 
-	requestURL := a.cfg.BaseURL + "/responses"
+	requestURL := a.cfg.BaseURL + "/v1/responses"
 	data, err := a.doPost(ctx, requestURL, raw, nil)
 	if err != nil {
 		return nil, fmt.Errorf("DeepSeek Responses 请求失败: %w", err)

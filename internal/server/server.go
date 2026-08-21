@@ -30,6 +30,7 @@ import (
 	"my-geo/internal/brand/offlinedb"
 	"my-geo/internal/brand/promptversion"
 	"my-geo/internal/brand/scheduler"
+	"my-geo/internal/brand/sourcestudy"
 	"my-geo/internal/config"
 	"my-geo/internal/dbprovider"
 	"my-geo/internal/httputil"
@@ -221,6 +222,11 @@ func newBrandEngineFromEnv(llmMgr *llm.Manager) *brand.Engine {
 		opts = append(opts, brand.WithHistoryDB(hdb))
 		slog.Info("审计历史 MySQL 库已启用", slog.String("dsn", maskDSN(hdb.Path())))
 	}
+	// 注入引擎来源偏好研究库（默认启用）：审计完成后自动记录各引擎引用来源
+	if ss := newSourceStudyFromEnv(); ss != nil {
+		opts = append(opts, brand.WithSourceStudy(ss))
+		slog.Info("引擎来源偏好研究库已启用", slog.String("dsn", maskDSN(ss.Path())))
+	}
 	// 注入 LLM 判定层（P0-1/P0-3/P1-a）：从已配置适配器中挑选一个"判定模型"。
 	// 优先级：deepseek > chatgpt > 第一个已配置的引擎。未配置任何 key 时不注入（自动降级词典法）。
 	if judge := pickJudgeAdapter(adapters); judge != nil {
@@ -283,6 +289,27 @@ func newHistoryDBFromEnv() history.DB {
 	db, err := history.Open(dsn)
 	if err != nil {
 		slog.Warn("审计历史 MySQL 库打开失败（将无历史记录）", slog.Any("error", err))
+		return nil
+	}
+	return db
+}
+
+// newSourceStudyFromEnv 连接引擎来源偏好研究 MySQL 库。
+//
+// 环境变量：
+//
+//	GEO_SOURCE_DB_ENABLED=true/false     总开关（默认 true）
+//	GEO_SOURCE_MYSQL_DSN=user:pass@tcp(...)  DSN（优先；缺省回退 GEO_HISTORY_MYSQL_DSN）
+//
+// 打开失败时仅告警降级（不阻断审计主流程）。
+func newSourceStudyFromEnv() sourcestudy.Store {
+	if !dbprovider.EnabledFor(dbprovider.ModuleSourceStudy) {
+		slog.Info("引擎来源偏好研究已通过 GEO_SOURCE_DB_ENABLED=false 禁用。")
+		return nil
+	}
+	db, err := sourcestudy.Open(dbprovider.PathFor(dbprovider.ModuleSourceStudy))
+	if err != nil {
+		slog.Warn("引擎来源偏好研究库打开失败（将不记录来源）", slog.Any("error", err))
 		return nil
 	}
 	return db
@@ -619,6 +646,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/selfcheck", s.handleAdminSelfCheck) // 系统自检报告
 	// 人工修正审计判定（运营纠错，审计留痕 + 报告重算）
 	s.mux.HandleFunc("/api/v1/admin/audit/correction", s.handleAuditCorrection)
+	// 引擎来源偏好研究（每个大模型喜欢采用哪里的文章：排行/趋势/引擎对比）
+	s.mux.HandleFunc("/api/v1/admin/engine-sources/top", s.handleEngineSourcesTop)
+	s.mux.HandleFunc("/api/v1/admin/engine-sources/trend", s.handleEngineSourcesTrend)
+	s.mux.HandleFunc("/api/v1/admin/engine-sources/compare", s.handleEngineSourcesCompare)
 	// 系统设置（DB 变量存储：管理后台可改）
 	s.mux.HandleFunc("/api/v1/admin/settings", s.handleAdminSettingsList)     // GET 列出 / PUT 更新
 	s.mux.HandleFunc("/api/v1/admin/settings/reset", s.handleAdminSettingsReset) // POST 恢复默认

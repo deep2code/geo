@@ -32,6 +32,8 @@ import (
 	"my-geo/internal/brand/offlinedb"
 	"my-geo/internal/brand/persona"
 	"my-geo/internal/brand/roi"
+	"my-geo/internal/brand/sourcedomain"
+	"my-geo/internal/brand/sourcestudy"
 	"my-geo/internal/llm"
 	"my-geo/internal/models"
 )
@@ -46,6 +48,7 @@ type Engine struct {
 	chinaCheck *chinacheck.Client      // 可选：工商注册实时核验（GSXT / SAMR，免鉴权免费）
 	offlineDB  offlinedb.DB            // 可选：1978-2019 离线工商注册库（接口，多后端）
 	historyDB  history.DB              // 可选：审计历史时间序列库（接口，多后端）
+	sourceStudy sourcestudy.Store      // 可选：引擎来源偏好研究（大模型引用来源记录）
 	crawler    *crawler.WebsiteCrawler // 可选：官网爬虫（默认自动初始化，无需外部配置）
 	roiTracker *roi.Tracker            // token 用量与成本追踪（默认自动初始化）
 	// configuredEngines 记录哪些引擎已配置真实 API Key。
@@ -135,6 +138,17 @@ func (e *Engine) OfflineDB() offlinedb.DB { return e.offlineDB }
 func WithHistoryDB(db history.DB) Option {
 	return func(e *Engine) { e.historyDB = db }
 }
+
+// WithSourceStudy 注入引擎来源偏好研究存储。
+// 注入后每次审计完成会自动把 results[].citations 的来源域名写入，
+// 支撑"每个大模型喜欢采用哪里的文章"的记录与历史趋势研究。
+// 未注入时跳过采集（不影响审计主流程）。
+func WithSourceStudy(db sourcestudy.Store) Option {
+	return func(e *Engine) { e.sourceStudy = db }
+}
+
+// SourceStudy 返回引擎来源偏好研究存储接口（可能为 nil）。
+func (e *Engine) SourceStudy() sourcestudy.Store { return e.sourceStudy }
 
 // HistoryDB 返回审计历史存储接口（可能为 nil）。
 func (e *Engine) HistoryDB() history.DB { return e.historyDB }
@@ -311,7 +325,60 @@ func (e *Engine) Audit(ctx context.Context, profile BrandProfile) (*VisibilityRe
 		report.RecordID = e.saveHistory(ctx, &report)
 	}
 
+	// 5. 引擎来源偏好采集（可选）：记录本引擎本次引用了哪些来源，支撑历史研究。
+	if e.sourceStudy != nil && report.RecordID > 0 {
+		if err := e.recordSourceStudy(ctx, report.RecordID, &report); err != nil {
+			slog.Warn("引擎来源偏好写入失败",
+				slog.String("brand", report.BrandName), slog.String("err", err.Error()))
+		}
+	}
+
 	return &report, nil
+}
+
+// recordSourceStudy 把本次审计的所有引用来源写入来源研究库（append-only）。
+func (e *Engine) recordSourceStudy(ctx context.Context, recordID int64, report *VisibilityReport) error {
+	recs := collectSourceCitations(recordID, report)
+	if len(recs) == 0 {
+		return nil
+	}
+	return e.sourceStudy.Record(ctx, recs)
+}
+
+// collectSourceCitations 从报告结果中提取引用来源记录。
+// 每条 citations URL → 规范化域名 + 分类；无法解析出域名的跳过。
+func collectSourceCitations(recordID int64, report *VisibilityReport) []sourcestudy.CitationRec {
+	ts := report.GeneratedAt.Unix()
+	workspaceID := ""
+	if report.ProfileSnapshot != nil {
+		workspaceID = report.ProfileSnapshot.WorkspaceID
+	}
+	var recs []sourcestudy.CitationRec
+	for i := range report.Results {
+		pr := &report.Results[i]
+		if pr.Error != "" {
+			continue
+		}
+		for _, c := range pr.Citations {
+			domain := sourcedomain.ExtractDomain(c.URL)
+			if domain == "" {
+				continue
+			}
+			recs = append(recs, sourcestudy.CitationRec{
+				WorkspaceID:    workspaceID,
+				Engine:         string(pr.Engine),
+				SourceDomain:   domain,
+				SourceCategory: sourcedomain.CategorizeDomain(domain),
+				BrandName:      report.BrandName,
+				Prompt:         pr.Prompt,
+				RecordID:       recordID,
+				ResultIndex:    i,
+				CitationURL:    c.URL,
+				CitedAt:        ts,
+			})
+		}
+	}
+	return recs
 }
 
 // PersonaBreakdown 按买家人设分群测量（P1-c）。

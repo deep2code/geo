@@ -27,6 +27,9 @@ import type {
   KOLAnalyzeReport,
   TopSourceReport,
   VerticalDetectResult,
+  SourceStat,
+  TrendPoint,
+  EngineSource,
   ExternalSignalsReport,
   DiscoverResponse,
   WhitelabelMeta,
@@ -134,6 +137,16 @@ export interface RequestOptions extends RequestInit {
   skipAdminKey?: boolean
   /** 跳过 401/403 自动跳转（给登录校验接口用）。 */
   skipAuthRedirect?: boolean
+}
+
+// cleanParams 去掉查询参数中的空值（undefined/''/null），避免 URL 出现无意义参数。
+function cleanParams(p: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(p)) {
+    if (v === undefined || v === null || v === '') continue
+    out[k] = String(v)
+  }
+  return out
 }
 
 async function request<T>(
@@ -249,6 +262,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body)
     }),
+  // 引擎来源偏好研究（大模型引用来源：排行/趋势/对比）。
+  engineSourcesTop: (p: { engine?: string; brand?: string; days?: number; limit?: number } = {}) =>
+    request<{ sources: SourceStat[] }>(
+      `/admin/engine-sources/top?${new URLSearchParams(cleanParams(p) as any).toString()}`,
+      { method: 'GET', timeout: 30000 }
+    ),
+  engineSourcesTrend: (p: { engine?: string; brand?: string; domain?: string; days?: number } = {}) =>
+    request<{ trend: TrendPoint[] }>(
+      `/admin/engine-sources/trend?${new URLSearchParams(cleanParams(p) as any).toString()}`,
+      { method: 'GET', timeout: 30000 }
+    ),
+  engineSourcesCompare: (p: { brand?: string; days?: number; limit?: number } = {}) =>
+    request<{ engines: EngineSource[] }>(
+      `/admin/engine-sources/compare?${new URLSearchParams(cleanParams(p) as any).toString()}`,
+      { method: 'GET', timeout: 30000 }
+    ),
   brandAutocomplete: (brand_name: string) =>
     request<AutocompleteCandidate>('/brand/autocomplete', {
       method: 'POST',

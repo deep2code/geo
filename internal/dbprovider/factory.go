@@ -19,6 +19,9 @@ const (
 	// 默认复用 GEO_AUTH_MYSQL_DSN（与账号体系同库，便于订阅关联工作区），
 	// 也可通过 GEO_BILLING_MYSQL_DSN 独立部署。
 	ModuleBilling ModuleKind = "billing"
+	// ModuleSourceStudy 引擎来源偏好研究（大模型引用来源的记录与历史趋势）。
+	// 表与审计历史同库（geo 主库）；默认回退 GEO_HISTORY_MYSQL_DSN。
+	ModuleSourceStudy ModuleKind = "source_study"
 )
 
 // moduleConfig：各模块的 DSN 环境变量。
@@ -53,6 +56,12 @@ var moduleConfig = map[ModuleKind]struct {
 		oldPathEnv:  "GEO_BILLING_DB_PATH",
 		defaultType: TypeMySQL,
 	},
+	ModuleSourceStudy: {
+		typeEnv:     "GEO_SOURCE_DB_TYPE",
+		dsnEnv:      "GEO_SOURCE_MYSQL_DSN",
+		oldPathEnv:  "GEO_SOURCE_DB_PATH",
+		defaultType: TypeMySQL,
+	},
 }
 
 // ParseType 按模块解析后端类型。
@@ -66,7 +75,7 @@ func ParseType(mod ModuleKind) Type {
 	}
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv(cfg.typeEnv)))
 	switch mod {
-	case ModuleOfflineCompanies, ModuleAuditHistory, ModuleBilling:
+	case ModuleOfflineCompanies, ModuleAuditHistory, ModuleBilling, ModuleSourceStudy:
 		switch raw {
 		case "", string(TypeMySQL):
 			return TypeMySQL
@@ -118,6 +127,8 @@ func EnabledFor(mod ModuleKind) bool {
 		suffix = "GEO_CHINACHECK_CACHE_ENABLED"
 	case ModuleBilling:
 		suffix = "GEO_BILLING_DB_ENABLED"
+	case ModuleSourceStudy:
+		suffix = "GEO_SOURCE_DB_ENABLED"
 	}
 	v := config.Env(suffix, "true")
 	return !(strings.EqualFold(v, "false") || strings.EqualFold(v, "0") || strings.EqualFold(v, "off"))

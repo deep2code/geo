@@ -270,6 +270,8 @@
     "correctionOriginal": "元の判定",
     "correctionNew": "修正値",
     "correctionReset": "自動判定に戻す",
+    "sourceStudyHint": "各LLMが引用するソースを自動記録 — ランキング・トレンド・エンジン比較",
+    "sourceStudyNoData": "データなし — ブランド監査実行後に自動記録が始まります",
     "contentGaps": "コンテンツギャップ",
     "suggestedTopic": "提案テーマ",
     "competitorNamed": "言及された競合",

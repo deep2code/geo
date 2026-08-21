@@ -270,6 +270,8 @@
     "correctionOriginal": "Original",
     "correctionNew": "Correct to",
     "correctionReset": "Reset to automated judgment",
+    "sourceStudyHint": "Automatically records which sources each LLM cites — rankings, trends & cross-engine comparison",
+    "sourceStudyNoData": "No data yet — recording starts automatically after the first brand audit",
     "contentGaps": "Content Gaps",
     "suggestedTopic": "Suggested Topic",
     "competitorNamed": "Competitors Named",

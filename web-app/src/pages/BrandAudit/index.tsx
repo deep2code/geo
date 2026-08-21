@@ -8,6 +8,7 @@ import { Tabs, TabPane, Table, type TableColumn } from '@/components'
 import { useAppStore } from '@/store/useAppStore'
 import api from '@/services/api'
 import type { VisibilityReport, BrandProfile, PromptResult } from '@/types/api'
+import SourceStudy from './SourceStudy'
 import '../Dashboard/Dashboard.scss'
 
 const gradeColor: Record<string, string> = {
@@ -506,6 +507,13 @@ const BrandAudit: React.FC = () => {
                   ]}
                 />
               </Card>
+            </TabPane>
+
+            <TabPane tabKey="sources" tab="🧠 引擎来源研究">
+              <SourceStudy
+                brandName={report.brand_name}
+                engines={(report.engine_stats || []).map(e => e.engine)}
+              />
             </TabPane>
 
             <TabPane tabKey="tools" tab="更多审计工具">

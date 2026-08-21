@@ -191,6 +191,28 @@ export interface CorrectionInfo {
   last_reason?: string
 }
 
+// 引擎来源偏好研究（大模型引用来源记录）。
+export interface SourceStat {
+  source_domain: string
+  category: string
+  citation_count: number
+  prompt_count: number
+  brand_count: number
+  share_percent: number
+  last_cited_at: number
+}
+
+export interface TrendPoint {
+  date: string
+  citation_count: number
+}
+
+export interface EngineSource {
+  engine: string
+  total_citations: number
+  top_sources: SourceStat[]
+}
+
 export interface EngineStats {
   engine: string
   total_prompts: number

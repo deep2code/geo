@@ -213,6 +213,32 @@ CREATE INDEX idx_history_time ON audit_history(generated_at);
 CREATE INDEX idx_history_ws_brand ON audit_history(workspace_id, brand_name);
 
 -- ############################################################################
+-- 4.5) 引擎来源偏好研究（大模型引用来源的记录与历史趋势）
+--     append-only：每次审计完成后把 results[].citations 的来源域名写入。
+--     唯一键 record_id+result_index+citation_url 保证同一次审计不重复计数。
+-- ############################################################################
+
+CREATE TABLE IF NOT EXISTS engine_source_citations (
+    id              BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    workspace_id    VARCHAR(255),
+    engine          VARCHAR(32)   NOT NULL,
+    source_domain   VARCHAR(255)  NOT NULL,
+    source_category VARCHAR(32)   NOT NULL DEFAULT 'other',
+    brand_name      VARCHAR(255)  NOT NULL,
+    prompt          VARCHAR(255)  NOT NULL DEFAULT '',
+    record_id       BIGINT UNSIGNED NOT NULL,
+    result_index    INT           NOT NULL DEFAULT 0,
+    citation_url    VARCHAR(1024) NOT NULL,
+    cited_at        BIGINT        NOT NULL,
+    UNIQUE KEY uq_src_record_result_url (record_id, result_index, citation_url(255))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_src_engine_domain_time ON engine_source_citations(workspace_id, engine, source_domain, cited_at);
+CREATE INDEX idx_src_engine_time ON engine_source_citations(workspace_id, engine, cited_at);
+CREATE INDEX idx_src_brand_time ON engine_source_citations(workspace_id, brand_name, cited_at);
+CREATE INDEX idx_src_domain_time ON engine_source_citations(source_domain, cited_at);
+
+-- ############################################################################
 -- 5) 离线工商注册库（原 geo_offline）
 -- ############################################################################
 
@@ -342,5 +368,5 @@ CREATE TABLE IF NOT EXISTS app_settings (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
--- 完成。全部 19 张表 + 索引就绪；应用启动不再执行任何建表迁移。
+-- 完成。全部 20 张表 + 索引就绪；应用启动不再执行任何建表迁移。
 -- ============================================================================

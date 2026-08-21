@@ -270,6 +270,8 @@
     "correctionOriginal": "原判定",
     "correctionNew": "修正为",
     "correctionReset": "重置为自动判定",
+    "sourceStudyHint": "自动记录每个大模型引用的来源域名，支持排行/趋势/引擎对比",
+    "sourceStudyNoData": "暂无数据——运行一次品牌审计后自动开始记录",
     "contentGaps": "内容缺口",
     "suggestedTopic": "建议主题",
     "competitorNamed": "被提及竞品",
