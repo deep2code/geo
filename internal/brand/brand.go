@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"my-geo/internal/adapter"
 	"my-geo/internal/brand/chinacheck"
@@ -302,10 +303,12 @@ func (e *Engine) Audit(ctx context.Context, profile BrandProfile) (*VisibilityRe
 
 	// 3. 报告：生成运营行动建议
 	report := e.reporter.Build(profile, results, stats, score, grade, tier, breakdown)
+	// 画像快照随报告持久化：供人工修正后原地重算与报告复现（旧记录缺失时从报告反推）。
+	report.ProfileSnapshot = &profile
 
 	// 4. 时间序列持久化（可选，未注入 historyDB 时跳过）
 	if e.historyDB != nil {
-		e.saveHistory(ctx, &report)
+		report.RecordID = e.saveHistory(ctx, &report)
 	}
 
 	return &report, nil
@@ -332,14 +335,15 @@ func (e *Engine) PersonaBreakdown(ctx context.Context, profile BrandProfile, per
 }
 
 // saveHistory 将审计报告写入历史库（best-effort，失败记录 warning 日志不影响审计结果）。
-func (e *Engine) saveHistory(ctx context.Context, report *VisibilityReport) {
+// saveHistory 将审计报告写入历史库，返回记录 ID（失败返回 0）。
+func (e *Engine) saveHistory(ctx context.Context, report *VisibilityReport) int64 {
 	reportJSON, err := history.MarshalReport(report)
 	if err != nil {
 		slog.Warn("审计报告序列化失败，跳过历史写入",
 			slog.String("brand", report.BrandName), slog.String("err", err.Error()))
-		return
+		return 0
 	}
-	if _, err := e.historyDB.Save(ctx, history.Record{
+	id, err := e.historyDB.Save(ctx, history.Record{
 		BrandName:          report.BrandName,
 		Generated:          report.GeneratedAt.Unix(),
 		Score:              report.Score,
@@ -357,10 +361,231 @@ func (e *Engine) saveHistory(ctx context.Context, report *VisibilityReport) {
 		NegativeCount:      len(report.NegativeMentions),
 		ActionCount:        len(report.Actions),
 		ReportJSON:         reportJSON,
-	}); err != nil {
+	})
+	if err != nil {
 		slog.Warn("审计历史写入失败",
 			slog.String("brand", report.BrandName), slog.String("err", err.Error()))
+		return 0
 	}
+	return id
+}
+
+// CorrectResultInput 人工修正请求（POST /api/v1/admin/audit/correction）。
+type CorrectResultInput struct {
+	// 待修正的审计记录 ID（audit_history.id）。
+	RecordID int64 `json:"record_id"`
+	// 品牌名（必须与记录一致，防止跨品牌误改）。
+	BrandName string `json:"brand_name"`
+	// 结果在 report.results 中的下标。
+	Index int `json:"index"`
+	// 要修正的字段（至少提供一个；未提供的字段保持不变）。
+	Mentioned *bool   `json:"mentioned,omitempty"`
+	Cited     *bool   `json:"cited,omitempty"`
+	Sentiment *string `json:"sentiment,omitempty"`
+	Position  *int    `json:"position,omitempty"`
+	// 修正人（优先取 JWT 用户邮箱；账号体系关闭时用此值，缺省 "admin"）。
+	CorrectedBy string `json:"corrected_by,omitempty"`
+	// 修正原因（必填，审计留痕）。
+	Reason string `json:"reason"`
+}
+
+// CorrectResult 人工修正单条判定并原地重算报告。
+//
+// 流程：读取历史记录 → 反序列化报告 → 修改 results[index]（记录原值+修正人+原因） →
+// 用修正后的 results 重算聚合统计/BVS/行动建议 → 原地更新该记录（report_json + 标量）。
+// 原始判定值保留在 results[index].correction.prev_* 中，审计可追溯。
+//
+// 返回重算后的完整报告（与 Audit 输出同构，前端可直接替换展示）。
+func (e *Engine) CorrectResult(ctx context.Context, in CorrectResultInput) (*VisibilityReport, error) {
+	if e.historyDB == nil {
+		return nil, fmt.Errorf("未配置审计历史存储（historyDB），无法进行人工修正")
+	}
+	if in.RecordID <= 0 {
+		return nil, fmt.Errorf("record_id 必须大于 0")
+	}
+	if in.Index < 0 {
+		return nil, fmt.Errorf("index 不能为负")
+	}
+	if strings.TrimSpace(in.Reason) == "" {
+		return nil, fmt.Errorf("reason（修正原因）不能为空，修正必须留痕")
+	}
+	if in.Mentioned == nil && in.Cited == nil && in.Sentiment == nil && in.Position == nil {
+		return nil, fmt.Errorf("至少提供一个要修正的字段（mentioned/cited/sentiment/position）")
+	}
+
+	rec, err := e.historyDB.GetByID(ctx, in.RecordID)
+	if err != nil {
+		return nil, fmt.Errorf("读取审计记录失败: %w", err)
+	}
+	if rec == nil {
+		return nil, fmt.Errorf("审计记录不存在: id=%d", in.RecordID)
+	}
+	if rec.BrandName != in.BrandName {
+		return nil, fmt.Errorf("品牌不匹配：记录属于 %q，请求针对 %q", rec.BrandName, in.BrandName)
+	}
+
+	var report VisibilityReport
+	if err := json.Unmarshal([]byte(rec.ReportJSON), &report); err != nil {
+		return nil, fmt.Errorf("报告反序列化失败（记录可能已损坏）: %w", err)
+	}
+	if in.Index >= len(report.Results) {
+		return nil, fmt.Errorf("结果下标越界：index=%d，该记录共 %d 条结果", in.Index, len(report.Results))
+	}
+
+	// 1. 修正单条结果（原值 + 修正值 + 留痕）。
+	pr := &report.Results[in.Index]
+	corr := ResultCorrection{
+		CorrectedBy:   defaultStr(in.CorrectedBy, "admin"),
+		CorrectedAt:   time.Now(),
+		Reason:        strings.TrimSpace(in.Reason),
+		PrevMentioned: pr.BrandMentioned,
+		PrevCited:     pr.BrandCited,
+		PrevSentiment: pr.Sentiment,
+		PrevPosition:  pr.BrandPosition,
+		Mentioned:     pr.BrandMentioned,
+		Cited:         pr.BrandCited,
+		Sentiment:     pr.Sentiment,
+		Position:      pr.BrandPosition,
+	}
+	if in.Mentioned != nil {
+		pr.BrandMentioned = *in.Mentioned
+		corr.Mentioned = *in.Mentioned
+	}
+	if in.Cited != nil {
+		pr.BrandCited = *in.Cited
+		corr.Cited = *in.Cited
+	}
+	if in.Sentiment != nil {
+		s := strings.ToLower(strings.TrimSpace(*in.Sentiment))
+		if s != "positive" && s != "neutral" && s != "negative" {
+			return nil, fmt.Errorf("sentiment 仅支持 positive/neutral/negative，收到 %q", s)
+		}
+		pr.Sentiment = s
+		corr.Sentiment = s
+	}
+	if in.Position != nil {
+		p := *in.Position
+		if p < 0 {
+			return nil, fmt.Errorf("position 不能为负")
+		}
+		pr.BrandPosition = p
+		corr.Position = p
+	}
+	pr.Correction = &corr
+	// 修正提及=false 时清空位置；提及=true 且位置为 0 时置 1（语义自洽）。
+	if !pr.BrandMentioned && pr.BrandPosition > 0 {
+		pr.BrandPosition = 0
+		corr.Position = 0
+	}
+	if pr.BrandMentioned && pr.BrandPosition == 0 {
+		pr.BrandPosition = 1
+		corr.Position = 1
+	}
+
+	// 2. 画像：优先用快照，旧记录缺失时从报告反推。
+	profile := e.reconstructProfile(&report)
+
+	// 3. 重算：聚合 → BVS → 报告（行动建议/缺口/SOV 等全部基于修正后的 results 重算）。
+	stats := e.scorer.Aggregate(report.Results, profile, e.configuredEngines)
+	entCompleteness := EntityCompleteness(profile)
+	score, grade, tier, breakdown := e.scorer.ScoreWithProfile(stats, &profile, entCompleteness)
+	newReport := e.reporter.Build(profile, report.Results, stats, score, grade, tier, breakdown)
+	// 保留修正元信息与画像快照（Build 不会自动带过来）。
+	newReport.Corrected = buildCorrectionInfo(newReport.Results)
+	newReport.ProfileSnapshot = &profile
+	newReport.GeneratedAt = report.GeneratedAt // 保留原审计时间，趋势图不受修正影响
+
+	// 4. 原地更新历史记录（标量 + report_json）。
+	if err := e.historyDB.UpdateReport(ctx, rec.ID, history.Record{
+		Score:              newReport.Score,
+		Grade:              newReport.Grade,
+		Tier:               newReport.Tier,
+		EntityCompleteness: newReport.EntityCompletenessScore,
+		MentionRate:        newReport.ScoreBreakdown.MentionRate,
+		CitationRate:       newReport.ScoreBreakdown.CitationRate,
+		ShareOfVoice:       newReport.ScoreBreakdown.ShareOfVoice,
+		CitationPosition:   newReport.ScoreBreakdown.CitationPosition,
+		Sentiment:          newReport.ScoreBreakdown.Sentiment,
+		EntityRecognition:  newReport.ScoreBreakdown.EntityRecognition,
+		ContentGaps:        len(newReport.ContentGaps),
+		CompetitorCount:    len(newReport.CompetitorSOV),
+		NegativeCount:      len(newReport.NegativeMentions),
+		ActionCount:        len(newReport.Actions),
+		ReportJSON:         mustMarshalReport(&newReport),
+	}); err != nil {
+		return nil, fmt.Errorf("更新审计记录失败: %w", err)
+	}
+
+	slog.Info("人工修正已应用并重算",
+		slog.String("brand", in.BrandName), slog.Int64("record", rec.ID),
+		slog.Int("index", in.Index), slog.String("by", corr.CorrectedBy))
+	return &newReport, nil
+}
+
+// reconstructProfile 从报告中重建审计输入画像。
+// 优先使用报告持久化的 ProfileSnapshot；旧记录缺失时从报告字段反推最小画像
+// （品牌名/行业/品类/公司/竞品/查询词），足以支撑聚合统计与 BVS 重算。
+func (e *Engine) reconstructProfile(report *VisibilityReport) BrandProfile {
+	if report.ProfileSnapshot != nil {
+		return *report.ProfileSnapshot
+	}
+	p := BrandProfile{
+		Name:     report.BrandName,
+		Industry: report.Industry,
+		Category: report.Category,
+		Company:  report.Company,
+	}
+	for _, c := range report.CompetitorSOV {
+		p.Competitors = append(p.Competitors, Competitor{Name: c.Name})
+	}
+	seen := map[string]bool{}
+	for _, r := range report.Results {
+		if r.Prompt != "" && !seen[r.Prompt] {
+			seen[r.Prompt] = true
+			p.Prompts = append(p.Prompts, r.Prompt)
+		}
+	}
+	if p.Company != nil {
+		p.Domain = p.Company.Domain
+	}
+	return p
+}
+
+// buildCorrectionInfo 汇总报告级修正元信息（统计条数 + 最近一次）。
+func buildCorrectionInfo(results []PromptResult) *CorrectionInfo {
+	var info *CorrectionInfo
+	for _, r := range results {
+		if r.Correction == nil {
+			continue
+		}
+		if info == nil {
+			info = &CorrectionInfo{}
+		}
+		info.CorrectedCount++
+		if info.LastCorrectedAt.IsZero() || r.Correction.CorrectedAt.After(info.LastCorrectedAt) {
+			info.LastCorrectedAt = r.Correction.CorrectedAt
+			info.LastCorrectedBy = r.Correction.CorrectedBy
+			info.LastReason = r.Correction.Reason
+		}
+	}
+	return info
+}
+
+// defaultStr 返回 s 非空时的值，否则返回 def。
+func defaultStr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return strings.TrimSpace(s)
+}
+
+// mustMarshalReport 序列化报告；失败时降级为最小 JSON（正常不会发生）。
+func mustMarshalReport(r *VisibilityReport) string {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return `{"brand_name":"` + r.BrandName + `","error":"marshal_failed"}`
+	}
+	return string(b)
 }
 
 // AutocompleteRequest 品牌智能补全请求。

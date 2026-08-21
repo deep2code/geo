@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Kpi } from '@/components/Kpi'
+import { Modal } from '@/components/Modal'
 import { Tabs, TabPane, Table, type TableColumn } from '@/components'
 import { useAppStore } from '@/store/useAppStore'
 import api from '@/services/api'
-import type { VisibilityReport, BrandProfile } from '@/types/api'
+import type { VisibilityReport, BrandProfile, PromptResult } from '@/types/api'
 import '../Dashboard/Dashboard.scss'
 
 const gradeColor: Record<string, string> = {
@@ -24,6 +25,15 @@ const BrandAudit: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<VisibilityReport | null>(null)
   const [progress, setProgress] = useState('')
+
+  // 人工修正状态。
+  const [corrTarget, setCorrTarget] = useState<{ index: number; row: PromptResult } | null>(null)
+  const [corrMentioned, setCorrMentioned] = useState<boolean | undefined>(undefined)
+  const [corrCited, setCorrCited] = useState<boolean | undefined>(undefined)
+  const [corrSentiment, setCorrSentiment] = useState<string | undefined>(undefined)
+  const [corrPosition, setCorrPosition] = useState<number | undefined>(undefined)
+  const [corrReason, setCorrReason] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const selectedBrand = brands.find(b => b.name === selectedBrandName)
 
@@ -53,6 +63,55 @@ const BrandAudit: React.FC = () => {
     } finally {
       setLoading(false)
       setProgress('')
+    }
+  }
+
+  // 打开人工修正弹窗：预填当前判定值作为默认。
+  const openCorrection = (row: PromptResult, index: number) => {
+    if (!report?.record_id) {
+      showToast(t('brandAudit.correctionNoRecord'), 'error')
+      return
+    }
+    setCorrMentioned(row.brand_mentioned)
+    setCorrCited(row.brand_cited)
+    setCorrSentiment(row.sentiment)
+    setCorrPosition(row.brand_position)
+    setCorrReason('')
+    setCorrTarget({ index, row })
+  }
+
+  // 提交人工修正：调用 admin API，成功后用重算后的报告替换当前展示。
+  const applyCorrection = async () => {
+    if (!report || !corrTarget) return
+    if (!corrReason.trim()) return showToast(t('brandAudit.correctionReasonRequired'), 'error')
+    const changed =
+      corrMentioned !== undefined ||
+      corrCited !== undefined ||
+      corrSentiment !== undefined ||
+      corrPosition !== undefined
+    if (!changed) return showToast(t('brandAudit.correctionNoChange'), 'error')
+    setSubmitting(true)
+    try {
+      const body: any = {
+        record_id: report.record_id,
+        brand_name: report.brand_name,
+        index: corrTarget.index,
+        reason: corrReason.trim()
+      }
+      if (corrMentioned !== undefined) body.mentioned = corrMentioned
+      if (corrCited !== undefined) body.cited = corrCited
+      if (corrSentiment !== undefined) body.sentiment = corrSentiment
+      if (corrPosition !== undefined) body.position = corrPosition
+      const r = await api.auditCorrection(body)
+      setReport(r)
+      setLastReport(r)
+      setCorrTarget(null)
+      setCorrReason('')
+      showToast(t('brandAudit.correctionSuccess'), 'success')
+    } catch (e: any) {
+      showToast(e.message || t('brandAudit.correctionNoChange'), 'error')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -132,7 +191,19 @@ const BrandAudit: React.FC = () => {
           <Card
             title={
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{report.brand_name}</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  {report.brand_name}
+                  {report.corrected && (
+                    <span style={{
+                      marginLeft: 10, fontSize: 11, fontWeight: 600, verticalAlign: 'middle',
+                      padding: '3px 10px', borderRadius: 999,
+                      background: 'var(--status-warning-bg)', color: 'var(--status-warning)'
+                    }}>
+                      ✏️ {t('brandAudit.correctedBadge')} {report.corrected.corrected_count} 条
+                      {report.corrected.last_corrected_by ? `（${report.corrected.last_corrected_by}）` : ''}
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                   {report.industry && report.industry + ' · '}{report.category} · 生成于 {new Date(report.generated_at).toLocaleString()}
                 </div>
@@ -374,7 +445,7 @@ const BrandAudit: React.FC = () => {
                   rowKey={(r: any) => r.prompt + '|' + r.engine}
                   pagination
                   pageSize={5}
-                  dataSource={(report.results || []).map(r => ({ ...r, sent: r.sentiment })) as any}
+                  dataSource={(report.results || []).map((r, i) => ({ ...r, sent: r.sentiment, __idx: i })) as any}
                   columns={[
                     { key: 'engine', title: t('brandAudit.engine'), dataIndex: 'engine' as any, width: 100 },
                     { key: 'prompt', title: t('brandAudit.prompt'), dataIndex: 'prompt' as any },
@@ -409,6 +480,27 @@ const BrandAudit: React.FC = () => {
                         }}>
                           {t(`brandAudit.sentiments.${r.sentiment}`)}
                         </span>
+                      )
+                    },
+                    {
+                      key: 'correction',
+                      title: '✏️ ' + t('brandAudit.correction'),
+                      align: 'center',
+                      width: 130,
+                      render: (r: any) => (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                          {r.correction && (
+                            <span style={{
+                              fontSize: 11, padding: '2px 8px', borderRadius: 999,
+                              background: 'var(--status-warning-bg)', color: 'var(--status-warning)'
+                            }}>
+                              {t('brandAudit.correctedBadge')}
+                            </span>
+                          )}
+                          <Button size="xs" variant="secondary" onClick={() => openCorrection(r, r.__idx)}>
+                            ✏️ {t('brandAudit.correction')}
+                          </Button>
+                        </div>
                       )
                     }
                   ]}
@@ -449,6 +541,141 @@ const BrandAudit: React.FC = () => {
           </Tabs>
         </div>
       )}
+
+      {/* 人工修正弹窗 */}
+      <Modal
+        open={!!corrTarget}
+        onClose={() => !submitting && setCorrTarget(null)}
+        title={
+          <span>
+            ✏️ {t('brandAudit.correction')}
+            {corrTarget && (
+              <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 400, marginLeft: 8 }}>
+                {corrTarget.row.engine} · {corrTarget.row.prompt}
+              </span>
+            )}
+          </span>
+        }
+        description={t('brandAudit.correctionHint')}
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button size="sm" variant="secondary" disabled={submitting} onClick={() => setCorrTarget(null)}>
+              {t('brandAudit.correctionCancel')}
+            </Button>
+            <Button size="sm" variant="primary" loading={submitting} onClick={applyCorrection}>
+              {t('brandAudit.correctionApply')}
+            </Button>
+          </div>
+        }
+      >
+        {corrTarget && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* 原判定 → 修正后值 */}
+            <div style={{
+              fontSize: 12, padding: '10px 12px', borderRadius: 8,
+              background: 'var(--bg-tertiary)', color: 'var(--text-secondary)'
+            }}>
+              <div style={{ marginBottom: 4, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {t('brandAudit.correctionOriginal')}
+              </div>
+              <div>
+                提及 {corrTarget.row.brand_mentioned ? `✓ 是（第${corrTarget.row.brand_position}段）` : '— 否'} ·
+                引用 {corrTarget.row.brand_cited ? '✓ 是' : '— 否'} ·
+                情感 {t(`brandAudit.sentiments.${corrTarget.row.sentiment}`)}
+              </div>
+            </div>
+
+            {/* 品牌提及 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {t('brandAudit.correctionMentioned')}
+              </span>
+              {[true, false].map(v => (
+                <Button
+                  key={String(v)}
+                  size="xs"
+                  variant={corrMentioned === v ? 'primary' : 'secondary'}
+                  onClick={() => setCorrMentioned(v)}
+                >
+                  {v ? '✓ 是' : '— 否'}
+                </Button>
+              ))}
+            </div>
+
+            {/* 品牌引用 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {t('brandAudit.correctionCited')}
+              </span>
+              {[true, false].map(v => (
+                <Button
+                  key={String(v)}
+                  size="xs"
+                  variant={corrCited === v ? 'primary' : 'secondary'}
+                  onClick={() => setCorrCited(v)}
+                >
+                  {v ? '✓ 引用' : '— 未引用'}
+                </Button>
+              ))}
+            </div>
+
+            {/* 情感 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {t('brandAudit.sentiment')}
+              </span>
+              {(['positive', 'neutral', 'negative'] as const).map(v => (
+                <Button
+                  key={v}
+                  size="xs"
+                  variant={corrSentiment === v ? 'primary' : 'secondary'}
+                  onClick={() => setCorrSentiment(v)}
+                >
+                  {t(`brandAudit.sentiments.${v}`)}
+                </Button>
+              ))}
+            </div>
+
+            {/* 提及位置 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ width: 110, fontSize: 13, color: 'var(--text-secondary)' }}>
+                {t('brandAudit.correctionPosition')}
+              </span>
+              <input
+                type="number"
+                min={0}
+                value={corrPosition ?? 0}
+                onChange={e => setCorrPosition(parseInt(e.target.value || '0', 10))}
+                style={{
+                  width: 90, padding: '6px 10px', borderRadius: 8, fontSize: 13,
+                  border: '1px solid var(--border-primary)',
+                  background: 'var(--surface-primary)', color: 'var(--text-primary)'
+                }}
+              />
+            </div>
+
+            {/* 修正原因 */}
+            <div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                {t('brandAudit.correctionReason')} <span style={{ color: 'var(--status-error)' }}>*</span>
+              </div>
+              <textarea
+                value={corrReason}
+                onChange={e => setCorrReason(e.target.value)}
+                placeholder={t('brandAudit.correctionReasonPlaceholder')}
+                rows={3}
+                style={{
+                  width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 13, resize: 'vertical',
+                  border: '1px solid var(--border-primary)',
+                  background: 'var(--surface-primary)', color: 'var(--text-primary)',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

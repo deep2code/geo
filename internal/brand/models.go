@@ -157,6 +157,48 @@ type PromptResult struct {
 	// 一致性：MentionVotes/Samples（0-1），1=多次采样判定完全一致。
 	// 一致性低（如 0.5）说明该查询结果不稳定，分数置信度低。
 	Consistency float64 `json:"consistency,omitempty"`
+
+	// 人工修正记录：非 nil 表示该条判定已被运营人员人工修正。
+	// 修正后报告标注"已人工修正"，原判定保留在 Correction.Prev* 供审计追溯。
+	Correction *ResultCorrection `json:"correction,omitempty"`
+}
+
+// ResultCorrection 单条判定的人工修正留痕。
+//
+// 运营人员对自动判定的结果（提及/引用/情感/位置）不满时，可人工覆盖，
+// 系统记录：谁、何时、为什么、原值是什么。原值 + 修正值双保留，保证审计可追溯，
+// 且修正后报告聚合（BVS/提及率/行动建议）会原地重算。
+type ResultCorrection struct {
+	// 修正人（账号体系启用时为 JWT 中的用户邮箱，否则为 API 传入值或 "admin"）。
+	CorrectedBy string `json:"corrected_by"`
+	// 修正时间。
+	CorrectedAt time.Time `json:"corrected_at"`
+	// 修正原因（必填，审计留痕）。
+	Reason string `json:"reason"`
+
+	// 原值（自动判定的原始结果，修正前）。
+	PrevMentioned bool   `json:"prev_mentioned"`
+	PrevCited     bool   `json:"prev_cited"`
+	PrevSentiment string `json:"prev_sentiment"`
+	PrevPosition  int    `json:"prev_position"`
+
+	// 修正后的值（与 PromptResult 主字段一致，冗余便于前端直接展示）。
+	Mentioned bool   `json:"mentioned"`
+	Cited     bool   `json:"cited"`
+	Sentiment string `json:"sentiment"`
+	Position  int    `json:"position"`
+}
+
+// CorrectionInfo 报告级人工修正元信息（存在修正时非 nil）。
+type CorrectionInfo struct {
+	// 被人工修正的结果条数。
+	CorrectedCount int `json:"corrected_count"`
+	// 最近一次修正人。
+	LastCorrectedBy string `json:"last_corrected_by,omitempty"`
+	// 最近一次修正时间。
+	LastCorrectedAt time.Time `json:"last_corrected_at,omitempty"`
+	// 最近一次修正原因。
+	LastReason string `json:"last_reason,omitempty"`
 }
 
 // CompetitorMention 竞争对手提及。
@@ -258,6 +300,13 @@ type VisibilityReport struct {
 	SeverityIssues []HealthIssue `json:"severity_issues,omitempty"`
 	// 业务类型联动结果（行业检测、权重覆盖、策略调整、运营建议）。
 	VerticalLink *VerticalLink `json:"vertical_link,omitempty"`
+	// 人工修正元信息：存在被修正的结果时非 nil，报告标注"已人工修正"。
+	Corrected *CorrectionInfo `json:"corrected,omitempty"`
+	// 审计输入画像快照（Audit 时写入；供人工修正后原地重算与报告复现）。
+	// 旧记录可能缺失，此时重算会从报告字段反推最小画像。
+	ProfileSnapshot *BrandProfile `json:"profile_snapshot,omitempty"`
+	// 本次审计在历史库中的记录 ID（落库后回填；供人工修正接口定位记录）。
+	RecordID int64 `json:"record_id,omitempty"`
 	// 原始检测结果。
 	Results []PromptResult `json:"results,omitempty"`
 }

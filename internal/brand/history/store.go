@@ -81,6 +81,9 @@ type Store interface {
 	LatestForBrands(ctx context.Context, brandNames []string) ([]Record, error)
 	// GetByID 按 ID 取单条记录。
 	GetByID(ctx context.Context, id int64) (*Record, error)
+	// UpdateReport 原地更新一条记录的报告快照与标量（人工修正后重算落库用）。
+	// 只更新评分/计数/报告 JSON 等可修正字段；workspace_id/brand_name/generated_at 保留原值。
+	UpdateReport(ctx context.Context, id int64, r Record) error
 	// Brands 列出所有品牌名（用于下拉框）。
 	Brands(ctx context.Context) ([]string, error)
 	// Stats 返回历史库统计信息。

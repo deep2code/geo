@@ -287,6 +287,30 @@ func (d *mysqlStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 	return &r, nil
 }
 
+// UpdateReport 原地更新记录的报告快照与标量（人工修正后重算落库）。
+func (d *mysqlStore) UpdateReport(ctx context.Context, id int64, r Record) error {
+	if d == nil || d.db == nil {
+		return nil
+	}
+	_, err := d.db.ExecContext(ctx, `UPDATE audit_history SET
+		score=?, grade=?, tier=?, entity_completeness=?,
+		mention_rate=?, citation_rate=?, share_of_voice=?, citation_position=?,
+		sentiment=?, entity_recognition=?,
+		content_gaps_count=?, competitor_count=?, negative_count=?, action_count=?,
+		report_json=?
+		WHERE id=?`,
+		r.Score, r.Grade, r.Tier, r.EntityCompleteness,
+		r.MentionRate, r.CitationRate, r.ShareOfVoice, r.CitationPosition,
+		r.Sentiment, r.EntityRecognition,
+		r.ContentGaps, r.CompetitorCount, r.NegativeCount, r.ActionCount,
+		r.ReportJSON, id,
+	)
+	if err != nil {
+		return fmt.Errorf("history/mysql: 更新记录 %d 失败: %w", id, err)
+	}
+	return nil
+}
+
 func (d *mysqlStore) Brands(ctx context.Context) ([]string, error) {
 	if d == nil || d.db == nil {
 		return nil, nil

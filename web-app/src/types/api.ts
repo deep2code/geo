@@ -163,6 +163,32 @@ export interface PromptResult {
   competitor_mentions?: CompetitorMention[]
   duration?: number
   error?: string
+  samples?: number
+  consistency?: number
+  correction?: ResultCorrection
+}
+
+// 人工修正留痕（后端 brand.ResultCorrection 的镜像）。
+export interface ResultCorrection {
+  corrected_by: string
+  corrected_at: string
+  reason: string
+  prev_mentioned: boolean
+  prev_cited: boolean
+  prev_sentiment: string
+  prev_position: number
+  mentioned: boolean
+  cited: boolean
+  sentiment: string
+  position: number
+}
+
+// 报告级人工修正元信息。
+export interface CorrectionInfo {
+  corrected_count: number
+  last_corrected_by?: string
+  last_corrected_at?: string
+  last_reason?: string
 }
 
 export interface EngineStats {
@@ -243,6 +269,9 @@ export interface VisibilityReport {
   negative_mentions?: NegativeMention[]
   actions: ActionItem[]
   results?: PromptResult[]
+  // 人工修正：报告级元信息 + 历史记录 ID（定位修正目标）。
+  corrected?: CorrectionInfo
+  record_id?: number
 }
 
 export interface AutocompleteCandidate {

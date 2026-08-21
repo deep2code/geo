@@ -617,6 +617,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
 	s.mux.HandleFunc("/api/v1/admin/cost", s.handleAdminCost) // LLM 成本仪表盘
 	s.mux.HandleFunc("/api/v1/admin/selfcheck", s.handleAdminSelfCheck) // 系统自检报告
+	// 人工修正审计判定（运营纠错，审计留痕 + 报告重算）
+	s.mux.HandleFunc("/api/v1/admin/audit/correction", s.handleAuditCorrection)
 	// 系统设置（DB 变量存储：管理后台可改）
 	s.mux.HandleFunc("/api/v1/admin/settings", s.handleAdminSettingsList)     // GET 列出 / PUT 更新
 	s.mux.HandleFunc("/api/v1/admin/settings/reset", s.handleAdminSettingsReset) // POST 恢复默认

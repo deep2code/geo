@@ -234,6 +234,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(profile)
     }),
+  // 人工修正单条判定并重算报告（管理后台权限，审计留痕）。
+  auditCorrection: (body: {
+    record_id: number
+    brand_name: string
+    index: number
+    mentioned?: boolean
+    cited?: boolean
+    sentiment?: 'positive' | 'neutral' | 'negative'
+    position?: number
+    reason: string
+  }) =>
+    request<VisibilityReport>('/admin/audit/correction', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    }),
   brandAutocomplete: (brand_name: string) =>
     request<AutocompleteCandidate>('/brand/autocomplete', {
       method: 'POST',
