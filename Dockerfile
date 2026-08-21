@@ -22,7 +22,9 @@ ENV npm_config_registry=$NPM_REGISTRY
 
 # 仅拷贝 package 定义，充分利用 layer 缓存
 COPY web-app/package.json web-app/package-lock.json ./
-RUN npm ci
+# cache mount：npm 缓存持久化，依赖未变时下载走缓存
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # 拷贝源码并构建（产物在 dist/ 目录，将被 Go go:embed 读取）
 COPY web-app/ ./
@@ -46,9 +48,10 @@ ENV GOSUMDB=$GOSUMDB_URL
 
 WORKDIR /build
 
-# 依赖缓存层：先拷贝 go.mod/go.sum 再下载
+# 依赖缓存层：先拷贝 go.mod/go.sum 再下载（cache mount 保留模块缓存，依赖未变不重下）
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # 拷贝源码
 COPY . .
@@ -59,7 +62,11 @@ COPY . .
 COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 
 # 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用；GOOS/GOARCH 来自 buildx）
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+# cache mount：Go 编译缓存（GOCACHE）与模块缓存持久化——未变化的包直接命中缓存，
+# 避免每次构建全量重编（首次 ~2.5min，后续小改动仅重编变化包，通常数秒~数十秒）
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
     -o /out/geo \

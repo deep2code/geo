@@ -1,0 +1,55 @@
+# Dockerfile.local — 本机交叉编译产物打包（配合 scripts/build-local.sh）
+#
+# 用法：
+#   1) bash scripts/build-local.sh amd64,arm64   # 本机编译（增量秒级）
+#   2) docker buildx build --platform linux/amd64,linux/arm64 \
+#        -f Dockerfile.local -t <image> .        # 仅打包（秒级）
+#
+# 适用：本地/服务器发布（本机有 go+npm 工具链）。CI 或无本机工具链时
+# 请使用主 Dockerfile（容器内全量构建，已带 cache mount 加速）。
+# 注意：buildx 多平台构建时 TARGETARCH 自动注入（amd64/arm64...），
+# 必须先用 build-local.sh 编译对应架构的产物。
+
+# syntax=docker/dockerfile:1
+
+FROM alpine:3.20
+
+LABEL org.opencontainers.image.title="MyGEO" \
+      org.opencontainers.image.description="生成式引擎优化系统 (Generative Engine Optimization)" \
+      org.opencontainers.image.source="https://github.com/deep2code/geo" \
+      org.opencontainers.image.licenses="MIT"
+
+# 依赖：ca-certificates (HTTPS)、tzdata (时区)、curl (HEALTHCHECK)、libcap (低端口)
+RUN apk add --no-cache ca-certificates tzdata curl libcap && \
+    update-ca-certificates && \
+    rm -rf /var/cache/apk/*
+
+# 创建非 root 用户（最小权限原则）
+RUN addgroup -S geo && adduser -S -G geo geo
+
+WORKDIR /app
+
+# 拷贝本机交叉编译产物（buildx 多平台时 TARGETARCH 自动匹配 build/geo-linux-<arch>）
+ARG TARGETARCH=amd64
+COPY build/geo-linux-${TARGETARCH} /app/geo
+RUN setcap cap_net_bind_service=+ep /app/geo && \
+    chown geo:geo /app/geo && \
+    chmod 0755 /app/geo
+
+# 切换非 root 用户
+USER geo
+
+# 数据持久化：所有模块使用外部 MySQL 8.0+（GEO_MYSQL_DSN），本地不存数据文件。
+# 日志/临时文件写入容器可写层（不挂 VOLUME，重启即清；需要持久化日志请用
+# docker 日志驱动/外部采集）。
+ENV GEO_DATA_DIR=/data/geo
+
+# 暴露 HTTP 端口
+EXPOSE 8080
+
+# 健康检查：使用 curl（alpine:3.20 默认自带），验证 /api/v1/health 端点返回
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD curl -fsS --max-time 2 http://localhost:8080/api/v1/health >/dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["/app/geo"]
+CMD ["--port", "8080"]
