@@ -49,6 +49,11 @@
 #
 set -euo pipefail
 
+# 关闭 buildx 默认附加的 provenance/SBOM 空清单(application/vnd.oci.empty.v1+json)。
+# 阿里云 ACR 个人版不识别该空 manifest，推送会报
+# "unknown manifest class for application/vnd.oci.empty.v1+json"；关闭后推送正常。
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+
 # ===== 配置（环境变量可覆盖） =====
 # 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见，推一个另一个立即可见）。
 # 规范镜像名（容器运行 / compose / 1Panel 引用）= 内网 VPC 地址，让面板显示为内网地址。
