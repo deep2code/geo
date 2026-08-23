@@ -6,7 +6,7 @@
 //   - 写入：仅导入时批量 INSERT，日常查询为只读
 //
 // 后端：
-//   - MySQL（默认）—— InnoDB + FULLTEXT(ngram)，千万级 Top20 ≈ 50-100ms
+//   - MariaDB（默认）—— 主存储；中文全文检索走外部 Meilisearch（MariaDB 不支持 MySQL ngram），千万级 Top20 毫秒级
 //   - DuckDB（生产推荐，需 libduckdb）—— 列式存储 + 并行执行，1000 万级全表聚合更快
 package offlinedb
 
@@ -41,6 +41,9 @@ type OfflineStore interface {
 
 	// Clear 清空 companies 表（连同索引），回收磁盘空间。
 	Clear(ctx context.Context) error
+
+	// Reindex 全量重建外部 Meilisearch 索引（仅在启用 Meilisearch 时有效，未启用为空操作）。
+	Reindex(ctx context.Context) error
 }
 
 // --- 兼容别名：保持对外 API 不变 ---

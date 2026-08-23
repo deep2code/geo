@@ -62,10 +62,10 @@ graph TB
         DIS["🔍 关键词发现引擎<br/>Discover → Report"]
     end
 
-    subgraph 数据层["💾 统一 MySQL 数据层"]
-        DB1["离线工商库<br/>MySQL 8.0<br/>千万级企业 FULLTEXT(ngram)"]
-        DB2["审计历史库<br/>MySQL 8.0<br/>时序 + JSON快照"]
-        DB3["China-Check / Auth 缓存<br/>MySQL KV 表 + TTL<br/>可无缝切换 Redis"]
+    subgraph 数据层["💾 统一 MariaDB 数据层"]
+        DB1["离线工商库<br/>MariaDB 10.x<br/>千万级企业 + 外部 Meilisearch 中文检索"]
+        DB2["审计历史库<br/>MariaDB 10.x<br/>时序 + JSON快照"]
+        DB3["China-Check / Auth 缓存<br/>MariaDB KV 表 + TTL<br/>可无缝切换 Redis"]
         KB["📚 SinoFacts 知识库<br/>383家中国软件企业"]
     end
 
@@ -172,14 +172,14 @@ graph TB
 
 ```mermaid
 mindmap
-  root((数据层选型 · 统一 MySQL))
+  root((数据层选型 · 统一 MariaDB))
     离线工商库
       数据特征
         千万级行
-        FULLTEXT(ngram) 中文全文
+        外部 Meilisearch 中文全文
         只读+批量导入
       后端
-        MySQL 8.0 InnoDB
+        MariaDB InnoDB
         UTF8MB4 中文友好
     审计历史库
       数据特征
@@ -187,7 +187,7 @@ mindmap
         MEDIUMTEXT JSON 快照
         品牌+时间范围查询
       后端
-        MySQL 8.0
+        MariaDB 10.x
         复合时序索引
     China-Check / Auth 缓存
       数据特征
@@ -195,7 +195,7 @@ mindmap
         TTL 过期
         高频读低频写
       默认后端
-        MySQL KV 表
+        MariaDB KV 表
         MEDIUMBLOB + expire_at 索引
       可选后端
         Redis
@@ -204,12 +204,12 @@ mindmap
 
 | 模块 | 数据特征 | 🛢 生产级后端（默认） | 🚀 可选分布式 | 环境变量 |
 |---|---|---|---|---|
-| 离线工商库 | 千万级行 + 中文全文检索 | MySQL 8.0 FULLTEXT(ngram) | — | `GEO_MYSQL_DSN` |
-| 审计历史库 | 时序写入 + JSON 快照 | MySQL 8.0 复合索引 | — | `GEO_MYSQL_DSN` |
-| CC 查询缓存 | K/V + TTL + 高频读 | MySQL KV 表 | — | `GEO_MYSQL_DSN` |
-| 账号 / 会话 | 用户 + 工作区 + 刷新令牌 | MySQL 8.0 | — | `GEO_MYSQL_DSN` |
+| 离线工商库 | 千万级行 + 中文全文检索 | MariaDB 10.x + 外部 Meilisearch（中文全文） | — | `GEO_MYSQL_DSN` |
+| 审计历史库 | 时序写入 + JSON 快照 | MariaDB 10.x（兼容 MySQL 8.0） | — | `GEO_MYSQL_DSN` |
+| CC 查询缓存 | K/V + TTL + 高频读 | MariaDB KV 表（兼容 MySQL） | — | `GEO_MYSQL_DSN` |
+| 账号 / 会话 | 用户 + 工作区 + 刷新令牌 | MariaDB 10.x（兼容 MySQL 8.0） | — | `GEO_MYSQL_DSN` |
 
-> **前置依赖**：首次部署需要一个可访问的 MySQL 8.0+ 实例（docker / 云 RDS / 本地服务均可），账号需具备 `CREATE TABLE / INDEX / DML` 权限。
+> **前置依赖**：首次部署需要一个可访问的 MariaDB 10.6+ 实例（docker / 云 RDS / 本地服务均可；ngram 依赖已移除，MySQL 8.0+ 同样可跑），账号需具备 `CREATE TABLE / INDEX / DML` 权限。
 
 ---
 
@@ -229,7 +229,7 @@ flowchart LR
     style E fill:#fce7f3,stroke:#db2777
 ```
 
-### 安装方式
+### 安装方式（二进制）
 
 ```bash
 # 方式一：Go install
@@ -238,17 +238,136 @@ go install ./cmd/geo
 # 方式二：Makefile
 make build    # 产物 bin/geo
 
-# 方式三：Docker（构建 + 运行单容器）
-docker build -t geo:latest .   # 或 make docker-build
-docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
-# 注意：.env 为环境变量文件（cp .env.example .env 后按需编辑）：
-#       引导类（GEO_MYSQL_DSN / GEO_AUTH_ENABLED / GEO_JWT_SECRET / GEO_ADMIN_* / GEO_REDIS_ADDR）
-#       走环境变量；其余运行参数只读 DB（app_settings），登录后在「系统设置」修改。
-#       数据库需先执行 deploy/initdb/schema.sql 建库建表。
-
 # 二进制直接运行（无 Docker 亦可）
 bin/geo   # 或 go run ./cmd/geo（.env 同目录自动加载）
 ```
+
+> 首次运行前需先初始化数据库与队列：把 `deploy/initdb/schema.sql` 导入你的 MariaDB/MySQL 实例
+> （`mysql -h<host> -u<root> -p < deploy/initdb/schema.sql`），并确保 Redis 可达。
+> 引导类变量（`GEO_MYSQL_DSN` / `GEO_REDIS_ADDR` / `GEO_AUTH_ENABLED` / `GEO_JWT_SECRET` / `GEO_ADMIN_*`）
+> 走环境变量；其余运行参数只读 DB（app_settings），启动后到「系统设置」修改。
+
+### 🐳 容器运行方式
+
+提供两种容器化运行方式，均假设已 `cp .env.example .env` 并填写。**数据库（MariaDB/MySQL）与 Redis 需自行准备**（应用不会自动建库），首次启动前请执行 `deploy/initdb/schema.sql` 初始化；工商中文检索可接外部 Meilisearch（可选）。
+
+#### 方式 A：Dockerfile 单容器（自带构建）
+
+```bash
+# 1) 先构建基础镜像（预装 Go/Node 与依赖，日常增量构建很快；仅需一次）
+docker build -f Dockerfile.base -t geo-build-base:latest .
+
+# 2) 构建应用镜像（Dockerfile 两阶段会顺带构建前端 SPA 并 go:embed 进二进制）
+docker build -t geo:latest .
+
+# 3) 运行（--env-file 注入全部引导变量；端口 8080）
+docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
+```
+
+- 若使用外部已有的 MariaDB/MySQL 与 Redis，把 `.env` 里的 `GEO_MYSQL_DSN` / `GEO_REDIS_ADDR` 指向它们即可。
+- 工商中文检索可选接外部 Meilisearch：在 `.env` 填 `GEO_MEILISEARCH_URL` / `GEO_MEILISEARCH_API_KEY`（见下方「可选：外接 Meilisearch」）；留空则自动降级为 `LIKE` 模糊匹配。
+
+#### 方式 B：Docker Compose（一键拉起 geo + 数据库 + Redis + Meilisearch）
+
+将下方内容保存为 `docker-compose.yml`（仓库未内置，按需自取），首次先构建基础镜像，再启动：
+
+```bash
+docker build -f Dockerfile.base -t geo-build-base:latest .   # compose 的 geo 构建依赖此基础镜像
+docker compose up -d
+```
+
+```yaml
+services:
+  mariadb:
+    image: mariadb:11
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: geoRootPass
+    volumes:
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro   # 首次启动自动执行 schema.sql 建库建表
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    environment:
+      MEILI_MASTER_KEY: "请改成一段强随机串（openssl rand -hex 16）"
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes: ["meili-data:/meili_data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  geo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    # compose 内用服务名覆盖连接地址（.env 里的 127.0.0.1 会被这里的 environment 覆盖）
+    environment:
+      GEO_MYSQL_DSN: "geo:geoPass@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
+      GEO_REDIS_ADDR: "redis:6379"
+      GEO_MEILISEARCH_URL: "http://meilisearch:7700"
+      GEO_MEILISEARCH_API_KEY: "请改成与上方 MEILI_MASTER_KEY 一致的强随机串"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  mariadb-data:
+  redis-data:
+  meili-data:
+```
+
+- `mariadb` 挂载 `./deploy/initdb` 到 `/docker-entrypoint-initdb.d`，数据卷首次初始化时由 MariaDB 官方镜像以 root 自动执行 `schema.sql`，**无需手动建库**。
+- `geo` 通过 `environment` 把连接地址改写成 compose 服务名（`mariadb` / `redis` / `meilisearch`），因此 `.env` 里保持 `127.0.0.1` 也无妨；若你更想统一改 `.env`，把其中的 host 改成对应服务名亦可。
+- Meilisearch 可选：不接则删掉 `geo` 里的 `GEO_MEILISEARCH_URL` / `GEO_MEILISEARCH_API_KEY` 两行，工商搜索自动降级 `LIKE`。
+
+
+#### 可选：外接 Meilisearch（工商中文检索）
+
+工商库中文全文检索默认走外部 Meilisearch；不配置则 GEO 自动降级为 `LIKE` 模糊匹配（功能可用，中文相关性/性能较弱）。单独起一个 Meilisearch 容器即可（方式 A 用户推荐）：
+
+```bash
+docker run -d --name meilisearch --restart always \
+  -p 7700:7700 \
+  -v meili-data:/meili_data \
+  -e MEILI_MASTER_KEY='请改成一段强随机串（openssl rand -hex 16）' \
+  -e MEILI_ENV=production \
+  -e MEILI_NO_ANALYTICS=true \
+  getmeili/meilisearch:latest
+```
+
+然后在 `.env` 填写：
+
+```
+GEO_MEILISEARCH_URL=http://127.0.0.1:7700      # 同主机用 127.0.0.1；compose 内用 http://meilisearch:7700
+GEO_MEILISEARCH_API_KEY=与上方 MEILI_MASTER_KEY 一致
+```
+
+GEO 启动时自动创建 `companies` 索引并配置可搜索字段（name / business_scope / legal_representative / address）；首次导入工商数据后会自动建立检索索引。
 
 ### Web 前端构建（Vite + React + go:embed）
 
@@ -266,7 +385,7 @@ cd .. && make build    # 或 go build ./cmd/geo
 
 | 场景 | web/dist 内容 | 行为 |
 |---|---|---|
-| 生产构建 | `npm run build` 产物 | ✅ 完整 SPA 界面（10+ 页面，PWA 离线，i18n ZH/EN/JA） |
+| 生产构建 | `npm run build` 产物 | ✅ 完整 SPA 界面（10+ 页面，i18n ZH/EN/JA） |
 | 开发/CI 编译 | 仅 `.gitkeep` | ⚠️ 降级使用简易页面 |
 
 ### 最小可用示例
@@ -302,7 +421,7 @@ cd .. && make build    # 或 go build ./cmd/geo
 > 原 `geo optimize / score / analyze / serve / brand* / mcp-server / readiness / discover / drift / rules / evaluate / cost` 等**全部子命令已移除**，统一收敛到上述 Web 界面。MCP Server 不再作为独立命令，而是**随 Web 服务一起启动**（可用 `GEO_MCP_PORT` 改端口、`GEO_MCP_API_KEY` 设鉴权）。
 
 > **三类诊断能力（前端「系统自检」页 / `GET /api/v1/admin/selfcheck`）**
-> - **关键业务健康检查**：评分 / 分析 / 优化管线、LLM 改写（端到端，需配置 Provider）、三个 MySQL 模块（离线工商库 / 审计历史 / China-Check 缓存）TCP 可达性。
+> - **关键业务健康检查**：评分 / 分析 / 优化管线、LLM 改写（端到端，需配置 Provider）、三个数据库模块（离线工商库 / 审计历史 / China-Check 缓存）TCP 可达性。
 > - **属性/参数/配置校验**：日志级别与格式、服务端口、LLM 预算、鉴权与弱密钥、管理员密钥、LLM/引擎 Key、各 DSN 格式、白标主题色、定时审计配置、外部规则集合法性。
 > - **系统自检**：运行时快照（Go 版本 / OS / CPU / goroutine / 内存）+ 上述两类聚合 + 整体健康等级。
 >
@@ -314,7 +433,7 @@ cd .. && make build    # 或 go build ./cmd/geo
 
 ```mermaid
 flowchart TD
-    START([用户输入关键词<br/>如「短视频」]) --> 1["🔎 双重搜索<br/>离线工商库 FULLTEXT(ngram) + SinoFacts 知识库"]
+    START([用户输入关键词<br/>如「短视频」]) --> 1["🔎 双重搜索<br/>离线工商库 Meilisearch 中文检索 + SinoFacts 知识库"]
     1 --> 2{"找到多少匹配？"}
     2 -->|"1 个"| 3["✅ 直接选中"]
     2 -->|"多个"| 4["📋 展示候选列表<br/>用户点击选择"]
@@ -463,13 +582,13 @@ tree
 
 ```mermaid
 flowchart TD
-    A["统一 MySQL 部署原则"] --> A1["go:embed 单文件前端"]
+    A["统一数据库部署原则"] --> A1["go:embed 单文件前端"]
     A --> A2["纯 Go MySQL 驱动<br/>go-sql-driver/mysql"]
-    A --> A3["编译后单二进制 + 外部 MySQL 8.0"]
+    A --> A3["编译后单二进制 + 外部 MariaDB/MySQL"]
 
     B["模块化接口不变"] --> B1["三层抽象接口<br/>Store/OfflineStore/CacheStore"]
     B --> B2["环境变量配置 MySQL DSN"]
-    B --> B3["Schema 自动初始化<br/>首次启动建表+索引"]
+    B --> B3["Schema 由 schema.sql 负责<br/>应用内零建表迁移"]
 
     C["数据优先级策略"] --> C1["① 工商实时"]
     C --> C2["② 离线历史"]

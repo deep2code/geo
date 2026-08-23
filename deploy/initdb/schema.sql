@@ -291,7 +291,9 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE UNIQUE INDEX idx_companies_code ON companies(code);
 CREATE INDEX idx_companies_province ON companies(province);
 CREATE INDEX idx_companies_city ON companies(city);
-CREATE FULLTEXT INDEX ft_companies_name_scope ON companies(name, business_scope, legal_rep, address) WITH PARSER ngram;
+-- 中文全文检索已迁移至外部 Meilisearch（MariaDB 不支持 MySQL 的 ngram 解析器）。
+-- companies 表仅作主存储（单一事实来源），搜索经 GEO_MEILISEARCH_URL 指向的
+-- Meilisearch 完成；本表不再建全文索引，普通索引仅供 Stats/Provinces 聚合查询使用。
 
 -- ############################################################################
 -- 6) 商业化增强：AI 引荐流量 / ROI 归因（P0-2）

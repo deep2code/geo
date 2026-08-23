@@ -815,7 +815,7 @@ func (s *Server) handleOfflineDBSearch(w http.ResponseWriter, r *http.Request) {
 		"count":    len(res),
 		"took_ms":  time.Since(start).Milliseconds(),
 		"result":   res,
-		"source":   "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MySQL + FULLTEXT(ngram)",
+		"source":   "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MariaDB + Meilisearch 中文全文检索",
 	})
 }
 

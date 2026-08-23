@@ -1,9 +1,10 @@
-// Package offlinedb 中国大陆工商注册信息离线 MySQL 数据库。
+// Package offlinedb 中国大陆工商注册信息离线存储。
 //
 // 数据源：https://github.com/guichong/-/tree/json (1978-2019，1000万+ 条，10 字段)
-// 存储：MySQL + FULLTEXT(ngram 中文分词) 全文索引，
-//
-//	1000 万条数据下，按品牌/公司名模糊搜索 Top 20 命中 < 50ms。
+// 存储：MariaDB（单库主存储，单一事实来源）+ 外部 Meilisearch 中文全文检索。
+//   - companies 表仅存原始数据，不再建全文索引（MariaDB 不支持 MySQL 的 ngram 解析器）；
+//   - 中文模糊搜索走 Meilisearch（GEO_MEILISEARCH_URL），不可用时降级 MariaDB LIKE；
+//   - 1000 万条数据下，Meilisearch 中文检索 Top 20 通常在毫秒级。
 package offlinedb
 
 import (
@@ -13,13 +14,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"my-geo/internal/dbprovider"
 
@@ -55,15 +56,17 @@ type Stats struct {
 	Provinces map[string]int64 `json:"provinces,omitempty"`
 }
 
-// mysqlStore MySQL 实现的 OfflineStore。
+// mysqlStore MySQL/MariaDB 实现的 OfflineStore。
 type mysqlStore struct {
-	path string
-	db   *sql.DB
+	path  string
+	db    *sql.DB
+	meili *meiliClient // nil 表示未启用 Meilisearch，Search 降级 LIKE
 }
 
-// Open 打开/创建 MySQL 离线工商数据库并完成 schema 初始化。
-// 保持原签名兼容：path 若非空视为 MySQL DSN（兼容）；否则读 env GEO_MYSQL_DSN，缺省为内置默认。
-func Open(path string) (OfflineStore, error) {
+// Open 打开 MariaDB 离线工商库并完成 schema 初始化（表结构由 deploy/initdb 初始化）。
+// path 非空视为 DSN，否则读 env GEO_MYSQL_DSN，缺省为内置默认。
+// opts 可选；WithMeili 启用 Meilisearch 中文全文检索（URL 为空则忽略，Search 降级 LIKE）。
+func Open(path string, opts ...OpenOption) (OfflineStore, error) {
 	dsn := path
 	if dsn == "" {
 		dsn = os.Getenv("GEO_MYSQL_DSN")
@@ -89,8 +92,30 @@ func Open(path string) (OfflineStore, error) {
 		return nil, fmt.Errorf("初始化 MySQL 会话变量失败: %w", err)
 	}
 
-	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
-	return &mysqlStore{path: dsn, db: sqldb}, nil
+	store := &mysqlStore{path: dsn, db: sqldb}
+	for _, o := range opts {
+		o(store)
+	}
+	return store, nil
+}
+
+// OpenOption 配置离线库的可选参数。
+type OpenOption func(*mysqlStore)
+
+// WithMeili 启用 Meilisearch 中文全文检索；url 为空则忽略（Search 降级 LIKE）。
+func WithMeili(url, apiKey string) OpenOption {
+	return func(s *mysqlStore) {
+		if url == "" {
+			return
+		}
+		s.meili = newMeiliClient(url, apiKey)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := s.meili.ensureIndex(ctx); err != nil {
+			slog.Warn("Meilisearch 索引初始化失败，工商搜索将降级 LIKE", slog.Any("error", err))
+			s.meili = nil
+		}
+	}
 }
 
 // Close 关闭数据库。
@@ -100,13 +125,13 @@ func (d *mysqlStore) Close() error { return d.db.Close() }
 func (d *mysqlStore) Path() string { return d.path }
 
 // Backend 返回后端类型标识。
-func (d *mysqlStore) Backend() string { return "mysql" }
+func (d *mysqlStore) Backend() string { return "mariadb" }
 
 // ---------- 统计 ----------
 
 // Stats 统计数据库体量与省分布。
 func (d *mysqlStore) Stats(ctx context.Context) (Stats, error) {
-	st := Stats{Path: d.path, Backend: "mysql", FileSize: 0}
+	st := Stats{Path: d.path, Backend: "mariadb", FileSize: 0}
 	if err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM companies`).Scan(&st.Count); err != nil {
 		return st, err
 	}
@@ -139,7 +164,7 @@ type SearchOptions struct {
 	City     string
 }
 
-// Search 按查询词模糊搜索，返回 TopN 匹配结果（MySQL 布尔全文检索优先，不足补 LIKE 兜底）。
+// Search 按查询词模糊搜索，返回 TopN 匹配结果（Meilisearch 中文全文优先，失败降级 LIKE）。
 func (d *mysqlStore) Search(ctx context.Context, opt SearchOptions) ([]Company, error) {
 	q := strings.TrimSpace(opt.Query)
 	if q == "" {
@@ -149,90 +174,28 @@ func (d *mysqlStore) Search(ctx context.Context, opt SearchOptions) ([]Company, 
 	if topN <= 0 {
 		topN = 20
 	}
-	ftQuery := buildFTQuery(q)
-
-	where := []string{}
-	args := []interface{}{}
-	if opt.Province != "" {
-		where = append(where, "c.province = ?")
-		args = append(args, opt.Province)
-	}
-	if opt.City != "" {
-		where = append(where, "c.city = ?")
-		args = append(args, opt.City)
-	}
-	whereClause := ""
-	if len(where) > 0 {
-		whereClause = " AND " + strings.Join(where, " AND ")
-	}
-
-	matchExpr := `MATCH(c.name, c.business_scope, c.legal_rep, c.address) AGAINST (? IN BOOLEAN MODE)`
-
-	ftArgs := append([]interface{}{ftQuery}, args...)
-	ftArgs = append(ftArgs, topN)
-	sqlFT := fmt.Sprintf(`
-SELECT c.id, c.name, COALESCE(c.code,''), COALESCE(c.established_date,''),
-       COALESCE(c.industry,''), COALESCE(c.legal_rep,''),
-       COALESCE(c.registered_capital,''), COALESCE(c.business_scope,''),
-       COALESCE(c.province,''), COALESCE(c.city,''), COALESCE(c.address,''),
-       c.created_at,
-       %s AS score
-FROM companies c
-WHERE %s%s
-ORDER BY score DESC
-LIMIT ?`, matchExpr, matchExpr, whereClause)
-
-	rows, err := d.db.QueryContext(ctx, sqlFT, ftArgs...)
-	if err != nil {
-		return d.searchLikeFallback(ctx, opt, q, topN, 0)
-	}
-	out, scanErr := scanCompanies(rows, true)
-	if scanErr != nil {
-		return nil, scanErr
-	}
-
-	normalizeFTScore(out)
-
-	remain := topN - len(out)
-	if remain > 0 {
-		seen := map[int64]struct{}{}
-		for _, c := range out {
-			seen[c.ID] = struct{}{}
-		}
-		extra, err := d.searchLikeFallback(ctx, opt, q, remain, len(out))
+	// 优先走 Meilisearch 中文全文检索
+	if d.meili != nil {
+		hits, err := d.meili.Search(ctx, q, opt.Province, opt.City, topN)
 		if err == nil {
-			for _, c := range extra {
-				if _, ok := seen[c.ID]; !ok {
-					out = append(out, c)
-					seen[c.ID] = struct{}{}
-				}
-			}
+			return hits, nil
 		}
+		slog.Warn("Meilisearch 搜索失败，降级 MariaDB LIKE", slog.Any("error", err))
 	}
-
-	return out, nil
+	// 降级：MariaDB LIKE
+	return d.searchLikeFallback(ctx, opt, q, topN, 0)
 }
 
-func scanCompanies(rows *sql.Rows, withScore bool) ([]Company, error) {
+func scanCompanies(rows *sql.Rows) ([]Company, error) {
 	defer rows.Close()
 	var out []Company
 	for rows.Next() {
 		var c Company
-		var err error
-		if withScore {
-			err = rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
-				&c.Character, &c.LegalRepresentative,
-				&c.Capital, &c.BusinessScope,
-				&c.Province, &c.City, &c.Address,
-				&c.ImportedAt, &c.Score)
-		} else {
-			err = rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
-				&c.Character, &c.LegalRepresentative,
-				&c.Capital, &c.BusinessScope,
-				&c.Province, &c.City, &c.Address,
-				&c.ImportedAt)
-		}
-		if err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
+			&c.Character, &c.LegalRepresentative,
+			&c.Capital, &c.BusinessScope,
+			&c.Province, &c.City, &c.Address,
+			&c.ImportedAt); err != nil {
 			return out, err
 		}
 		out = append(out, c)
@@ -267,7 +230,7 @@ LIMIT ?`, strings.Join(cond, " AND "))
 	if err != nil {
 		return nil, err
 	}
-	out, scanErr := scanCompanies(rows, false)
+	out, scanErr := scanCompanies(rows)
 	if scanErr != nil {
 		return nil, scanErr
 	}
@@ -285,66 +248,8 @@ LIMIT ?`, strings.Join(cond, " AND "))
 	return out, nil
 }
 
-func buildFTQuery(q string) string {
-	tokens := strings.FieldsFunc(q, func(r rune) bool {
-		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '，' || r == '、' ||
-			r == ';' || r == '；' || r == '|' || r == '/' || r == '\\'
-	})
-	var parts []string
-	for _, t := range tokens {
-		t = strings.Trim(t, "*:()\"'+-@<>~")
-		if t == "" {
-			continue
-		}
-		runes := []rune(t)
-		if len(runes) == 1 && unicode.Is(unicode.Han, runes[0]) {
-			continue
-		}
-		parts = append(parts, "+"+t)
-	}
-	if len(parts) == 0 {
-		for _, r := range []rune(q) {
-			if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.Is(unicode.Han, r) {
-				s := string(r)
-				if !unicode.Is(unicode.Han, r) || len([]rune(s)) > 1 || len(parts) == 0 {
-					parts = append(parts, "+"+s)
-				}
-			}
-		}
-		if len(parts) == 0 {
-			return "+" + strings.ReplaceAll(q, "'", "")
-		}
-	}
-	return strings.Join(parts, " ")
-}
-
-func normalizeFTScore(in []Company) {
-	if len(in) == 0 {
-		return
-	}
-	var maxS float64
-	for _, c := range in {
-		if c.Score > maxS {
-			maxS = c.Score
-		}
-	}
-	if maxS < 1e-9 {
-		for i := range in {
-			in[i].Score = 100
-		}
-		return
-	}
-	for i := range in {
-		s := 100 * (in[i].Score / maxS)
-		if s < 0 {
-			s = 0
-		}
-		if s > 100 {
-			s = 100
-		}
-		in[i].Score = s
-	}
-}
+// buildFTQuery/normalizeFTScore 已移除：搜索改走外部 Meilisearch（见 meili.go），
+// 不再使用 MySQL ngram 布尔全文检索。
 
 // ---------- 导入 ----------
 
@@ -357,12 +262,51 @@ type ImportResult struct {
 	Files    int
 }
 
-// ImportJSONFile 导入单个 JSON 文件。
+// ImportJSONFile 导入单个 JSON 文件；导入完成后若启用 Meilisearch 则重建索引（单文件场景）。
 //
-// 支持两种格式（自动识别）：
-//  1. 标准 JSON 数组：[{...}, {...}, ...]
-//  2. JSONL：每行一个 {...}（处理大文件更省内存）
+// 支持格式（自动识别）：标准 JSON 数组 / {"key": [...]} 包裹数组 / JSONL 每行一个。
 func (d *mysqlStore) ImportJSONFile(ctx context.Context, path string, batchSize int) (ImportResult, error) {
+	return d.importFile(ctx, path, batchSize, true)
+}
+
+// ImportDir 递归导入目录下所有 .json 文件；全部完成后重建一次 Meilisearch 索引
+// （避免每个文件重复全表重建）。
+func (d *mysqlStore) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
+	var total ImportResult
+	err := filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if de.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(de.Name()), ".json") {
+			return nil
+		}
+		r, err := d.importFile(ctx, path, batchSize, false)
+		total.Inserted += r.Inserted
+		total.Skipped += r.Skipped
+		total.Failed += r.Failed
+		total.Files += r.Files
+		return err
+	})
+	if err != nil {
+		return total, err
+	}
+	if d.meili != nil {
+		slog.Info("目录导入完成，重建 Meilisearch 索引中...")
+		if rerr := d.Reindex(ctx); rerr != nil {
+			slog.Warn("重建 Meilisearch 索引失败", slog.Any("error", rerr))
+		}
+	}
+	return total, nil
+}
+
+// importFile 导入单个文件；reindex=true 时导入后立即重建 Meilisearch 索引（单文件场景）。
+func (d *mysqlStore) importFile(ctx context.Context, path string, batchSize int, reindex bool) (ImportResult, error) {
 	var res ImportResult
 	if batchSize <= 0 {
 		batchSize = 2000
@@ -387,33 +331,69 @@ func (d *mysqlStore) ImportJSONFile(ctx context.Context, path string, batchSize 
 		err = d.importJSONL(ctx, io.MultiReader(strings.NewReader(string(headR)), f), batchSize, &res)
 	}
 	res.Duration = time.Since(start)
-	return res, err
+	if err != nil {
+		return res, err
+	}
+	if reindex && d.meili != nil {
+		slog.Info("导入完成，重建 Meilisearch 索引中", slog.String("file", path))
+		if rerr := d.Reindex(ctx); rerr != nil {
+			slog.Warn("重建 Meilisearch 索引失败", slog.Any("error", rerr))
+		}
+	}
+	return res, nil
 }
 
-// ImportDir 递归导入目录下所有 .json 文件。
-func (d *mysqlStore) ImportDir(ctx context.Context, dir string, batchSize int) (ImportResult, error) {
-	var total ImportResult
-	err := filepath.WalkDir(dir, func(path string, de os.DirEntry, err error) error {
+// Reindex 全表扫描 companies 并批量重建 Meilisearch 索引（游标分页，内存安全）。
+func (d *mysqlStore) Reindex(ctx context.Context) error {
+	if d.meili == nil {
+		return nil
+	}
+	const batch = 2000
+	var lastID int64
+	for {
+		rows, err := d.db.QueryContext(ctx, `
+SELECT id, name, COALESCE(code,''), COALESCE(established_date,''),
+       COALESCE(industry,''), COALESCE(legal_rep,''),
+       COALESCE(registered_capital,''), COALESCE(business_scope,''),
+       COALESCE(province,''), COALESCE(city,''), COALESCE(address,''),
+       COALESCE(imported_at,0)
+FROM companies WHERE id > ? ORDER BY id LIMIT ?`, lastID, batch)
 		if err != nil {
 			return err
 		}
-		if ctx.Err() != nil {
-			return ctx.Err()
+		var docs []Company
+		var maxID int64
+		for rows.Next() {
+			var c Company
+			if err := rows.Scan(&c.ID, &c.Name, &c.Code, &c.RegistrationDay,
+				&c.Character, &c.LegalRepresentative,
+				&c.Capital, &c.BusinessScope,
+				&c.Province, &c.City, &c.Address,
+				&c.ImportedAt); err != nil {
+				rows.Close()
+				return err
+			}
+			docs = append(docs, c)
+			if c.ID > maxID {
+				maxID = c.ID
+			}
 		}
-		if de.IsDir() {
-			return nil
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
 		}
-		if !strings.HasSuffix(strings.ToLower(de.Name()), ".json") {
-			return nil
+		if len(docs) == 0 {
+			break
 		}
-		r, err := d.ImportJSONFile(ctx, path, batchSize)
-		total.Inserted += r.Inserted
-		total.Skipped += r.Skipped
-		total.Failed += r.Failed
-		total.Files += r.Files
-		return err
-	})
-	return total, err
+		if err := d.meili.AddDocuments(ctx, docs); err != nil {
+			return err
+		}
+		lastID = maxID
+		if len(docs) < batch {
+			break
+		}
+	}
+	return nil
 }
 
 // ---------- 导入内部实现 ----------
@@ -752,8 +732,13 @@ func emptyToNull(s string) interface{} {
 
 // ---------- 清空 ----------
 
-// Clear 清空 companies 表。
+// Clear 清空 companies 表（同时清空 Meilisearch 索引）。
 func (d *mysqlStore) Clear(ctx context.Context) error {
+	if d.meili != nil {
+		if err := d.meili.DeleteAll(ctx); err != nil {
+			slog.Warn("清空 Meilisearch 索引失败", slog.Any("error", err))
+		}
+	}
 	_, err := d.db.ExecContext(ctx, `DELETE FROM companies`)
 	return err
 }

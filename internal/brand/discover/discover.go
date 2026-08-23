@@ -96,7 +96,7 @@ func Discover(ctx context.Context, keyword string, offlineDB offlinedb.DB, kb *k
 	result := &DiscoverResult{Keyword: keyword}
 	seen := map[string]bool{} // 按公司名去重
 
-	// 1. 离线工商库搜索（FULLTEXT(ngram) 全文检索，匹配公司名/经营范围/法人等）
+	// 1. 离线工商库搜索（Meilisearch 中文全文检索，匹配公司名/经营范围/法人等）
 	if offlineDB != nil {
 		companies, err := offlineDB.Search(ctx, offlinedb.SearchOptions{
 			Query: keyword,

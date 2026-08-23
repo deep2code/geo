@@ -64,6 +64,11 @@ func extraCatalog() []Setting {
 		{Key: "GEO_REDIS_ADDR", Category: "queue", Description: "Redis 地址（asynq 队列）", IsBootstrap: true, RequiresRestart: true},
 		{Key: "GEO_REDIS_PASSWORD", Category: "queue", Description: "Redis 密码", IsSecret: true, IsBootstrap: true, RequiresRestart: true},
 		{Key: "GEO_REDIS_DB", Category: "queue", Description: "Redis DB 编号", Type: "int", RequiresRestart: true},
+		// Meilisearch（外部中文全文检索引擎；工商库搜索已迁移至此，MariaDB 不支持 MySQL 的
+		// ngram 解析器）。与 Redis 同属"连接引导类"（IsBootstrap）：环境变量引导，避免
+		// "运行参数只读 DB" 导致部署环境失效。URL 留空则工商搜索降级 MariaDB LIKE。
+		{Key: "GEO_MEILISEARCH_URL", Category: "search", Description: "Meilisearch 地址（工商库中文全文检索；留空则降级 LIKE）", IsBootstrap: true, RequiresRestart: true},
+		{Key: "GEO_MEILISEARCH_API_KEY", Category: "search", Description: "Meilisearch API Key（实例无鉴权则留空）", Type: "secret", IsSecret: true, IsBootstrap: true, RequiresRestart: true},
 		{Key: "GEO_LLM_BASE", Category: "llm", Description: "默认 LLM API 基地址", RequiresRestart: true},
 		{Key: "GEO_LLM_MODEL", Category: "llm", Description: "默认 LLM 模型名", RequiresRestart: true},
 		{Key: "GEO_LLM_KEY", Category: "llm", Description: "默认 LLM API Key", Type: "secret", IsSecret: true},

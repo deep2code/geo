@@ -161,7 +161,7 @@ func TestImportJSONFile_Search(t *testing.T) {
 		t.Fatalf("Search 腾讯: %v", err)
 	}
 	if len(out) == 0 {
-		t.Fatal("Search 腾讯 未命中任何记录，FULLTEXT(ngram) 全文索引可能未生效")
+		t.Fatal("Search 腾讯 未命中任何记录，Meilisearch/全文索引可能未生效")
 	}
 	hit := out[0]
 	if !strings.Contains(hit.Name, "腾讯") {

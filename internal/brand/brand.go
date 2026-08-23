@@ -124,7 +124,7 @@ func WithChinaCheck(cc *chinacheck.Client) Option {
 	return func(e *Engine) { e.chinaCheck = cc }
 }
 
-// WithOfflineDB 注入离线工商注册存储（默认后端 MySQL（FULLTEXT ngram）；1978-2019 种子数据）。
+// WithOfflineDB 注入离线工商注册存储（MariaDB 主存储 + 外部 Meilisearch 中文检索；1978-2019 种子数据）。
 // 未注入时 Autocomplete / 知识库联想跳过离线库。
 func WithOfflineDB(db offlinedb.DB) Option {
 	return func(e *Engine) { e.offlineDB = db }
@@ -729,7 +729,7 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 		}
 	}
 
-	// 步骤 1b：离线工商注册库（1978-2019，1000万+ 条 MySQL + FULLTEXT ngram 索引）
+	// 步骤 1b：离线工商注册库（1978-2019，1000万+ 条 MariaDB 主存储 + Meilisearch 中文全文索引）
 	//  - 若知识库已给出 Company 但缺硬字段（信用代码/法人/成立日期等），用离线库补全
 	//  - 若知识库完全没命中，离线库也能直接给出公司信息（LLM / 后续步骤的 ground truth）
 	var odbContext string
@@ -947,7 +947,7 @@ func buildAutocompletePrompt(brandName, kbContext string, kbCandidate *Autocompl
 		promptDataSection(&b, gsxtContext)
 	}
 	if odbContext != "" {
-		b.WriteString("【离线工商库 · 次高可信】来自 guichong/- 仓库（国家工商公示系统 1978-2019 年的公开历史数据），已导入 MySQL 并建立 FULLTEXT(ngram) 全文索引。\n")
+		b.WriteString("【离线工商库 · 次高可信】来自 guichong/- 仓库（国家工商公示系统 1978-2019 年的公开历史数据），已导入 MariaDB 并通过 Meilisearch 建立中文全文索引。\n")
 		b.WriteString("可信度：高于 LLM 自身知识与一般联网信息；低于上方【工商核验】实时数据（若实时数据与离线历史冲突，以实时为准）。\n")
 		b.WriteString("注意离线数据截止到 2019 年，登记状态/资本/经营范围可能有变化，但公司全称/信用代码/法人/成立日期/省份通常不变。\n")
 		promptDataSection(&b, odbContext)

@@ -448,7 +448,9 @@ func newOfflineDBFromEnv() offlinedb.DB {
 		return nil
 	}
 	dsn := dbprovider.PathFor(dbprovider.ModuleOfflineCompanies)
-	db, err := offlinedb.Open(dsn)
+	meiliURL := config.Env("GEO_MEILISEARCH_URL", "")
+	meiliKey := config.Env("GEO_MEILISEARCH_API_KEY", "")
+	db, err := offlinedb.Open(dsn, offlinedb.WithMeili(meiliURL, meiliKey))
 	if err != nil {
 		slog.Warn("离线工商 MySQL 库打开失败（将无离线库运行）", slog.Any("error", err))
 		return nil

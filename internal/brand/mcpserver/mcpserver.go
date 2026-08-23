@@ -650,7 +650,7 @@ func (s *Server) toolSearchCompanies(ctx context.Context, args map[string]interf
 		"query":   opt.Query,
 		"count":   len(results),
 		"results": results,
-		"source":  "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MySQL + FULLTEXT(ngram)",
+		"source":  "guichong/- JSON 分支（国家工商公示系统 1978-2019 公开历史数据）→ MariaDB + Meilisearch 中文全文检索",
 	}
 	b, _ := json.MarshalIndent(out, "", "  ")
 	return string(b), nil
