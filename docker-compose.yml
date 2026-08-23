@@ -7,7 +7,7 @@
 #   - mariadb 挂载 ./deploy/initdb 到 /docker-entrypoint-initdb.d，首次启动自动执行
 #     schema.sql 建库建表（geo 账号口令为 docker2026ID@，与下方 GEO_MYSQL_DSN 一致）。
 #   - geo 通过 environment 把连接地址改写成 compose 服务名（mariadb/redis/meilisearch），
-#     因此 .env 里即使写 127.0.0.1 也无妨；若你改了 geo 账号口令，只需同步改下方 GEO_MYSQL_DSN。
+#     若你改了 geo 账号口令，只需同步改下方 GEO_MYSQL_DSN。
 #   - Meilisearch 默认无鉴权（MEILI_MASTER_KEY 为空）；如需鉴权，在本文件 geo/meilisearch
 #     两处各加一行 MEILI_MASTER_KEY / GEO_MEILISEARCH_API_KEY，填同一个 openssl rand -hex 16 随机串。
 
@@ -37,8 +37,12 @@ services:
 
   meilisearch:
     image: getmeili/meilisearch:latest
+    # 不设置 MEILI_MASTER_KEY → Meilisearch 无鉴权模式（本地开发）。
+    # 生产需鉴权时，取消下方注释并填 openssl rand -hex 16 随机串，
+    # 同时给 geo 服务加 GEO_MEILISEARCH_API_KEY 同一串。
+    # environment:
+    #   MEILI_MASTER_KEY: "填随机串"
     environment:
-      MEILI_MASTER_KEY: ""
       MEILI_ENV: production
       MEILI_NO_ANALYTICS: "true"
     volumes: ["meili-data:/meili_data"]

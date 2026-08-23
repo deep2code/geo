@@ -236,7 +236,7 @@ do_build() {
         info "镜像打包完成: ${ACR_IMAGE}"
         return
     fi
-    warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：工具链+依赖+编译缓存已固化，仅叠加源码，日常发布快）"
+    warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：仅固化工具链+依赖下载，app 构建走 buildx 持久缓存 /gocache 自热）"
     local version commit build_at base_tag
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"

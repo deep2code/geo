@@ -34,13 +34,7 @@ RUN go mod download
 COPY web-app/package.json web-app/package-lock.json ./web-app/
 RUN cd web-app && npm ci
 
-# ===== 预热 Go 编译缓存(GOCACHE) =====
-# 编译所有第三方依赖包，把产物写入镜像层 /root/.cache/go-build。
-# app 镜像构建时会把这份预热缓存复制进持久缓存，使首次发布也只需编译业务自身代码，
-# 不必重新编译全部依赖（弱机上一处可省下十几分钟）。
-# 注：此时无业务源码，仅预热依赖包；若某依赖无法单独构建则忽略（|| true）。
-RUN GOCACHE=/root/.cache/go-build \
-    go build $(go list -m -f '{{.Path}}' all 2>/dev/null | grep -v '^github.com/deep2code/geo$') \
-    2>/dev/null || true
+# 注：不再在基础镜像内预热 Go 编译缓存（GOCACHE）。app 镜像构建走 buildx 的持久缓存
+# 挂载 /gocache 自热（首次冷编全部依赖写入 /gocache，之后增量命中），基础镜像无需重复预热。
 
 CMD ["/bin/sh"]
