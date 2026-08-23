@@ -13,8 +13,17 @@
 # syntax=docker/dockerfile:1
 FROM golang:1.26-alpine
 
-# 安装 Node.js / npm（前端构建需要），Alpine 3.20 仓库自带 Node 20.x
-RUN apk add --no-cache nodejs npm
+# 安装 Node.js / npm（前端构建需要）；先切换 apk 到阿里云国内镜像，
+# 避免 dl-cdn.alpinelinux.org 在国内的极慢下载（曾单次耗时 12 分钟）。
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.aliyun.com/alpine#g' /etc/apk/repositories && \
+    apk add --no-cache nodejs npm
+
+# 国内代理加速：Go 模块走 goproxy.cn，npm 走 npmmirror。
+# 这里硬编码一份，保证直接 `docker build -f Dockerfile.base` 也走国内源
+# （publish.sh 给 app 镜像传的 build-arg 默认也是这两个，保持一致）。
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=off
+ENV npm_config_registry=https://registry.npmmirror.com
 
 # ===== 预热 Go 模块缓存 =====
 WORKDIR /build

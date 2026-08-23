@@ -5,7 +5,7 @@
 #
 # 统一版本约束：
 #   - Go   1.26（与 go.mod / CI ci.yml / release.yml 对齐）
-#   - Node 20.x（与 CI / 现代 Vite 要求对齐）
+#   - Node.js（含 npm，由 Alpine 仓库提供，当前为 24.x）
 #   - Alpine 3.20
 #
 # 多架构（buildx）：docker buildx build --platform linux/amd64,linux/arm64 --push
@@ -83,7 +83,9 @@ LABEL org.opencontainers.image.title="MyGEO" \
       org.opencontainers.image.licenses="MIT"
 
 # 依赖：ca-certificates (HTTPS)、tzdata (时区)、libcap (cap_net_bind_service 低端口)
-RUN apk add --no-cache ca-certificates tzdata libcap && \
+# 先切换 apk 到阿里云国内镜像（与基础镜像保持一致，避免官方源在国内极慢）
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.aliyun.com/alpine#g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata libcap && \
     update-ca-certificates && \
     rm -rf /var/cache/apk/*
 
