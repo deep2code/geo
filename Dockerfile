@@ -64,10 +64,11 @@ COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 
 # 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用；GOOS/GOARCH 来自 buildx）
 # 编译缓存策略：
-#   - 基础镜像层已预热依赖包编译缓存于 /root/.cache/go-build；
-#   - 把它复制进持久缓存 /gocache（首构建即命中，仅编译业务代码；后续构建增量命中）。
+#   - 直接用 buildx 的持久缓存挂载 /gocache（跨构建保留在宿主机，不会被每次构建重置）；
+#   - 首次构建冷编全部依赖并写入 /gocache，之后增量命中，仅重编改动的业务代码。
+#   - 不再从基础镜像层 cp 预热缓存：overlay 下拷几 GB 海量小文件极慢，且预热的 flag
+#     未带 -trimpath、与正式编译对不上，拷过去也用不上（纯属时间黑洞）。
 RUN --mount=type=cache,target=/gocache \
-    cp -rn /root/.cache/go-build/. /gocache/ 2>/dev/null || true; \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
