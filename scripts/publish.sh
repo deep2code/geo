@@ -286,6 +286,34 @@ do_login() { # do_login <registry>（docker login 到指定 registry）
     fi
 }
 
+# 推送成功后清理本地镜像：镜像已在仓库，本地副本冗余，删除以节省打包机磁盘。
+# 注意：docker image rm 只删镜像 tag 与层引用，buildx 构建缓存层不受影响，
+#       因此下次基础镜像重建仍命中缓存、速度快。buildx 缓存过大可另用 docker buildx prune。
+# 仅在非 dry-run、且推送确实成功时由 do_push 调用（set -e 下推送失败脚本已中止，不会误删）。
+cleanup_local_images() { # cleanup_local_images <push_image>
+    step "推送成功，清理本地镜像以节省磁盘"
+    # 1) 删除本地基础镜像（仅单平台模式下的本地名 geo-build-base:latest；多平台模式 base 已推仓库，本地无此名）
+    if docker image inspect geo-build-base:latest &>/dev/null; then
+        run docker image rm -f geo-build-base:latest || true
+        info "已删除本地基础镜像: geo-build-base:latest"
+    fi
+    # 2) 删除本次推送的 app 镜像（ACR_IMAGE 与 push_image 可能同名也可能不同名；去重删除避免重复 rm）
+    local seen="" img
+    for img in "$ACR_IMAGE" "$1"; do
+        [[ "$seen" == *"|$img|"* ]] && continue
+        seen="$seen|$img|"
+        if docker image inspect "$img" &>/dev/null; then
+            run docker image rm -f "$img" || true
+            info "已删除本地镜像: $img"
+        fi
+    done
+    # 3) 回收因「重复构建同一 :latest 标签」产生的悬空(dangling)镜像层，
+    #    避免旧 base/app 层在磁盘堆积（只删未被任何容器引用的无标签镜像，安全）。
+    #    效果：无论怎么构建，本地最多只留「最新的一个」基础镜像（推送成功后连这个也删掉）。
+    run docker image prune -f || true
+    info "已回收悬空镜像层（确保基础镜像只存最新的一个）"
+}
+
 do_push() {
     step "推送镜像到 ACR"
     if [[ "$SKIP_PUSH" == 1 ]]; then
@@ -310,6 +338,10 @@ do_push() {
     info "推送镜像到 ACR（本机 $(uname -s)，端点 ${push_registry}）: ${push_image}"
     run docker push "$push_image"
     info "推送完成: ${push_image}"
+    # 推送成功后删除本地镜像（buildx 缓存层保留，下次重建仍快）；dry-run 不执行删除
+    if [[ "$DRY_RUN" == 0 ]]; then
+        cleanup_local_images "$push_image"
+    fi
 }
 
 remote_upgrade() {
