@@ -10,6 +10,7 @@
 #     若你改了 geo 账号口令，只需同步改下方 GEO_MYSQL_DSN。
 #   - Meilisearch 默认无鉴权（MEILI_MASTER_KEY 为空）；如需鉴权，在本文件 geo/meilisearch
 #     两处各加一行 MEILI_MASTER_KEY / GEO_MEILISEARCH_API_KEY，填同一个 openssl rand -hex 16 随机串。
+#   - Meilisearch 镜像走国内同步源（华为云 SWR）锁定 v1.24.0，避免 latest 漂移 + 直连 Docker Hub 卡死。
 
 services:
   mariadb:
@@ -36,7 +37,10 @@ services:
       retries: 5
 
   meilisearch:
-    image: getmeili/meilisearch:latest
+    # 国内同步源（华为云 SWR）锁定具体版本，避免 latest 漂移 + 直连 Docker Hub 国内卡死。
+    # 官方镜像为 getmeili/meilisearch:v1.24.0，如需换版本请同步改下方 tag。
+    # 若机器已配 Docker Hub 加速器且能直连，可改回 getmeili/meilisearch:v1.24.0。
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/getmeili/meilisearch:v1.24.0
     # 默认无鉴权模式（development）：不设置 MEILI_MASTER_KEY，所有路由公开可访问。
     # 注意：Meilisearch 在 production 环境下【强制】要求 MEILI_MASTER_KEY（≥16 字节），
     # 否则会拒绝启动。因此默认用 development 而非 production。
