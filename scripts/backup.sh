@@ -21,7 +21,7 @@
 #   GEO_MYSQL_HOST     默认 mysql
 #   GEO_MYSQL_PORT     默认 3306
 #   GEO_MYSQL_USER     默认 geo
-#   GEO_MYSQL_PASSWORD 默认 geoPass（务必在生产用强口令并通过 secret 注入）
+#   GEO_MYSQL_PASSWORD 默认 docker2026ID@（务必在生产用强口令并通过 secret 注入）
 #   GEO_BACKUP_DIR     默认 /data/geo/backups
 #   GEO_BACKUP_DBS     默认 "geo"
 #   GEO_BACKUP_KEEP_DAYS 默认 14
@@ -33,7 +33,7 @@ set -euo pipefail
 HOST="${GEO_MYSQL_HOST:-mysql}"
 PORT="${GEO_MYSQL_PORT:-3306}"
 USER="${GEO_MYSQL_USER:-geo}"
-PASSWORD="${GEO_MYSQL_PASSWORD:-geoPass}"
+PASSWORD="${GEO_MYSQL_PASSWORD:-docker2026ID@}"
 BACKUP_DIR="${GEO_BACKUP_DIR:-/data/geo/backups}"
 DBS="${GEO_BACKUP_DBS:-geo}"
 KEEP_DAYS="${GEO_BACKUP_KEEP_DAYS:-14}"

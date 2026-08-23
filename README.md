@@ -269,7 +269,7 @@ docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
 
 #### 方式 B：Docker Compose（一键拉起 geo + 数据库 + Redis + Meilisearch）
 
-将下方内容保存为 `docker-compose.yml`（仓库未内置，按需自取），首次先构建基础镜像，再启动：
+仓库已内置 `docker-compose.yml`（geo 账号口令已写入，与 schema.sql 一致），首次先构建基础镜像，再启动：
 
 ```bash
 docker build -f Dockerfile.base -t geo-build-base:latest .   # compose 的 geo 构建依赖此基础镜像
@@ -321,7 +321,7 @@ services:
     env_file: .env
     # compose 内用服务名覆盖连接地址（.env 里的 127.0.0.1 会被这里的 environment 覆盖）
     environment:
-      GEO_MYSQL_DSN: "geo:geoPass@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
+      GEO_MYSQL_DSN: "geo:docker2026ID@@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
       GEO_REDIS_ADDR: "redis:6379"
       GEO_MEILISEARCH_URL: "http://meilisearch:7700"
       GEO_MEILISEARCH_API_KEY: "请改成与上方 MEILI_MASTER_KEY 一致的强随机串"

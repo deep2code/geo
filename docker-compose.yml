@@ -1,0 +1,73 @@
+# GEO 一键运行（Docker Compose）
+# 用法：
+#   docker compose up -d
+# 说明：geo 服务直接使用 ACR 公网镜像，新机器无需安装 Go/Node、无需本地构建、无需 .env 文件。
+#
+# 说明：
+#   - mariadb 挂载 ./deploy/initdb 到 /docker-entrypoint-initdb.d，首次启动自动执行
+#     schema.sql 建库建表（geo 账号口令为 docker2026ID@，与下方 GEO_MYSQL_DSN 一致）。
+#   - geo 通过 environment 把连接地址改写成 compose 服务名（mariadb/redis/meilisearch），
+#     因此 .env 里即使写 127.0.0.1 也无妨；若你改了 geo 账号口令，只需同步改下方 GEO_MYSQL_DSN。
+#   - Meilisearch 默认无鉴权（MEILI_MASTER_KEY 为空）；如需鉴权，在本文件 geo/meilisearch
+#     两处各加一行 MEILI_MASTER_KEY / GEO_MEILISEARCH_API_KEY，填同一个 openssl rand -hex 16 随机串。
+
+services:
+  mariadb:
+    image: mariadb:11
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: geoRootPass
+    volumes:
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro   # 首次启动自动执行 schema.sql 建库建表
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:latest
+    environment:
+      MEILI_MASTER_KEY: ""
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+    volumes: ["meili-data:/meili_data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  geo:
+    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest
+    # 零配置：连接地址用 compose 服务名，Meilisearch 默认无鉴权；
+    # 若需给 Meilisearch 加鉴权，在此追加 MEILI_MASTER_KEY 并同步 GEO_MEILISEARCH_API_KEY 即可。
+    environment:
+      GEO_MYSQL_DSN: "geo:docker2026ID@@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
+      GEO_REDIS_ADDR: "redis:6379"
+      GEO_MEILISEARCH_URL: "http://meilisearch:7700"
+      GEO_MEILISEARCH_API_KEY: ""
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  mariadb-data:
+  redis-data:
+  meili-data:

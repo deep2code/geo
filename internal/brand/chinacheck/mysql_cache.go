@@ -25,7 +25,7 @@ type mysqlCacheStore struct {
 	ttl      time.Duration
 }
 
-const defaultMySQLDSN = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+const defaultMySQLDSN = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 func resolveDSN(filePath string) string {
 	if filePath != "" {

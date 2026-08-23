@@ -32,7 +32,7 @@ func Open(path string) (Store, error) {
 		if envDSN := os.Getenv("GEO_MYSQL_DSN"); envDSN != "" {
 			dsn = envDSN
 		} else {
-			dsn = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+			dsn = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 		}
 	}
 	dsn = dbprovider.NormalizeMySQLDSN(dsn)

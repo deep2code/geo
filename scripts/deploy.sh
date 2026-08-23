@@ -61,15 +61,15 @@ check_env_file() {
         warn "未找到 .env 文件，从模板创建..."
         cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
         info "已创建 .env，请按需编辑: $PROJECT_DIR/.env"
-        warn "⚠ 模板包含默认弱密码（geoPass），生产环境务必修改后重启！"
+        warn "⚠ 模板包含默认弱密码（docker2026ID@），生产环境务必修改后重启！"
     fi
     # 检测默认弱密码：生产部署默认拒绝带默认口令上线。
     # 本地开发可设 GEO_ALLOW_WEAK_PASSWORD=1 显式放行（不推荐用于生产）。
-    if grep -qE 'geoPass' "$PROJECT_DIR/.env" 2>/dev/null; then
+    if grep -qE 'docker2026ID@' "$PROJECT_DIR/.env" 2>/dev/null; then
         if [[ "${GEO_ALLOW_WEAK_PASSWORD:-0}" == "1" ]]; then
-            warn "⚠ .env 中仍存在默认弱密码（geoPass），已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
+            warn "⚠ .env 中仍存在默认弱密码（docker2026ID@），已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
         else
-            error "检测到默认弱密码（geoPass）：生产部署禁止使用默认口令！"
+            error "检测到默认弱密码（docker2026ID@）：生产部署禁止使用默认口令！"
             error "请修改 .env 中的 GEO_MYSQL_PASSWORD / GEO_MYSQL_DSN 后重试；"
             error "或设置 GEO_ALLOW_WEAK_PASSWORD=1 强制放行（仅限本地开发，不推荐）。"
             exit 1

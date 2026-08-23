@@ -27,7 +27,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const defaultMySQLDSN = "geo:geoPass@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+const defaultMySQLDSN = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 
 // Company 数据库中的一条工商注册记录。
 type Company struct {

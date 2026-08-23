@@ -20,7 +20,7 @@
 --     种子数据由 scripts/gen_app_settings_seed 生成（新增配置项后重跑并同步）。
 --
 -- 注意：
---   - 下方 'geo' 账号初始密码为占位值 geoPass，生产环境请改为强口令，
+--   - 下方 'geo' 账号初始密码为docker2026ID@（生产环境仍建议改为更强口令，并同步各 GEO_MYSQL_DSN），
 --     并与各 GEO_*_MYSQL_DSN 中的密码保持一致。
 --   - 若已用 MYSQL_USER/MYSQL_PASSWORD 创建过 geo 用户，
 --     CREATE USER IF NOT EXISTS 不会改动其现有密码，GRANT 仍可正常执行。
@@ -29,8 +29,8 @@
 -- 0) 应用账号 + 业务库 + 授权
 -- ############################################################################
 
-CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED BY 'geoPass';
-CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED BY 'geoPass';
+CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED BY 'docker2026ID@';
+CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED BY 'docker2026ID@';
 
 CREATE DATABASE IF NOT EXISTS geo
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
