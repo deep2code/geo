@@ -14,7 +14,7 @@ set -euo pipefail
 # ===== 配置 =====
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGE_NAME="geo"
+IMAGE_NAME="crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 CONTAINER_NAME="geo-server"
 SERVICE_PORT="${GEO_PORT:-8080}"
@@ -61,15 +61,15 @@ check_env_file() {
         warn "未找到 .env 文件，从模板创建..."
         cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
         info "已创建 .env，请按需编辑: $PROJECT_DIR/.env"
-        warn "⚠ 模板包含默认弱密码（docker2026ID@），生产环境务必修改后重启！"
     fi
-    # 检测默认弱密码：生产部署默认拒绝带默认口令上线。
-    # 本地开发可设 GEO_ALLOW_WEAK_PASSWORD=1 显式放行（不推荐用于生产）。
-    if grep -qE 'docker2026ID@' "$PROJECT_DIR/.env" 2>/dev/null; then
+    # 弱密码守卫：仅拦截「明显占位符/空口令」，不再把用户选定的正式口令当弱密码。
+    # 识别特征：DSN 中密码段为 changeme / <...> / 空，或 GEO_MYSQL_PASSWORD 为空/占位。
+    if grep -qE 'GEO_MYSQL_DSN=.*:(changeme|CHANGEME|password|<PASSWORD>|your_password_here)@' "$PROJECT_DIR/.env" 2>/dev/null \
+       || grep -qE '^GEO_MYSQL_PASSWORD=(changeme|CHANGEME|password|<PASSWORD>|your_password_here)?[[:space:]]*$' "$PROJECT_DIR/.env" 2>/dev/null; then
         if [[ "${GEO_ALLOW_WEAK_PASSWORD:-0}" == "1" ]]; then
-            warn "⚠ .env 中仍存在默认弱密码（docker2026ID@），已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
+            warn "⚠ .env 中仍为占位口令，已按 GEO_ALLOW_WEAK_PASSWORD=1 放行（仅建议本地开发）"
         else
-            error "检测到默认弱密码（docker2026ID@）：生产部署禁止使用默认口令！"
+            error "检测到占位弱密码：生产部署禁止使用占位口令！"
             error "请修改 .env 中的 GEO_MYSQL_PASSWORD / GEO_MYSQL_DSN 后重试；"
             error "或设置 GEO_ALLOW_WEAK_PASSWORD=1 强制放行（仅限本地开发，不推荐）。"
             exit 1
@@ -87,9 +87,12 @@ deploy_docker() {
 
     check_env_file
 
-    step "构建 Docker 镜像 ${IMAGE_NAME}:${IMAGE_TAG}"
+    step "拉取镜像 ${IMAGE_NAME}:${IMAGE_TAG}"
     cd "$PROJECT_DIR"
-    docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+    if ! docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" >/dev/null 2>&1; then
+        docker pull "${IMAGE_NAME}:${IMAGE_TAG}" \
+            || { warn "远程拉取失败，尝试本地构建（需本机已打 geo-build-base 基础镜像）..."; docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .; }
+    fi
 
     if [[ "${1:-}" == "--build-only" ]]; then
         info "仅构建模式，镜像已就绪: ${IMAGE_NAME}:${IMAGE_TAG}"
