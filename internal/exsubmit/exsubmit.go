@@ -16,7 +16,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -72,12 +71,13 @@ type mysqlStore struct {
 
 // Open 打开外部提交 MySQL 库并连接。
 //
-// path 语义：非空时 path 即为 DSN；空时读 GEO_MYSQL_DSN，缺省为内置默认 DSN。
+// path 语义：非空时 path 即为 DSN；空时统一走 dbprovider.DSNFor（单库架构共用
+// GEO_MYSQL_DSN，与其他模块一致），缺省为内置默认 DSN。
 func Open(path string) (Store, error) {
 	var dsn string
 	if path != "" {
 		dsn = path
-	} else if env := os.Getenv("GEO_MYSQL_DSN"); env != "" {
+	} else if env := dbprovider.DSNFor(dbprovider.ModuleExternalSubmissions); env != "" {
 		dsn = env
 	} else {
 		dsn = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
@@ -125,9 +125,13 @@ func (d *mysqlStore) Save(ctx context.Context, sub *Submission) (int64, error) {
 	const q = `INSERT INTO external_submissions(
 		model_name, question, answer, share_link, status, workspace_id, created_at
 	) VALUES(?,?,?,?,?,?,?)`
+	createdAt := sub.CreatedAt
+	if createdAt <= 0 {
+		createdAt = time.Now().Unix()
+	}
 	res, err := d.db.ExecContext(ctx, q,
 		sub.ModelName, sub.Question, sub.Answer, sub.ShareLink,
-		ternaryStr(sub.Status == "", "pending", sub.Status), sub.WorkspaceID, sub.CreatedAt)
+		ternaryStr(sub.Status == "", "pending", sub.Status), sub.WorkspaceID, createdAt)
 	if err != nil {
 		return 0, fmt.Errorf("exsubmit: 写入提交失败: %w", err)
 	}

@@ -249,7 +249,7 @@ bin/geo   # 或 go run ./cmd/geo（.env 同目录自动加载）
 
 ### 🐳 容器运行方式
 
-提供两种容器化运行方式，均假设已 `cp .env.example .env` 并填写。**数据库（MariaDB/MySQL）与 Redis 需自行准备**（应用不会自动建库），首次启动前请执行 `deploy/initdb/schema.sql` 初始化；工商中文检索可接外部 Meilisearch（可选）。
+提供两种容器化运行方式：方式 A（Dockerfile 单容器）需自备 MariaDB/Redis 并填写 `.env`；方式 B（Docker Compose）一键拉起 geo + MariaDB + Redis + Meilisearch，**零配置无需 `.env`**。工商中文检索默认已随 compose 内置 Meilisearch，方式 A 可外接（可选）。
 
 #### 方式 A：Dockerfile 单容器（自带构建）
 
@@ -269,12 +269,19 @@ docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
 
 #### 方式 B：Docker Compose（一键拉起 geo + 数据库 + Redis + Meilisearch）
 
-仓库已内置 `docker-compose.yml`（geo 账号口令已写入，与 schema.sql 一致），首次先构建基础镜像，再启动：
+仓库已内置 `docker-compose.yml`：**geo 服务直接使用 ACR 公网镜像**（无需本机构建），mariadb/redis/meilisearch 一并拉起，零配置即可运行。仅需：
 
 ```bash
-docker build -f Dockerfile.base -t geo-build-base:latest .   # compose 的 geo 构建依赖此基础镜像
 docker compose up -d
 ```
+
+> 内置 `docker-compose.yml` 关键约定：
+> - `geo` 镜像为 `crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest`，无需本地 `docker build`。
+> - 账号口令（`geo` / `geoRootPass`）已写入 compose 与 `schema.sql`，无需 `.env`。
+> - **Meilisearch 默认无鉴权**（`MEILI_ENV: development`，不设 `MEILI_MASTER_KEY`）；如需生产鉴权，把 `MEILI_ENV` 改 `production` 并填 `MEILI_MASTER_KEY`（≥16 字节），同时给 `geo` 加 `GEO_MEILISEARCH_API_KEY` 同一串。
+> - `mariadb` 挂载 `./deploy/initdb` 到 `/docker-entrypoint-initdb.d`，数据卷首次初始化时由 MariaDB 官方镜像以 root 自动执行 `schema.sql`，**无需手动建库**。
+
+核心片段（完整以仓库 `docker-compose.yml` 为准）：
 
 ```yaml
 services:
@@ -293,7 +300,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     volumes: ["redis-data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -303,9 +310,9 @@ services:
 
   meilisearch:
     image: getmeili/meilisearch:latest
+    # 默认无鉴权（development）；production 模式强制要求 MEILI_MASTER_KEY
     environment:
-      MEILI_MASTER_KEY: "请改成一段强随机串（openssl rand -hex 16）"
-      MEILI_ENV: production
+      MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
     volumes: ["meili-data:/meili_data"]
     healthcheck:
@@ -315,16 +322,12 @@ services:
       retries: 5
 
   geo:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file: .env
-    # compose 内用服务名覆盖连接地址（.env 里的 127.0.0.1 会被这里的 environment 覆盖）
+    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest
     environment:
       GEO_MYSQL_DSN: "geo:docker2026ID@@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
       GEO_REDIS_ADDR: "redis:6379"
       GEO_MEILISEARCH_URL: "http://meilisearch:7700"
-      GEO_MEILISEARCH_API_KEY: "请改成与上方 MEILI_MASTER_KEY 一致的强随机串"
+      GEO_MEILISEARCH_API_KEY: ""
     depends_on:
       mariadb:
         condition: service_healthy
@@ -341,8 +344,7 @@ volumes:
   meili-data:
 ```
 
-- `mariadb` 挂载 `./deploy/initdb` 到 `/docker-entrypoint-initdb.d`，数据卷首次初始化时由 MariaDB 官方镜像以 root 自动执行 `schema.sql`，**无需手动建库**。
-- `geo` 通过 `environment` 把连接地址改写成 compose 服务名（`mariadb` / `redis` / `meilisearch`），因此 `.env` 里保持 `127.0.0.1` 也无妨；若你更想统一改 `.env`，把其中的 host 改成对应服务名亦可。
+- `geo` 通过 `environment` 把连接地址改写成 compose 服务名（`mariadb` / `redis` / `meilisearch`），无需 `.env`。
 - Meilisearch 可选：不接则删掉 `geo` 里的 `GEO_MEILISEARCH_URL` / `GEO_MEILISEARCH_API_KEY` 两行，工商搜索自动降级 `LIKE`。
 
 

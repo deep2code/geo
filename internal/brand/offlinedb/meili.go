@@ -161,7 +161,11 @@ func (m *meiliClient) DeleteAll(ctx context.Context) error {
 	return m.do(ctx, http.MethodDelete, "/indexes/"+m.index+"/documents", nil, nil)
 }
 
-// quoteMeili 对 Meilisearch filter 值加双引号转义。
+// quoteMeili 对 Meilisearch filter 值做安全的字符串字面量包裹。
+//
+// Meilisearch filter 语法中属性值可用单引号字符串字面量包裹，内部单引号用
+// 两个单引号转义（''）。单引号字符串字面量对空格、保留字（AND/OR/TO/IN 等）
+// 均安全，比裸双引号更稳健。
 func quoteMeili(s string) string {
-	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
 }

@@ -37,13 +37,13 @@ services:
 
   meilisearch:
     image: getmeili/meilisearch:latest
-    # 不设置 MEILI_MASTER_KEY → Meilisearch 无鉴权模式（本地开发）。
-    # 生产需鉴权时，取消下方注释并填 openssl rand -hex 16 随机串，
-    # 同时给 geo 服务加 GEO_MEILISEARCH_API_KEY 同一串。
-    # environment:
-    #   MEILI_MASTER_KEY: "填随机串"
+    # 默认无鉴权模式（development）：不设置 MEILI_MASTER_KEY，所有路由公开可访问。
+    # 注意：Meilisearch 在 production 环境下【强制】要求 MEILI_MASTER_KEY（≥16 字节），
+    # 否则会拒绝启动。因此默认用 development 而非 production。
+    # 生产环境需鉴权时：将下方 MEILI_ENV 改为 production，并填 MEILI_MASTER_KEY 随机串
+    # （openssl rand -hex 16），同时给 geo 服务加 GEO_MEILISEARCH_API_KEY 同一串。
     environment:
-      MEILI_ENV: production
+      MEILI_ENV: development
       MEILI_NO_ANALYTICS: "true"
     volumes: ["meili-data:/meili_data"]
     healthcheck:

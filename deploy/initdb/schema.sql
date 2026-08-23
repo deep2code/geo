@@ -20,8 +20,8 @@
 --     种子数据由 scripts/gen_app_settings_seed 生成（新增配置项后重跑并同步）。
 --
 -- 注意：
---   - 下方 'geo' 账号初始密码为docker2026ID@（生产环境仍建议改为更强口令，并同步各 GEO_MYSQL_DSN），
---     并与各 GEO_*_MYSQL_DSN 中的密码保持一致。
+--   - 下方 'geo' 账号初始密码为 docker2026ID@（生产环境仍建议改为更强口令，并同步各 GEO_MYSQL_DSN），
+--     单库架构下所有模块共用同一 DSN，只需保证此处密码与连接串中的密码一致即可。
 --   - 若已用 MYSQL_USER/MYSQL_PASSWORD 创建过 geo 用户，
 --     CREATE USER IF NOT EXISTS 不会改动其现有密码，GRANT 仍可正常执行。
 

@@ -36,7 +36,7 @@ GEO 部署脚本
 用法: bash scripts/deploy.sh [选项]
 
 选项:
-  (无)          Docker Compose 部署（默认）
+  (无)          Docker Compose 部署（默认，拉起 geo + mariadb + redis + meilisearch）
   --binary      二进制部署（编译 + systemd）
   --build-only  仅构建镜像/二进制，不启动
   --stop        停止服务
@@ -47,10 +47,14 @@ GEO 部署脚本
   -h, --help    显示帮助
 
 环境变量:
-  GEO_PORT      服务端口（默认 8080）
+  GEO_PORT      服务端口（默认 8080，仅二进制部署生效）
   IMAGE_TAG     镜像标签（默认 latest）
   INSTALL_DIR   二进制安装路径（默认 /opt/geo）
   GEO_ALLOW_WEAK_PASSWORD  设为 1 放行默认弱密码（仅本地开发）
+
+说明:
+  默认 Docker Compose 部署依赖仓库根目录的 docker-compose.yml，geo 服务直接使用
+  ACR 公网镜像，无需本机构建；mariadb/redis/meilisearch 一并拉起，零配置即可运行。
 
 EOF
 }
@@ -77,40 +81,36 @@ check_env_file() {
     fi
 }
 
-# ===== Docker 部署 =====
+# ===== Docker 部署（基于 docker-compose.yml 一键拉起全部依赖）=====
 deploy_docker() {
     step "检查 Docker 环境"
     if ! command -v docker &>/dev/null; then
         error "未安装 Docker，请先安装: https://docs.docker.com/get-docker/"
         exit 1
     fi
-
-    check_env_file
-
-    step "拉取镜像 ${IMAGE_NAME}:${IMAGE_TAG}"
-    cd "$PROJECT_DIR"
-    if ! docker image inspect "${IMAGE_NAME}:${IMAGE_TAG}" >/dev/null 2>&1; then
-        docker pull "${IMAGE_NAME}:${IMAGE_TAG}" \
-            || { warn "远程拉取失败，尝试本地构建（需本机已打 geo-build-base 基础镜像）..."; docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .; }
+    # docker compose 子命令（v2 plugin）优先，兼容旧版 docker-compose
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE="docker compose"
+    elif command -v docker-compose &>/dev/null; then
+        COMPOSE="docker-compose"
+    else
+        error "未找到 docker compose / docker-compose，请升级 Docker 至 v20.10+ 或安装 docker-compose 插件"
+        exit 1
     fi
 
+    cd "$PROJECT_DIR"
+
     if [[ "${1:-}" == "--build-only" ]]; then
-        info "仅构建模式，镜像已就绪: ${IMAGE_NAME}:${IMAGE_TAG}"
+        step "构建镜像（geo 服务用 ACR 公网镜像，无需本地构建；此处仅校验 compose 配置）"
+        $COMPOSE config >/dev/null && info "docker-compose.yml 配置校验通过"
         return
     fi
 
-    step "启动服务（docker run 单容器）"
-    # 环境变量从 .env 透传（引导类生效；运行参数读取链见应用配置策略）
-    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker run -d --name "$CONTAINER_NAME" \
-        --restart unless-stopped \
-        -p "${SERVICE_PORT}:8080" \
-        --env-file "$PROJECT_DIR/.env" \
-        -e TZ=Asia/Shanghai \
-        "${IMAGE_NAME}:${IMAGE_TAG}"
-    info "容器已启动: ${CONTAINER_NAME}"
+    step "启动服务（docker compose 拉起 geo + mariadb + redis + meilisearch）"
+    $COMPOSE up -d
+    info "compose 已启动"
 
-    sleep 2
+    sleep 3
     step "健康检查"
     if curl -sf "http://localhost:${SERVICE_PORT}/api/v1/health" >/dev/null 2>&1; then
         info "服务运行正常: http://localhost:${SERVICE_PORT}"
@@ -120,7 +120,7 @@ deploy_docker() {
         echo "  优化内容:  curl -X POST http://localhost:${SERVICE_PORT}/api/v1/optimize -H 'Content-Type: application/json' -d '{\"content\":\"...\"}'"
         echo ""
     else
-        warn "服务可能还在启动中，请稍后重试健康检查"
+        warn "服务可能还在启动中（数据库初始化中），请稍后重试健康检查"
         warn "查看日志: bash scripts/deploy.sh --logs"
     fi
 }
@@ -203,9 +203,10 @@ stop_service() {
         sudo systemctl stop geo
         info "已停止 geo 服务"
     fi
-    step "停止 Docker 容器"
-    docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    info "已停止 Docker 容器"
+    step "停止 Docker Compose 服务"
+    cd "$PROJECT_DIR"
+    docker compose down >/dev/null 2>&1 || docker-compose down >/dev/null 2>&1 || true
+    info "已停止 Docker Compose 服务"
 }
 
 # ===== 重启服务 =====
@@ -215,10 +216,11 @@ restart_service() {
         sudo systemctl restart geo
         info "已重启 systemd 服务"
     else
-        step "重启 Docker 容器"
-        docker restart "$CONTAINER_NAME" 2>/dev/null || docker run -d --name "$CONTAINER_NAME" --restart unless-stopped \
-            -p "${SERVICE_PORT}:8080" --env-file "$PROJECT_DIR/.env" -e TZ=Asia/Shanghai "${IMAGE_NAME}:${IMAGE_TAG}"
-        info "已重启 Docker 容器"
+        step "重启 Docker Compose 服务"
+        cd "$PROJECT_DIR"
+        docker compose restart 2>/dev/null || docker-compose restart 2>/dev/null \
+            || { docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null; }
+        info "已重启 Docker Compose 服务"
     fi
 }
 
@@ -226,12 +228,14 @@ restart_service() {
 show_status() {
     echo "===== GEO 服务状态 ====="
     echo ""
-    # Docker
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${CONTAINER_NAME}"; then
-        info "Docker 容器运行中:"
-        docker ps --filter "name=${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    # Docker Compose
+    cd "$PROJECT_DIR" 2>/dev/null || true
+    if docker compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo" \
+       || docker-compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo"; then
+        info "Docker Compose 服务运行中:"
+        docker compose ps 2>/dev/null || docker-compose ps 2>/dev/null
     else
-        warn "Docker 容器未运行"
+        warn "Docker Compose 服务未运行"
     fi
     echo ""
     # systemd
@@ -253,9 +257,11 @@ show_status() {
 
 # ===== 查看日志 =====
 show_logs() {
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${CONTAINER_NAME}"; then
-        step "Docker 日志"
-        docker logs -f --tail 100 "${CONTAINER_NAME}"
+    cd "$PROJECT_DIR" 2>/dev/null || true
+    if docker compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo" \
+       || docker-compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo"; then
+        step "Docker Compose 日志（geo 服务）"
+        docker compose logs -f --tail 100 geo 2>/dev/null || docker-compose logs -f --tail 100 geo 2>/dev/null
     elif [[ -f /etc/systemd/system/geo.service ]]; then
         step "systemd 日志"
         sudo journalctl -u geo -f --no-pager -n 100
@@ -270,8 +276,9 @@ clean_all() {
     cd "$PROJECT_DIR"
     rm -rf bin/ dist/
     info "已清理 bin/ dist/"
-    step "清理 Docker 镜像"
-    docker rmi "${IMAGE_NAME}:${IMAGE_TAG}" 2>/dev/null && info "已删除镜像 ${IMAGE_NAME}:${IMAGE_TAG}" || warn "无镜像可清理"
+    step "停止并移除 Compose 容器（保留卷数据）"
+    docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+    info "已停止 Compose 服务（数据卷 mariadb-data/redis-data/meili-data 保留）"
 }
 
 # ===== 主入口 =====
