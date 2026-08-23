@@ -7,9 +7,9 @@
 #   [本地]  git add -A + commit + push origin <branch>（打包前自动完成；无改动则不提交；--skip-commit 跳过）
 #     ↓     自动选择构建方式：本机有 go+npm → 本机编译（GOCACHE 增量秒级，前端有变化才重建）
 #     ↓     docker buildx build -f Dockerfile.local（仅 COPY 二进制打包，秒级）；无工具链自动回退容器构建
-#     ↓     docker push（自动登录 ACR；本机为 Linux 时自动走内网 VPC 地址 crpi-xxx-vpc）
+#     ↓     docker push（自动登录 ACR；本机在 VPC 内[Linux & PUSH_VPC=1]直推内网名，否则推公网变体，同仓库自动可见）
 #   [远程]  ssh 到服务器：docker login（可选）→ REMOTE_CMD（默认：内网 VPC 地址拉镜像 +
-#           tag + compose up -d；服务器与 ACR 同内网时自动走 crpi-xxx-vpc 地址，可自定义）→ 健康检查
+#           compose up -d；镜像名即内网地址，1Panel 显示为内网；服务器不在内网可覆盖 REMOTE_IMAGE）→ 健康检查
 #
 # 用法：
 #   ./scripts/publish.sh                 # 完整流程（提交推送 + 构建 + 发布）
@@ -22,7 +22,7 @@
 # 构建方式自动选择：本机有 go+npm → 本机编译 + Dockerfile.local 打包；否则容器内全量构建。
 #
 # 常用环境变量（均有默认值，按需覆盖）：
-#   ACR_IMAGE       完整镜像名（默认 crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest）
+#   ACR_IMAGE       完整镜像名（默认内网 VPC：crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest）
 #   ACR_LOGIN_USER / ACR_LOGIN_PASSWORD   推送到 ACR 用的账号（可选，未登录时自动 login）
 #   PLATFORM        目标架构，默认 linux/amd64（当前服务器架构）；
 #                   多架构用逗号分隔：PLATFORM="linux/amd64,linux/arm64"（慢，但 arm 服务器也能拉）
@@ -50,8 +50,13 @@
 set -euo pipefail
 
 # ===== 配置（环境变量可覆盖） =====
-ACR_REGISTRY="${ACR_REGISTRY:-crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com}"
-ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY}/codeup2026/geo:latest}"   # tag 固定 latest
+# 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见，推一个另一个立即可见）。
+# 规范镜像名（容器运行 / compose / 1Panel 引用）= 内网 VPC 地址，让面板显示为内网地址。
+# 推送端点自动选择：本机在 VPC 内（Linux 且 PUSH_VPC=1）→ 直接推内网名；
+#   否则（Mac / 非 VPC 机器）推公网变体（同仓库自动可见，不占内网带宽也无妨）。
+ACR_REGISTRY_VPC="${ACR_REGISTRY_VPC:-crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com}"
+ACR_REGISTRY_PUBLIC="${ACR_REGISTRY_PUBLIC:-crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com}"
+ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY_VPC}/codeup2026/geo:latest}"   # tag 固定 latest
 
 # 构建镜像源（国内网络默认走镜像，CI 可用官方源覆盖）
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
@@ -67,11 +72,11 @@ REMOTE_HOST="${REMOTE_HOST:-}"
 REMOTE_PORT="${REMOTE_PORT:-22}"
 REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR:-/opt/1panel/docker/compose/geo}"
 REMOTE_HEALTH_URL="${REMOTE_HEALTH_URL:-http://127.0.0.1:8080/api/v1/health}"
-# 远程服务器拉取镜像地址：默认自动走阿里云 ACR 内网 VPC 地址（crpi-xxx → crpi-xxx-vpc），
-# 服务器与 ACR 同 VPC/内网时拉取走内网（快且不占公网带宽）；不在内网可覆盖为公网地址。
-REMOTE_IMAGE="${REMOTE_IMAGE:-$(printf '%s' "$ACR_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)\.(cn-[a-z0-9-]+)\.|crpi-\1-vpc.\2.|')}"
-# 远程默认升级命令（可整体自定义）：内网拉取 → tag 成 compose 镜像名（本地已有则不重拉）→ up -d
-REMOTE_CMD="${REMOTE_CMD:-cd '${REMOTE_COMPOSE_DIR}' && docker pull '${REMOTE_IMAGE}' && docker tag '${REMOTE_IMAGE}' '${ACR_IMAGE}' && docker compose up -d}"
+# 远程服务器拉取镜像地址：默认 = ACR_IMAGE（已是内网 VPC 地址，服务器与 ACR 同 VPC 时走内网）；
+# 若服务器不在内网，覆盖 REMOTE_IMAGE 为公网地址即可。
+REMOTE_IMAGE="${REMOTE_IMAGE:-${ACR_IMAGE}}"
+# 远程默认升级命令（可整体自定义）：内网拉取 → compose up -d（镜像名即内网地址，1Panel 显示内网）
+REMOTE_CMD="${REMOTE_CMD:-cd '${REMOTE_COMPOSE_DIR}' && docker pull '${REMOTE_IMAGE}' && docker compose up -d}"
 
 # ACR 登录（可选）
 ACR_LOGIN_USER="${ACR_LOGIN_USER:-}"
@@ -226,16 +231,30 @@ do_build() {
         info "镜像打包完成: ${ACR_IMAGE}"
         return
     fi
-    warn "本机缺少 go/npm，回退容器内全量构建（较慢）"
-    local version commit build_at
+    warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：工具链+依赖+编译缓存已固化，仅叠加源码，日常发布快）"
+    local version commit build_at base_tag
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
     build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    # 单平台：--load 到本地再 push；多平台（含逗号）：--push 直接推 manifest 列表
+
+    # 1) 基础镜像（geo-build-base）：工具链 + 依赖下载 + 依赖编译缓存。
+    #    依赖(go.mod/go.sum/web-app/package*.json)未变时 layer 命中，几乎瞬时。
+    if [[ "$PLATFORM" == *","* ]]; then
+        base_tag="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
+        run docker buildx build --platform "$PLATFORM" --push -f Dockerfile.base -t "$base_tag" .
+    else
+        base_tag="geo-build-base:latest"
+        run docker buildx build --platform "$PLATFORM" --load -f Dockerfile.base -t "$base_tag" .
+    fi
+    info "基础镜像就绪: ${base_tag}"
+
+    # 2) app 镜像（FROM 基础镜像，仅叠加业务源码并编译业务代码）。
+    #    单平台：--load 到本地再 push；多平台（含逗号）：--push 直接推 manifest 列表。
     if [[ "$PLATFORM" == *","* ]]; then
         run docker buildx build \
             --platform "$PLATFORM" \
             --push \
+            --build-arg "BASE_IMAGE=${base_tag}" \
             --build-arg "VERSION=${version}" \
             --build-arg "COMMIT=${commit}" \
             --build-arg "BUILD_AT=${build_at}" \
@@ -247,6 +266,7 @@ do_build() {
         run docker buildx build \
             --platform "$PLATFORM" \
             --load \
+            --build-arg "BASE_IMAGE=${base_tag}" \
             --build-arg "VERSION=${version}" \
             --build-arg "COMMIT=${commit}" \
             --build-arg "BUILD_AT=${build_at}" \
@@ -258,10 +278,11 @@ do_build() {
     info "镜像构建完成: ${ACR_IMAGE}"
 }
 
-do_login() { # do_login <user> <password>（本地 docker login）
+do_login() { # do_login <registry>（docker login 到指定 registry）
+    local reg="$1"
     if [[ -n "$ACR_LOGIN_USER" && -n "$ACR_LOGIN_PASSWORD" ]]; then
-        step "登录 ACR ${ACR_REGISTRY}"
-        echo "$ACR_LOGIN_PASSWORD" | run docker login "$ACR_REGISTRY" -u "$ACR_LOGIN_USER" --password-stdin
+        step "登录 ACR ${reg}"
+        echo "$ACR_LOGIN_PASSWORD" | run docker login "$reg" -u "$ACR_LOGIN_USER" --password-stdin
     fi
 }
 
@@ -271,21 +292,24 @@ do_push() {
         warn "--skip-push：跳过推送"
         return
     fi
-    do_login
-    # 本机为 Linux（通常在阿里云 VPC 内）→ 推送到内网 VPC 地址（crpi-xxx-vpc），
-    # 推送走内网带宽、更快且不占公网出口；ACR 内网/公网指向同一仓库，公网同样可拉。
-    # 不在 VPC 内的 Linux 机器可设 PUSH_VPC=0 强制走公网。
+    # 推送端点选择：
+    #  - 本机在 VPC 内（Linux 且 PUSH_VPC=1）→ 直接推内网名 ACR_IMAGE（crpi-xxx-vpc）；
+    #  - 否则（Mac / 非 VPC 机器）→ 推公网变体（crpi-xxx，无 -vpc），ACR 个人版公网/内网同仓库自动可见。
+    # Mac 无法直连 VPC，只能走公网，但这不影响最终结果：镜像在仓库里只有一个，面板按 ACR_IMAGE（内网名）运行。
+    local push_image push_registry
     if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
-        local vpc_image
-        vpc_image="$(printf '%s' "$ACR_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)\.(cn-[a-z0-9-]+)\.|crpi-\1-vpc.\2.|')"
-        info "本机为 Linux，推送走 ACR 内网 VPC 地址: ${vpc_image}"
-        run docker tag "$ACR_IMAGE" "$vpc_image"
-        run docker push "$vpc_image"
-        info "推送完成（内网 VPC）: ${vpc_image}"
-        return
+        push_image="$ACR_IMAGE"
+    else
+        push_image="$(printf '%s' "$ACR_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
     fi
-    run docker push "$ACR_IMAGE"
-    info "推送完成: ${ACR_IMAGE}"
+    push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
+    do_login "$push_registry"
+    if [[ "$push_image" != "$ACR_IMAGE" ]]; then
+        run docker tag "$ACR_IMAGE" "$push_image"
+    fi
+    info "推送镜像到 ACR（本机 $(uname -s)，端点 ${push_registry}）: ${push_image}"
+    run docker push "$push_image"
+    info "推送完成: ${push_image}"
 }
 
 remote_upgrade() {
@@ -297,8 +321,9 @@ remote_upgrade() {
     step "远程升级 1Panel 容器（${REMOTE_HOST}）"
     # 远程 ACR 登录（可选）
     if [[ -n "$ACR_LOGIN_USER" && -n "$ACR_LOGIN_PASSWORD" ]]; then
-        info "远程登录 ACR ..."
-        run_ssh "echo '${ACR_LOGIN_PASSWORD}' | docker login '${ACR_REGISTRY}' -u '${ACR_LOGIN_USER}' --password-stdin"
+        local remote_registry="${REMOTE_IMAGE%%/*}"
+        info "远程登录 ACR（${remote_registry}）..."
+        run_ssh "echo '${ACR_LOGIN_PASSWORD}' | docker login '${remote_registry}' -u '${ACR_LOGIN_USER}' --password-stdin"
     fi
     info "执行远程命令: ${REMOTE_CMD}"
     run_ssh "$REMOTE_CMD"

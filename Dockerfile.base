@@ -1,0 +1,37 @@
+# Dockerfile.base — GEO 构建基础镜像
+#
+# 目标：把「重活」(Go/Node 工具链 + 依赖下载 + 依赖编译缓存) 一次性固化进基础镜像，
+#       日常发布只构建 app 镜像（FROM 本镜像，仅叠加业务源码并编译业务代码），
+#       从而把每次发布从「全量下载+全量编译」降到「仅编译变化的业务包」。
+#
+# 何时需要重建本基础镜像：
+#   - go.mod / go.sum / web-app/package.json / web-app/package-lock.json 发生变化时
+#   - 否则 docker 直接命中已缓存的 layer，几乎瞬时返回
+# 重建命令（publish.sh 会自动执行）：
+#   docker buildx build --platform linux/amd64 --load -f Dockerfile.base -t geo-build-base:latest .
+#
+# syntax=docker/dockerfile:1
+FROM golang:1.26-alpine
+
+# 安装 Node.js / npm（前端构建需要），Alpine 3.20 仓库自带 Node 20.x
+RUN apk add --no-cache nodejs npm
+
+# ===== 预热 Go 模块缓存 =====
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
+
+# ===== 预热前端依赖 =====
+COPY web-app/package.json web-app/package-lock.json ./web-app/
+RUN cd web-app && npm ci
+
+# ===== 预热 Go 编译缓存(GOCACHE) =====
+# 编译所有第三方依赖包，把产物写入镜像层 /root/.cache/go-build。
+# app 镜像构建时会把这份预热缓存复制进持久缓存，使首次发布也只需编译业务自身代码，
+# 不必重新编译全部依赖（弱机上一处可省下十几分钟）。
+# 注：此时无业务源码，仅预热依赖包；若某依赖无法单独构建则忽略（|| true）。
+RUN GOCACHE=/root/.cache/go-build \
+    go build $(go list -m -f '{{.Path}}' all 2>/dev/null | grep -v '^github.com/deep2code/geo$') \
+    2>/dev/null || true
+
+CMD ["/bin/sh"]

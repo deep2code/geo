@@ -1,18 +1,22 @@
 # Dockerfile - GEO 生成式引擎优化系统
-# 三阶段构建：前端构建 → Go 后端构建 → Alpine 运行
+# 两阶段构建（依赖与工具链来自 geo-build-base）：前端构建 → Go 后端构建 → Alpine 运行
+# 基础镜像自带：Go 1.26 / Node 20 / 已下载的 Go 模块 / 已安装的 npm 包 / 预热的 GOCACHE。
+# 本文件只负责「叠加业务源码 + 编译」，因此日常发布很快（依赖不重下、依赖包不重编）。
+#
 # 统一版本约束：
 #   - Go   1.26（与 go.mod / CI ci.yml / release.yml 对齐）
 #   - Node 20.x（与 CI / 现代 Vite 要求对齐）
 #   - Alpine 3.20
 #
 # 多架构（buildx）：docker buildx build --platform linux/amd64,linux/arm64 --push
-#   - web-builder 用 $BUILDPLATFORM（本机架构）跑 npm/vite：产物是纯静态文件，
-#     架构无关，本机原生构建最快
+#   - web-builder 用 $BUILDPLATFORM（本机架构）跑 npm/vite：产物是纯静态文件，架构无关
 #   - builder 用 $TARGETPLATFORM（目标架构）跑 go build：CGO_ENABLED=0 交叉编译
 # syntax=docker/dockerfile:1
 
+ARG BASE_IMAGE=geo-build-base:latest
+
 # ===== 阶段 1：前端构建（生产级 SPA；静态产物架构无关，用本机平台构建最快）=====
-FROM --platform=$BUILDPLATFORM node:20-alpine AS web-builder
+FROM --platform=$BUILDPLATFORM ${BASE_IMAGE} AS web-builder
 
 WORKDIR /web
 
@@ -20,9 +24,9 @@ WORKDIR /web
 ARG NPM_REGISTRY=https://registry.npmjs.org
 ENV npm_config_registry=$NPM_REGISTRY
 
-# 仅拷贝 package 定义，充分利用 layer 缓存
+# 仅拷贝 package 定义，充分利用 layer 缓存（依赖未变则不重装）
 COPY web-app/package.json web-app/package-lock.json ./
-# cache mount：npm 缓存持久化，依赖未变时下载走缓存
+# cache mount：npm 缓存持久化，依赖未变时下载走缓存（基础镜像已预热 /root/.npm）
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
@@ -31,7 +35,7 @@ COPY web-app/ ./
 RUN npm run build
 
 # ===== 阶段 2：Go 后端构建（目标架构默认即 TARGETPLATFORM；CGO 禁用可安全交叉编译）=====
-FROM golang:1.26-alpine AS builder
+FROM ${BASE_IMAGE} AS builder
 
 ARG VERSION=dev
 ARG COMMIT=none
@@ -48,11 +52,8 @@ ENV GOSUMDB=$GOSUMDB_URL
 
 WORKDIR /build
 
-# 依赖缓存层：先拷贝 go.mod/go.sum 再下载（cache mount 保留模块缓存，依赖未变不重下）
+# 依赖缓存：基础镜像已把模块下载进 /go/pkg/mod（镜像层），直接复用，不再重新下载。
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
-
 # 拷贝源码
 COPY . .
 
@@ -62,11 +63,12 @@ COPY . .
 COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 
 # 静态编译（纯 Go MySQL 驱动 go-sql-driver/mysql，CGO 可安全禁用；GOOS/GOARCH 来自 buildx）
-# cache mount：Go 编译缓存（GOCACHE）与模块缓存持久化——未变化的包直接命中缓存，
-# 避免每次构建全量重编（首次 ~2.5min，后续小改动仅重编变化包，通常数秒~数十秒）
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+# 编译缓存策略：
+#   - 基础镜像层已预热依赖包编译缓存于 /root/.cache/go-build；
+#   - 把它复制进持久缓存 /gocache（首构建即命中，仅编译业务代码；后续构建增量命中）。
+RUN --mount=type=cache,target=/gocache \
+    cp -rn /root/.cache/go-build/. /gocache/ 2>/dev/null || true; \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
     -o /out/geo \
