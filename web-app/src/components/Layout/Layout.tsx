@@ -26,7 +26,11 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   // 新增模块
   { key: 'help', to: '/help', icon: '❓', labelKey: 'nav.help' },
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
-  { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' }
+  { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
+  // 法律 / 合规页面
+  { key: 'terms', to: '/terms', icon: '📜', labelKey: 'nav.terms' },
+  { key: 'privacy', to: '/privacy', icon: '🔒', labelKey: 'nav.privacy' },
+  { key: 'dpa', to: '/dpa', icon: '📋', labelKey: 'nav.dpa' }
 ]
 
 export const Layout: React.FC = () => {
@@ -107,18 +111,6 @@ export const Layout: React.FC = () => {
             </NavLink>
           ))}
         </nav>
-        <div className="app-sidebar-footer">
-          <div className="app-sidebar-footer-links">
-            <NavLink to="/terms" className="app-sidebar-footer-link" onClick={() => navigate('/terms')}>
-              {sidebarOpen ? '服务条款' : '条款'}
-            </NavLink>
-            <NavLink to="/privacy" className="app-sidebar-footer-link" onClick={() => navigate('/privacy')}>
-              {sidebarOpen ? '隐私政策' : '隐私'}
-            </NavLink>
-            <NavLink to="/dpa" className="app-sidebar-footer-link" onClick={() => navigate('/dpa')}>DPA</NavLink>
-          </div>
-          <div className="app-sidebar-version">v1.0.0</div>
-        </div>
       </aside>
 
       <div className="app-main">

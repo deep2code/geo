@@ -76,7 +76,10 @@
     "rules": "Rules",
     "evaluate": "Evaluate",
     "brandDBImport": "Business DB Import",
-    "integrations": "Integrations / MCP"
+    "integrations": "Integrations / MCP",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "dpa": "DPA"
   },
   "dashboard": {
     "title": "Dashboard",

@@ -76,7 +76,10 @@
     "rules": "ルールセット",
     "evaluate": "評価",
     "brandDBImport": "工商DB取込",
-    "integrations": "連携 / MCP"
+    "integrations": "連携 / MCP",
+    "terms": "利用規約",
+    "privacy": "プライバシーポリシー",
+    "dpa": "データ処理契約 (DPA)"
   },
   "dashboard": {
     "title": "ダッシュボード",

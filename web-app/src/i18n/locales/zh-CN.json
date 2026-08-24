@@ -76,7 +76,10 @@
     "rules": "规则集",
     "evaluate": "评测",
     "brandDBImport": "工商库导入",
-    "integrations": "集成 / MCP"
+    "integrations": "集成 / MCP",
+    "terms": "服务条款",
+    "privacy": "隐私政策",
+    "dpa": "数据处理协议"
   },
   "dashboard": {
     "title": "仪表盘",
