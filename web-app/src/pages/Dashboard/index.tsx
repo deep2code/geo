@@ -21,6 +21,26 @@ import type {
 } from '@/types/api'
 import './Dashboard.scss'
 
+/** 示例数据标记：Dashboard 部分模块在无真实数据时展示演示数据，必须明确标注，避免误导用户。 */
+const DemoBadge: React.FC = () => (
+  <span
+    title="当前为示例数据（演示用），接入真实数据后自动替换"
+    style={{
+      marginLeft: 8,
+      padding: '1px 6px',
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 500,
+      background: 'var(--status-warning-bg)',
+      color: 'var(--status-warning)',
+      verticalAlign: 'middle',
+      whiteSpace: 'nowrap'
+    }}
+  >
+    示例数据
+  </span>
+)
+
 const Dashboard: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -79,6 +99,17 @@ const Dashboard: React.FC = () => {
         .map(r => Math.round(r.score ?? 0))
         .slice(-7)
     : null
+
+  // 系统就绪分级：fail > warn > ok > unknown
+  // 后端 /ready 的 ready=true 仅代表"无 fail"（warn 不阻塞服务），但前端必须诚实反映 warn 状态，
+  // 否则用户在 dashboard 看到绿色"所有依赖正常"但实际 history_db/offline_db 都 warn，会被严重误导。
+  const readyLevel: 'ok' | 'warn' | 'fail' | 'unknown' = (() => {
+    if (!systemReady) return 'unknown'
+    const entries = Object.entries(systemReady.checks ?? {})
+    if (entries.some(([, v]) => v?.status === 'fail')) return 'fail'
+    if (entries.some(([, v]) => v?.status === 'warn')) return 'warn'
+    return 'ok'
+  })()
 
   // 30 天趋势：取自历史库按天聚合 count；后端已按日期升序、无记录日期补 0。
   const trend30d: number[] | null = useMemo(() => {
@@ -267,15 +298,24 @@ const Dashboard: React.FC = () => {
         />
         <Kpi
           label="系统就绪"
-          value={systemReady?.ready ? '✓' : '⚠️'}
+          value={readyLevel === 'ok' ? '✓' : readyLevel === 'fail' ? '✗' : '⚠️'}
           icon="🩺"
-          trendValue={systemReady?.ready ? '所有依赖正常' : '部分依赖未就绪'}
-          trendDirection={systemReady?.ready ? 'up' : 'neutral'}
-          variant={systemReady?.ready ? 'success' : 'warning'}
+          trendValue={
+            readyLevel === 'ok'
+              ? '所有依赖正常'
+              : readyLevel === 'fail'
+                ? '关键依赖故障'
+                : readyLevel === 'warn'
+                  ? '部分依赖降级运行'
+                  : '未知'
+          }
+          trendDirection={readyLevel === 'ok' ? 'up' : 'neutral'}
+          variant={readyLevel === 'ok' ? 'success' : readyLevel === 'fail' ? 'error' : 'warning'}
           footer={
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {Object.entries(systemReady?.checks ?? {}).map(([k, v]) => {
                 const ok = v?.status === 'ok'
+                const warn = v?.status === 'warn'
                 return (
                   <span
                     key={k}
@@ -284,8 +324,16 @@ const Dashboard: React.FC = () => {
                       fontSize: 11,
                       padding: '2px 6px',
                       borderRadius: 4,
-                      background: ok ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
-                      color: ok ? 'var(--status-success)' : 'var(--status-warning)'
+                      background: ok
+                        ? 'var(--status-success-bg)'
+                        : warn
+                          ? 'var(--status-warning-bg)'
+                          : 'var(--status-danger-bg)',
+                      color: ok
+                        ? 'var(--status-success)'
+                        : warn
+                          ? 'var(--status-warning)'
+                          : 'var(--status-danger)'
                     }}
                   >
                     {k}: {ok ? 'ok' : (v?.status ?? 'unknown')}
@@ -302,7 +350,7 @@ const Dashboard: React.FC = () => {
           <Table columns={cols} dataSource={topBrandsData} rowKey="id" striped />
         </Card>
 
-        <Card title={t('dashboard.engineDistribution')} compact>
+        <Card title={<>{t('dashboard.engineDistribution')}<DemoBadge /></>} compact>
           <div style={{ height: 320 }}>
             <MatrixBubble
               data={engineData}
@@ -315,7 +363,7 @@ const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        <Card title={t('dashboard.contentGap')} actions={<Button variant="ghost" size="sm">查看全部 →</Button>} compact>
+        <Card title={<>{t('dashboard.contentGap')}<DemoBadge /></>} actions={<Button variant="ghost" size="sm">查看全部 →</Button>} compact>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {contentGaps.map(g => (
               <div key={g.id} style={{
@@ -339,7 +387,7 @@ const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        <Card title={t('dashboard.recentAudits')} compact>
+        <Card title={<>{t('dashboard.recentAudits')}{!history?.records && <DemoBadge />}</>} compact>
           <Table
             rowKey="id"
             striped

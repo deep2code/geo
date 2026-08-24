@@ -68,6 +68,17 @@ services:
       GEO_REDIS_ADDR: "redis:6379"
       GEO_MEILISEARCH_URL: "http://meilisearch:7700"
       GEO_MEILISEARCH_API_KEY: ""
+      # ── 账号体系（引导类，只读环境变量，不在 DB）──
+      # 默认不启用（false）；生产请在本文件同目录 .env 中设置：
+      #   GEO_AUTH_ENABLED=true
+      #   GEO_ADMIN_EMAIL=your_admin@example.com
+      #   GEO_ADMIN_PASSWORD=<强密码，≥8位含字母数字>
+      #   GEO_JWT_SECRET=$(openssl rand -hex 32)
+      # 注意：启用账号体系要求数据库可用（登录用户表在 geo 库中）。
+      GEO_AUTH_ENABLED: "${GEO_AUTH_ENABLED:-false}"
+      GEO_ADMIN_EMAIL: "${GEO_ADMIN_EMAIL:-}"
+      GEO_ADMIN_PASSWORD: "${GEO_ADMIN_PASSWORD:-}"
+      GEO_JWT_SECRET: "${GEO_JWT_SECRET:-}"
     depends_on:
       mariadb:
         condition: service_healthy
