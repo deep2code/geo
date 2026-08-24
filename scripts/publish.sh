@@ -237,10 +237,21 @@ do_build() {
         return
     fi
     warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：仅固化工具链+依赖下载，app 构建走 buildx 持久缓存 /gocache 自热）"
-    local version commit build_at base_tag
+    local version commit build_at base_tag base_remote
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
     build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+    # base 镜像的远端仓库前缀：必须与 app 镜像 ACR_IMAGE 使用同一个 registry 端点，
+    # 否则打包机（Linux + VPC）只登录了 VPC 内网 registry，推公网 registry 会被拒
+    # （insufficient_scope: authorization failed）。
+    # 规则与 do_push 一致：Linux 且 PUSH_VPC=1 → VPC 内网；否则公网变体。
+    if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
+        base_remote="${ACR_REGISTRY_VPC}/geo-build-base:latest"
+    else
+        base_remote="$(printf '%s' "${ACR_REGISTRY_PUBLIC}/geo-build-base:latest" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
+    fi
+    do_login "$(printf '%s' "$base_remote" | sed -E 's|/.*||')"
 
     # 1) 基础镜像（geo-build-base）：工具链 + 依赖下载 + 依赖编译缓存。
     #    依赖(go.mod/go.sum/web-app/package*.json)未变时 layer 命中，几乎瞬时。
@@ -248,7 +259,7 @@ do_build() {
     #    且不再删除本地 base，避免下一轮重复拉 golang:1.26-alpine + apk + go mod download + npm ci（约 70s 浪费）。
     #    注：只用 registry 缓存源，不用 type=local（本地目录不存在时 buildx 直接报错）。
     if [[ "$PLATFORM" == *","* ]]; then
-        base_tag="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
+        base_tag="$base_remote"
         run docker buildx build --platform "$PLATFORM" --push \
             --cache-from "type=registry,ref=${base_tag}" \
             -f Dockerfile.base -t "$base_tag" .
@@ -258,7 +269,6 @@ do_build() {
         #   1) --push 推到 ACR；2) docker pull 拉回本地；3) tag 成本地名 geo-build-base:latest
         #      （app 的 Dockerfile FROM geo-build-base:latest 用本地名），供下一轮 FROM 层命中缓存。
         base_tag="geo-build-base:latest"
-        local base_remote="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
         run docker buildx build --platform "$PLATFORM" --push \
             --cache-from "type=registry,ref=${base_remote}" \
             -f Dockerfile.base -t "$base_remote" .
