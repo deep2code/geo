@@ -244,8 +244,9 @@ do_build() {
 
     # 1) 基础镜像（geo-build-base）：工具链 + 依赖下载 + 依赖编译缓存。
     #    依赖(go.mod/go.sum/web-app/package*.json)未变时 layer 命中，几乎瞬时。
-    #    关键优化：每次都从 ACR 已推送的 base 拉缓存(--cache-from)，且不再删除本地 base，
-    #    避免下一轮重复拉 golang:1.26-alpine + apk + go mod download + npm ci（约 70s 浪费）。
+    #    关键优化：每次都从 ACR 已推送的 base 拉缓存(--cache-from type=registry)，
+    #    且不再删除本地 base，避免下一轮重复拉 golang:1.26-alpine + apk + go mod download + npm ci（约 70s 浪费）。
+    #    注：只用 registry 缓存源，不用 type=local（本地目录不存在时 buildx 直接报错）。
     if [[ "$PLATFORM" == *","* ]]; then
         base_tag="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
         run docker buildx build --platform "$PLATFORM" --push \
@@ -260,7 +261,6 @@ do_build() {
         local base_remote="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
         run docker buildx build --platform "$PLATFORM" --push \
             --cache-from "type=registry,ref=${base_remote}" \
-            --cache-from "type=local,ref=${PROJECT_DIR}/.buildcache/base" \
             -f Dockerfile.base -t "$base_remote" .
         info "基础镜像已推远程: ${base_remote}"
         run docker pull "$base_remote"
