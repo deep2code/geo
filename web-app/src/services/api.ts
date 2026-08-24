@@ -304,7 +304,7 @@ export const api = {
       body: JSON.stringify(req)
     }),
 
-  mailStatus: () => request<MailStatus>('/mail/status', { method: 'GET' }),
+  mailStatus: () => request<MailStatus>('/mail/status', { method: 'GET', skipAuthRedirect: true }),
   mailSend: (req: MailSendRequest) =>
     request<MailSendResponse>('/mail/send', {
       method: 'POST',
@@ -429,11 +429,11 @@ export const api = {
     ),
 
   metaWhitelabel: () =>
-    request<WhitelabelMeta>('/meta/whitelabel', { method: 'GET' }),
+    request<WhitelabelMeta>('/meta/whitelabel', { method: 'GET', skipAuthRedirect: true }),
 
   // 公开构建信息（无需登录，首页/页脚展示打包版本/git-hash/打包时间/打包系统）
   metaSystem: () =>
-    request<MetaSystem>('/meta/system', { method: 'GET' }),
+    request<MetaSystem>('/meta/system', { method: 'GET', skipAuthRedirect: true }),
 
   brandCompare: (brands: string[]) => {
     const params = new URLSearchParams()
@@ -463,32 +463,34 @@ export const api = {
       if (params?.plan) qs.set('plan', params.plan)
       if (params?.page) qs.set('page', String(params.page))
       if (params?.limit) qs.set('limit', String(params.limit))
-      return request<any>(`/admin/tenants?${qs.toString()}`, { method: 'GET' })
+      return request<any>(`/admin/tenants?${qs.toString()}`, { method: 'GET', skipAuthRedirect: true })
     },
     // 租户详情
     tenantDetail: (id: string) =>
-      request<any>(`/admin/tenants/${id}`, { method: 'GET' }),
+      request<any>(`/admin/tenants/${id}`, { method: 'GET', skipAuthRedirect: true }),
     // 更新租户状态（active/suspended）
     updateTenantStatus: (id: string, status: string) =>
       request<any>(`/admin/tenants/${id}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status }),
+        skipAuthRedirect: true
       }),
     // 全局用量统计
-    usage: () => request<any>('/admin/usage', { method: 'GET' }),
+    usage: () => request<any>('/admin/usage', { method: 'GET', skipAuthRedirect: true }),
     // 公告列表
-    announcements: () => request<any>('/admin/announcements', { method: 'GET' }),
+    announcements: () => request<any>('/admin/announcements', { method: 'GET', skipAuthRedirect: true }),
     // 创建公告
     createAnnouncement: (data: any) =>
       request<any>('/admin/announcements', {
         method: 'POST',
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        skipAuthRedirect: true
       }),
     // 删除公告
     deleteAnnouncement: (id: string) =>
-      request<any>(`/admin/announcements/${id}`, { method: 'DELETE' }),
+      request<any>(`/admin/announcements/${id}`, { method: 'DELETE', skipAuthRedirect: true }),
     // 系统信息
-    system: () => request<any>('/admin/system', { method: 'GET' }),
+    system: () => request<any>('/admin/system', { method: 'GET', skipAuthRedirect: true }),
     // 系统自检（关键业务健康 + 属性/参数/配置校验 + 运行时快照）。
     // skipAuthRedirect：命中 403 时由页面自身展示"需管理员权限"引导，而非全局跳登录。
     selfCheck: () =>
@@ -501,13 +503,14 @@ export const api = {
       const qs = new URLSearchParams()
       if (params?.category) qs.set('category', params.category)
       if (params?.q) qs.set('q', params.q)
-      return request<any>(`/admin/settings?${qs.toString()}`, { method: 'GET' })
+      return request<any>(`/admin/settings?${qs.toString()}`, { method: 'GET', skipAuthRedirect: true })
     },
     // 更新配置项
     updateSetting: (key: string, value: string) =>
       request<any>('/admin/settings', {
         method: 'PUT',
-        body: JSON.stringify({ key, value })
+        body: JSON.stringify({ key, value }),
+        skipAuthRedirect: true
       }),
     // 恢复配置为默认值
     resetSetting: (key: string) =>
@@ -661,9 +664,9 @@ export const api = {
   // 官网落地页
   landing: {
     // 功能亮点
-    features: () => request<any>('/landing/features', { method: 'GET' }),
+    features: () => request<any>('/landing/features', { method: 'GET', skipAuthRedirect: true }),
     // 平台数据
-    stats: () => request<any>('/landing/stats', { method: 'GET' }),
+    stats: () => request<any>('/landing/stats', { method: 'GET', skipAuthRedirect: true }),
     // 定价方案列表
     plans: () => request<any>('/landing/plans', { method: 'GET' }),
     // 定价方案详情
@@ -673,7 +676,7 @@ export const api = {
 
   // ── 法务合规：合规元数据与数据权利（roadmap #80 / #81） ──
   meta: {
-    compliance: () => request<any>('/meta/compliance', { method: 'GET' })
+    compliance: () => request<any>('/meta/compliance', { method: 'GET', skipAuthRedirect: true })
   },
   legal: {
     // 访问我的数据（个保法第 44-47 条 / GDPR Art.15）

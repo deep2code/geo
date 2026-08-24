@@ -1276,8 +1276,14 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 公开路径放行（/health /ready /auth/* /billing/webhook/* 等）
-			if public[path] || isServerPublicPath(path) || strings.HasPrefix(path, "/api/v1/auth/") || strings.HasPrefix(path, "/api/v1/billing/webhook/") {
+			// 公开路径放行。
+			// 注意：仅注册/登录/刷新/登出这 4 个 auth 端点免鉴权；其余 /api/v1/auth/*
+			// （me / change-password / workspace/* / admin/audit）需要 JWT 上下文，
+			// 若整前缀豁免会让它们拿到 nil user → 一律 401/403（账号管理功能全废）。
+			if public[path] || isServerPublicPath(path) ||
+				path == "/api/v1/auth/register" || path == "/api/v1/auth/login" ||
+				path == "/api/v1/auth/refresh" || path == "/api/v1/auth/logout" ||
+				strings.HasPrefix(path, "/api/v1/billing/webhook/") {
 				h.ServeHTTP(w, r)
 				return
 			}

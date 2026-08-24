@@ -175,6 +175,14 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 			"/metrics":       true, // Prometheus 抓取端点（无敏感数据）
 			"/api/v1/health": true,
 			"/api/v1/ready":  true,
+			// 以下为面向未登录场景的公开接口（品牌信息/构建信息/落地页/法务），
+			// AUTH=true 时也必须放行，否则前端根组件拉取白标即触发全局跳登录，整站变登录墙。
+			"/api/v1/meta/whitelabel":  true,
+			"/api/v1/meta/system":      true,
+			"/api/v1/landing/features": true,
+			"/api/v1/landing/stats":    true,
+			"/api/v1/mail/status":      true,
+			"/api/v1/meta/compliance":  true,
 		},
 	}
 	return s.recovery(
@@ -711,11 +719,10 @@ func (g *gzipResponseWriter) WriteHeader(code int) {
 	}
 	g.statusCode = code
 	g.contentType = g.Header().Get("Content-Type")
-	if g.contentType != "" && !g.shouldCompress() {
-		g.ResponseWriter.WriteHeader(code)
-		g.headerWritten = true
-		return
-	}
+	// 不可压缩类型（图片/字体/PDF 等）：不在此处提前写底层 header，
+	// 统一延迟到 defer 中落盘，确保 buf 里的响应体一定被写出。
+	// 否则浏览器默认带 Accept-Encoding: gzip 时，这些响应会头部正确但 body 为空
+	// （前端图片/字体损坏、PDF 下载得到空文件）。
 }
 
 func (g *gzipResponseWriter) Flush() {
