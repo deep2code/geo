@@ -660,6 +660,16 @@ graph LR
 
 ---
 
+## ⚠️ 已知限制与待办
+
+以下功能在当前版本为**已知占位/降级实现**，切勿当作生产数据直接使用：
+
+- **国内信号源（百度指数 / 微信指数 / 知乎 / 小红书 / 抖音等）**：未配置对应 API Key 时，`internalsignal/domestic.go` 返回**带 `estimated` 标记的确定性估算值**（同一品牌每次一致），仅保证管线可运行。接入真实 Key 后才返回真实数据。
+- **数据权审计日志（访问 / 导出 / 删除）**：`server/legal.go` 的 `recordDataRightsEvent` 目前为**空实现**（TODO #80），事件不写入审计表。账号体系（AUTH）接入后补完。
+- **Meilisearch 中文检索**：未配置 `GEO_MEILISEARCH_URL` 时自动降级为 MariaDB `LIKE` 模糊匹配（功能可用但性能与中文分词较弱）。
+
+---
+
 ## 📜 许可证
 
 **MIT License** — 自由使用、修改、分发。

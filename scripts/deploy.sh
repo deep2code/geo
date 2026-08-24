@@ -16,7 +16,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-CONTAINER_NAME="geo-server"
 SERVICE_PORT="${GEO_PORT:-8080}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/geo}"
 BINARY_NAME="geo"
@@ -38,7 +37,7 @@ GEO 部署脚本
 选项:
   (无)          Docker Compose 部署（默认，拉起 geo + mariadb + redis + meilisearch）
   --binary      二进制部署（编译 + systemd）
-  --build-only  仅构建镜像/二进制，不启动
+  --build-only  校验 docker-compose.yml 配置（geo 走 ACR 拉取镜像，无需本机构建）；二进制模式则仅编译不启动
   --stop        停止服务
   --restart     重启服务
   --status      查看服务状态
@@ -228,10 +227,10 @@ restart_service() {
 show_status() {
     echo "===== GEO 服务状态 ====="
     echo ""
-    # Docker Compose
+    # Docker Compose（精确判断 geo 服务是否在运行，避免 grep 歧义）
     cd "$PROJECT_DIR" 2>/dev/null || true
-    if docker compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo" \
-       || docker-compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo"; then
+    if docker compose ps --services --filter status=running 2>/dev/null | grep -qx geo \
+       || docker-compose ps --services --filter status=running 2>/dev/null | grep -qx geo; then
         info "Docker Compose 服务运行中:"
         docker compose ps 2>/dev/null || docker-compose ps 2>/dev/null
     else
@@ -258,8 +257,8 @@ show_status() {
 # ===== 查看日志 =====
 show_logs() {
     cd "$PROJECT_DIR" 2>/dev/null || true
-    if docker compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo" \
-       || docker-compose ps 2>/dev/null | grep -q "${CONTAINER_NAME}\|geo"; then
+    if docker compose ps --services --filter status=running 2>/dev/null | grep -qx geo \
+       || docker-compose ps --services --filter status=running 2>/dev/null | grep -qx geo; then
         step "Docker Compose 日志（geo 服务）"
         docker compose logs -f --tail 100 geo 2>/dev/null || docker-compose logs -f --tail 100 geo 2>/dev/null
     elif [[ -f /etc/systemd/system/geo.service ]]; then

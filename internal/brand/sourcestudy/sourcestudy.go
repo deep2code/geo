@@ -15,7 +15,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -103,12 +102,8 @@ func Open(path string) (Store, error) {
 	var dsn string
 	if path != "" {
 		dsn = path
-	} else {
-		if envDSN := os.Getenv("GEO_MYSQL_DSN"); envDSN != "" {
-			dsn = envDSN
-		} else {
-			dsn = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
-		}
+	} else if dsn = dbprovider.DSNFor(dbprovider.ModuleSourceStudy); dsn == "" {
+		dsn = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
 	}
 	dsn = dbprovider.NormalizeMySQLDSN(dsn)
 	sqldb, err := sql.Open("mysql", dsn)

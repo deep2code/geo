@@ -484,7 +484,7 @@ type Store struct {
 // 注意：账号体系默认不启用（GEO_AUTH_ENABLED=false）；一旦显式启用就必须
 // 配置统一 GEO_MYSQL_DSN，绝不静默回退到弱口令默认值（防扫描爆破）。
 func defaultAuthDSN() (string, error) {
-	d := strings.TrimSpace(os.Getenv("GEO_MYSQL_DSN"))
+	d := strings.TrimSpace(config.Env("GEO_MYSQL_DSN", ""))
 	if d != "" {
 		return d, nil
 	}

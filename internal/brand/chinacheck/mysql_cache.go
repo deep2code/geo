@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -31,8 +30,8 @@ func resolveDSN(filePath string) string {
 	if filePath != "" {
 		return filePath
 	}
-	if env := os.Getenv("GEO_MYSQL_DSN"); env != "" {
-		return env
+	if dsn := dbprovider.DSNFor(dbprovider.ModuleChinaCheckCache); dsn != "" {
+		return dsn
 	}
 	return defaultMySQLDSN
 }

@@ -64,12 +64,13 @@ type mysqlStore struct {
 }
 
 // Open 打开 MariaDB 离线工商库并完成 schema 初始化（表结构由 deploy/initdb 初始化）。
-// path 非空视为 DSN，否则读 env GEO_MYSQL_DSN，缺省为内置默认。
+// path 非空视为 DSN，否则统一走 dbprovider.DSNFor(ModuleOfflineCompanies)（读 GEO_MYSQL_DSN，
+// 带 config.Env 的 DB app_settings 兜底，最终缺省为内置默认）。
 // opts 可选；WithMeili 启用 Meilisearch 中文全文检索（URL 为空则忽略，Search 降级 LIKE）。
 func Open(path string, opts ...OpenOption) (OfflineStore, error) {
 	dsn := path
 	if dsn == "" {
-		dsn = os.Getenv("GEO_MYSQL_DSN")
+		dsn = dbprovider.DSNFor(dbprovider.ModuleOfflineCompanies)
 		if dsn == "" {
 			dsn = defaultMySQLDSN
 		}

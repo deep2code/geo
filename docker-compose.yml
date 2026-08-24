@@ -55,6 +55,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # 首次启动要加载/重建索引，可能超过 interval*retries(50s) 才 healthy；
+      # 不设 start_period 会导致 geo 的 depends_on: service_healthy 一直等不到。
+      start_period: 60s
 
   geo:
     image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest

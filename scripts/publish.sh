@@ -244,12 +244,28 @@ do_build() {
 
     # 1) 基础镜像（geo-build-base）：工具链 + 依赖下载 + 依赖编译缓存。
     #    依赖(go.mod/go.sum/web-app/package*.json)未变时 layer 命中，几乎瞬时。
+    #    关键优化：每次都从 ACR 已推送的 base 拉缓存(--cache-from)，且不再删除本地 base，
+    #    避免下一轮重复拉 golang:1.26-alpine + apk + go mod download + npm ci（约 70s 浪费）。
     if [[ "$PLATFORM" == *","* ]]; then
         base_tag="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
-        run docker buildx build --platform "$PLATFORM" --push -f Dockerfile.base -t "$base_tag" .
+        run docker buildx build --platform "$PLATFORM" --push \
+            --cache-from "type=registry,ref=${base_tag}" \
+            -f Dockerfile.base -t "$base_tag" .
     else
+        # 单平台：base 也要推一份到 ACR 远程保存（与多平台模式一致），同时保留本地副本。
+        # buildx 的 --push/--load 互斥且 --push 后本地不写镜像，故：
+        #   1) --push 推到 ACR；2) docker pull 拉回本地；3) tag 成本地名 geo-build-base:latest
+        #      （app 的 Dockerfile FROM geo-build-base:latest 用本地名），供下一轮 FROM 层命中缓存。
         base_tag="geo-build-base:latest"
-        run docker buildx build --platform "$PLATFORM" --load -f Dockerfile.base -t "$base_tag" .
+        local base_remote="${ACR_REGISTRY_PUBLIC}/geo-build-base:latest"
+        run docker buildx build --platform "$PLATFORM" --push \
+            --cache-from "type=registry,ref=${base_remote}" \
+            --cache-from "type=local,ref=${PROJECT_DIR}/.buildcache/base" \
+            -f Dockerfile.base -t "$base_remote" .
+        info "基础镜像已推远程: ${base_remote}"
+        run docker pull "$base_remote"
+        run docker tag "$base_remote" "$base_tag"
+        info "基础镜像已拉回本地: ${base_tag}（保留供缓存命中，cleanup 不删除）"
     fi
     info "基础镜像就绪: ${base_tag}"
 
@@ -297,11 +313,10 @@ do_login() { # do_login <registry>（docker login 到指定 registry）
 # 仅在非 dry-run、且推送确实成功时由 do_push 调用（set -e 下推送失败脚本已中止，不会误删）。
 cleanup_local_images() { # cleanup_local_images <push_image>
     step "推送成功，清理本地镜像以节省磁盘"
-    # 1) 删除本地基础镜像（仅单平台模式下的本地名 geo-build-base:latest；多平台模式 base 已推仓库，本地无此名）
-    if docker image inspect geo-build-base:latest &>/dev/null; then
-        run docker image rm -f geo-build-base:latest || true
-        info "已删除本地基础镜像: geo-build-base:latest"
-    fi
+    # 1) 注意：不再删除本地基础镜像 geo-build-base:latest！
+    #    保留它可让下一轮 base 构建直接命中 FROM layer 缓存，免重复拉 golang:1.26-alpine
+    #    + apk 换源 + go mod download + npm ci（约 70s 浪费）。base 镜像体积小且几乎不变，
+    #    留本地收益远大于磁盘占用；如需彻底清理用 docker buildx prune。
     # 2) 删除本次推送的 app 镜像（ACR_IMAGE 与 push_image 可能同名也可能不同名；去重删除避免重复 rm）
     local seen="" img
     for img in "$ACR_IMAGE" "$1"; do
