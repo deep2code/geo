@@ -109,7 +109,7 @@ func Validate() error {
 
 	// 记录可观测但非阻断的配置提示
 	if !authEnabled {
-		slog.Warn("未启用账号体系（GEO_AUTH_ENABLED=true）：API 匿名可访问、管理接口全部 403，请仅用于本地开发或置于反向代理鉴权之后")
+		slog.Warn("未启用账号体系（未设置 GEO_AUTH_ENABLED）：API 匿名可访问、管理接口全部 403，请仅用于本地开发或置于反向代理鉴权之后")
 	}
 	return nil
 }

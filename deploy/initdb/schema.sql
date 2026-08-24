@@ -29,14 +29,23 @@
 -- 0) 应用账号 + 业务库 + 授权
 -- ############################################################################
 
-CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED BY 'docker2026ID@';
-CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED BY 'docker2026ID@';
+-- 显式指定 mysql_native_password 认证插件：MariaDB 各版本默认插件可能不同
+-- （部分环境默认 ed25519），虽 go-sql-driver v1.10 支持 ed25519，但显式锁定
+-- mysql_native_password 可彻底消除跨版本“全新部署连不上 DB”的认证失败隐患。
+CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED WITH mysql_native_password BY 'docker2026ID@';
+CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED WITH mysql_native_password BY 'docker2026ID@';
 
 CREATE DATABASE IF NOT EXISTS geo
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 GRANT ALL PRIVILEGES ON geo.* TO 'geo'@'%';
 GRANT ALL PRIVILEGES ON geo.* TO 'geo'@'localhost';
+
+-- 兜底：IF NOT EXISTS 不会重置已有账号的密码。若数据卷是旧的（geo 账号早建、
+-- 口令已被改过），上面的 CREATE USER 不会改密码，DSN 一连就 Access denied。
+-- 这里强制把密码与连接串对齐，无论账号新建还是已存在，密码都落到 docker2026ID@。
+ALTER USER 'geo'@'%'         IDENTIFIED WITH mysql_native_password BY 'docker2026ID@';
+ALTER USER 'geo'@'localhost' IDENTIFIED WITH mysql_native_password BY 'docker2026ID@';
 
 FLUSH PRIVILEGES;
 
