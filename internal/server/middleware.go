@@ -33,8 +33,8 @@ func parseCORSOrigins() map[string]bool {
 	if raw == "" {
 		// 默认仅允许本地开发常用源
 		m["http://localhost"] = true
-		m["http://localhost:8080"] = true
-		m["http://127.0.0.1:8080"] = true
+		m["http://localhost:7070"] = true
+		m["http://127.0.0.1:7070"] = true
 		return m
 	}
 	if raw == "*" {

@@ -154,7 +154,7 @@ const Settings: React.FC = () => {
                   label={t('settings.apiBaseUrl')}
                   value={baseUrlInput}
                   onChange={(e) => setBaseUrlInput(e.target.value)}
-                  placeholder="http://localhost:8080 （留空使用相对路径 /api）"
+                  placeholder="http://localhost:7070 （留空使用相对路径 /api）"
                 />
                 <Input
                   label={t('settings.apiTimeout')}

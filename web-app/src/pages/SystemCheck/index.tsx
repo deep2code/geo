@@ -24,7 +24,7 @@ const FIX_HINTS: Record<string, string> = {
   '数据库可达性：离线工商库': '无法连接该 MySQL，检查 GEO_MYSQL_DSN 的 host:port、账号密码，以及库是否已创建（执行 deploy/initdb/schema.sql 建库）。',
   '数据库可达性：审计历史库': '无法连接该 MySQL，检查 GEO_MYSQL_DSN 的 host:port、账号密码，以及库是否已创建（执行 deploy/initdb/schema.sql 建库）。',
   '数据库可达性：China-Check 缓存库': '无法连接该 MySQL，检查 GEO_MYSQL_DSN 的 host:port、账号密码，以及库是否已创建（执行 deploy/initdb/schema.sql 建库）。',
-  '服务端口': 'GEO_PORT 应为 1–65535 的整数（默认 8080）。',
+  '服务端口': 'GEO_PORT 应为 1–65535 的整数（默认 7070）。',
   '日志级别': 'GEO_LOG_LEVEL 应为 debug / info / warn / error 之一。',
   '日志格式': 'GEO_LOG_FORMAT 应为 text / json 之一。',
   'LLM 月度预算': 'GEO_LLM_BUDGET_USD 应为非负浮点数（0 表示不限制预算熔断）。',

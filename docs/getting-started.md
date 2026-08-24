@@ -313,8 +313,8 @@ make build        # 产物在 bin/geo
 go install ./cmd/geo
 
 # 方式三：Docker
-docker build -t geo:latest . && docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
-# 访问 http://localhost:8080（数据库需先执行 deploy/initdb/schema.sql 建库）
+docker build -t geo:latest . && docker run -d --name geo-server -p 7070:7070 --env-file .env geo:latest
+# 访问 http://localhost:7070（数据库需先执行 deploy/initdb/schema.sql 建库）
 ```
 
 ### 第二步：配置 LLM（可选但推荐）
@@ -369,9 +369,9 @@ GEO_LLM_MODEL=glm-4-flash
 ### 第三步：启动服务并给内容打分（零依赖体验）
 
 ```bash
-./bin/geo                   # 直接启动 Web 服务（默认 :8080）
+./bin/geo                   # 直接启动 Web 服务（默认 :7070）
 bash scripts/run.sh         # 脚本启动（杀旧进程+编译+后台）
-open http://localhost:8080  # 浏览器打开
+open http://localhost:7070  # 浏览器打开
 ```
 
 打开后在「内容优化」页粘贴：
@@ -681,7 +681,7 @@ Web 界面方式（可视化热力矩阵 + 趋势图，推荐）：
 
 ```bash
 ./bin/geo
-# 打开 http://localhost:8080 → 「品牌审计」面板，填写品牌画像即可审计
+# 打开 http://localhost:7070 → 「品牌审计」面板，填写品牌画像即可审计
 ```
 
 > 原 `geo brand audit` 命令行已移除，统一在「品牌审计」前端页操作。
@@ -733,7 +733,7 @@ GEO_SCHEDULER_ENABLED=true
 GEO_SCHEDULER_WEBHOOK=https://hooks.slack.com/services/xxx  # 可选
 
 # 也可以通过 Web UI 手动触发
-# http://localhost:8080 → 定时审计 → 触发
+# http://localhost:7070 → 定时审计 → 触发
 ```
 
 ---
@@ -833,12 +833,12 @@ flowchart LR
 ```bash
 # 基本检查（输出 8 维明细 + 建议）：在「系统自检」或「品牌审计」页操作，
 # 或调用端点：
-curl -X POST http://localhost:8080/api/v1/brand/readiness \
+curl -X POST http://localhost:7070/api/v1/brand/readiness \
   -H 'Content-Type: application/json' \
   -d '{"brand_name":"","url":"https://your-site.com"}'
 
 # CI/CD 闸门模式（低于 80 分阻断）：调用 ci-gate 端点
-curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:8080/api/v1/brand/readiness/ci-gate \
+curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:7070/api/v1/brand/readiness/ci-gate \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://your-site.com","threshold":80}'
 # 端点返回 200=通过，4xx/5xx=阻断（具体见响应体）
@@ -850,7 +850,7 @@ curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:8080/api/v1/b
 # .github/workflows/deploy.yml
 - name: 🚧 AI 就绪度闸门
   run: |
-    curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:8080/api/v1/brand/readiness/ci-gate \
+    curl -s -o /tmp/ci.json -w "%{http_code}" -X POST http://localhost:7070/api/v1/brand/readiness/ci-gate \
       -H 'Content-Type: application/json' \
       -d '{"url":"https://your-site.com","threshold":80}'
     # 返回 200=通过（exit 0），4xx/5xx=阻断（exit 1）

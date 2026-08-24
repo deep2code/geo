@@ -441,7 +441,7 @@ VALUES
   ('GEO_OFFLINE_DB_ENABLED', 'true', 'true', '', 'offline', 'bool', 0, 0, 0, 0),
   ('GEO_OPENAPI_KEY', '', '', '开放测量 API 鉴权 Key（X-GEO-API-Key）', 'admin', 'secret', 1, 0, 0, 0),
   ('GEO_PDF_WAIT_MS', '', '', '', 'general', 'string', 0, 0, 0, 0),
-  ('GEO_PORT', '8080', '8080', 'HTTP 监听端口', 'server', 'int', 0, 0, 1, 0),
+  ('GEO_PORT', '7070', '7070', 'HTTP 监听端口', 'server', 'int', 0, 0, 1, 0),
   ('GEO_READINESS_INSECURE_TLS', '', '', '', 'general', 'string', 0, 0, 0, 0),
   ('GEO_REDIS_ADDR', '127.0.0.1:6379', '127.0.0.1:6379', 'Redis 地址（asynq 队列）', 'queue', 'string', 0, 1, 1, 0),
   ('GEO_RULES', '', '', '', 'server', 'string', 0, 0, 0, 0),

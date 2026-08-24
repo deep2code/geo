@@ -40,7 +40,7 @@ RUN setcap cap_net_bind_service=+ep /app/geo && \
 USER geo
 
 # 暴露 HTTP 端口
-EXPOSE 8080
+EXPOSE 7070
 
 ENTRYPOINT ["/app/geo"]
-CMD ["--port", "8080"]
+CMD ["--port", "7070"]

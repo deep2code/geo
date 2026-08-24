@@ -35,7 +35,7 @@
 #   REMOTE_PORT     ssh 端口（默认 22）
 #   REMOTE_COMPOSE_DIR  服务器上 compose 编排目录（默认 /opt/1panel/docker/compose/geo）
 #   REMOTE_CMD      自定义远程升级命令（默认: cd <dir> && docker compose pull && docker compose up -d）
-#   REMOTE_HEALTH_URL   远程健康检查地址（默认 http://127.0.0.1:8080/api/v1/health，空则跳过）
+#   REMOTE_HEALTH_URL   远程健康检查地址（默认 http://127.0.0.1:7070/api/v1/health，空则跳过）
 #
 # 说明：
 #   - 远程编排方式由 REMOTE_CMD 定义（默认 docker compose pull + up -d，适合 1Panel/
@@ -76,7 +76,7 @@ PLATFORM="${PLATFORM:-linux/amd64}"
 REMOTE_HOST="${REMOTE_HOST:-}"
 REMOTE_PORT="${REMOTE_PORT:-22}"
 REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR:-/opt/1panel/docker/compose/geo}"
-REMOTE_HEALTH_URL="${REMOTE_HEALTH_URL:-http://127.0.0.1:8080/api/v1/health}"
+REMOTE_HEALTH_URL="${REMOTE_HEALTH_URL:-http://127.0.0.1:7070/api/v1/health}"
 # 远程服务器拉取镜像地址：默认 = ACR_IMAGE（已是内网 VPC 地址，服务器与 ACR 同 VPC 时走内网）；
 # 若服务器不在内网，覆盖 REMOTE_IMAGE 为公网地址即可。
 REMOTE_IMAGE="${REMOTE_IMAGE:-${ACR_IMAGE}}"

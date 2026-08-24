@@ -2,7 +2,7 @@
 //
 // 本程序不再提供任何子命令——所有能力（内容优化、评分、分析、品牌审计、
 // 评测、规则集管理、工商库导入、MCP 集成等）均通过内置的 Web 前端界面操作。
-// 直接运行即启动 Web 服务（REST API + 前端 SPA），默认监听 :8080。
+// 直接运行即启动 Web 服务（REST API + 前端 SPA），默认监听 :7070。
 package main
 
 import (
@@ -36,7 +36,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "警告: 加载 .env 失败:", err)
 	}
 	// 解析命令行标志（仅保留 --port / --version 两个运维常用项）。
-	portFlag := flag.String("port", "", "Web 服务端口（默认 GEO_PORT 环境变量，缺省 8080）")
+	portFlag := flag.String("port", "", "Web 服务端口（默认 GEO_PORT 环境变量，缺省 7070）")
 	versionFlag := flag.Bool("version", false, "打印版本信息并退出")
 	flag.Parse()
 	if *versionFlag {
@@ -101,11 +101,11 @@ func startMCPServer(brandEngine *brand.Engine, geoEngine *geo.Engine) {
 	}()
 }
 
-// resolveAddr 计算监听地址：优先级 --port > GEO_PORT 环境变量 > 8080。
+// resolveAddr 计算监听地址：优先级 --port > GEO_PORT 环境变量 > 7070。
 func resolveAddr(portFlag string) string {
 	port := portFlag
 	if port == "" {
-		port = config.Env("GEO_PORT", "8080")
+		port = config.Env("GEO_PORT", "7070")
 	}
 	if !strings.HasPrefix(port, ":") {
 		port = ":" + port

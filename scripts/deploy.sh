@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-SERVICE_PORT="${GEO_PORT:-8080}"
+SERVICE_PORT="${GEO_PORT:-7070}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/geo}"
 BINARY_NAME="geo"
 
@@ -46,7 +46,7 @@ GEO 部署脚本
   -h, --help    显示帮助
 
 环境变量:
-  GEO_PORT      服务端口（默认 8080，仅二进制部署生效）
+  GEO_PORT      服务端口（默认 7070，仅二进制部署生效）
   IMAGE_TAG     镜像标签（默认 latest）
   INSTALL_DIR   二进制安装路径（默认 /opt/geo）
   GEO_ALLOW_WEAK_PASSWORD  设为 1 放行默认弱密码（仅本地开发）

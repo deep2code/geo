@@ -52,7 +52,7 @@ MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / 
 ```mermaid
 graph TB
     subgraph 用户层["👤 使用方式"]
-        Web["🌐 Web UI + REST API<br/>localhost:8080（唯一入口，无 CLI）"]
+        Web["🌐 Web UI + REST API<br/>localhost:7070（唯一入口，无 CLI）"]
         MCP["🤖 MCP Server<br/>Claude / Cursor / TraeCode（同进程 :9090）"]
     end
 
@@ -218,8 +218,8 @@ mindmap
 ```mermaid
 flowchart LR
     A["1. 安装<br/>go install ./cmd/geo<br/>或 make build"] --> B["2. (可选) 配置<br/>cp .env.example .env<br/>填入 GEO_LLM_KEY"]
-    B --> C["3. 启动<br/>./bin/geo  (默认 :8080)"]
-    C --> D["4. 浏览器打开<br/>localhost:8080"]
+    B --> C["3. 启动<br/>./bin/geo  (默认 :7070)"]
+    C --> D["4. 浏览器打开<br/>localhost:7070"]
     D --> E["5. 在「内容优化」页<br/>评分 / 分析 / 优化"]
 
     style A fill:#dbeafe,stroke:#2563eb
@@ -260,8 +260,8 @@ docker build -f Dockerfile.base -t geo-build-base:latest .
 # 2) 构建应用镜像（Dockerfile 两阶段会顺带构建前端 SPA 并 go:embed 进二进制）
 docker build -t geo:latest .
 
-# 3) 运行（--env-file 注入全部引导变量；端口 8080）
-docker run -d --name geo-server -p 8080:8080 --env-file .env geo:latest
+# 3) 运行（--env-file 注入全部引导变量；端口 7070）
+docker run -d --name geo-server -p 7070:7070 --env-file .env geo:latest
 ```
 
 - 若使用外部已有的 MariaDB/MySQL 与 Redis，把 `.env` 里的 `GEO_MYSQL_DSN` / `GEO_REDIS_ADDR` 指向它们即可。
@@ -336,7 +336,7 @@ services:
       meilisearch:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "7070:7070"
 
 volumes:
   mariadb-data:
@@ -393,10 +393,10 @@ cd .. && make build    # 或 go build ./cmd/geo
 ### 最小可用示例
 
 ```bash
-# ✅ 无需任何 Key：直接启动 Web 服务（默认 :8080）
+# ✅ 无需任何 Key：直接启动 Web 服务（默认 :7070）
 ./bin/geo
 
-# 浏览器打开 http://localhost:8080 后，在「内容优化」页粘贴
+# 浏览器打开 http://localhost:7070 后，在「内容优化」页粘贴
 # “Python 是最流行的编程语言之一。” 即可免费评分；
 # 「关键词发现」页输入“短视频”即可发现；「系统自检」页一键检查就绪度。
 ```
@@ -405,7 +405,7 @@ cd .. && make build    # 或 go build ./cmd/geo
 
 ## 🖥️ 纯 Web 界面操作（已移除全部 CLI 子命令）
 
-本项目**不再提供任何命令行子命令**。直接运行二进制即启动 Web 服务（REST API + 前端 SPA），默认监听 `:8080`（可用 `--port` 或环境变量 `GEO_PORT` 覆盖；`--version` 打印版本）。**所有能力均通过浏览器前端界面操作**，对应左侧导航：
+本项目**不再提供任何命令行子命令**。直接运行二进制即启动 Web 服务（REST API + 前端 SPA），默认监听 `:7070`（可用 `--port` 或环境变量 `GEO_PORT` 覆盖；`--version` 打印版本）。**所有能力均通过浏览器前端界面操作**，对应左侧导航：
 
 | 前端页面 | 功能 | 需 LLM Key |
 |---|---|---|

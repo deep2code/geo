@@ -116,7 +116,7 @@ func TestConfigCheckPortDefault(t *testing.T) {
 	results := ConfigCheck("")
 	for _, r := range results {
 		if r.Name == "服务端口" && (r.Status == SeverityError || r.Status == SeverityWarn) {
-			t.Fatalf("未配置端口时不应告警（默认 8080），实际 %s", r.Status)
+			t.Fatalf("未配置端口时不应告警（默认 7070），实际 %s", r.Status)
 		}
 	}
 }

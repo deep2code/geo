@@ -39,8 +39,8 @@ run: ## 直接运行（go run）
 	go run $(MAIN_PKG)
 
 .PHONY: serve
-serve: build ## 启动本地 Web 服务（端口 8080，纯 Web 入口，无 CLI 子命令）
-	bin/$(BINARY) --port 8080
+serve: build ## 启动本地 Web 服务（端口 7070，纯 Web 入口，无 CLI 子命令）
+	bin/$(BINARY) --port 7070
 
 .PHONY: test
 test: ## 运行测试
@@ -70,8 +70,8 @@ docker-build: ## 构建 Docker 镜像
 	@echo "✓ 镜像已构建: $(DOCKER_IMAGE)"
 
 .PHONY: docker-run
-docker-run: ## 运行 Docker 容器（端口 8080，环境变量从 .env 读取）
-	docker run --rm -p 8080:8080 --env-file .env $(DOCKER_IMAGE)
+docker-run: ## 运行 Docker 容器（端口 7070，环境变量从 .env 读取）
+	docker run --rm -p 7070:7070 --env-file .env $(DOCKER_IMAGE)
 
 .PHONY: docker-stop
 docker-stop: ## 停止 Docker 容器

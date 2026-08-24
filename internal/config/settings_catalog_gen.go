@@ -45,7 +45,7 @@ func buildCatalog() []Setting {
 		{Key: "GEO_OFFLINE_DB_ENABLED", DefaultValue: "true", Description: "", Category: "offline", Type: "bool", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_OPENAPI_KEY", DefaultValue: "", Description: "", Category: "admin", Type: "secret", IsSecret: true, IsBootstrap: false},
 		{Key: "GEO_PDF_WAIT_MS", DefaultValue: "", Description: "", Category: "general", Type: "string", IsSecret: false, IsBootstrap: false},
-		{Key: "GEO_PORT", DefaultValue: "8080", Description: "", Category: "server", Type: "int", IsSecret: false, IsBootstrap: false},
+		{Key: "GEO_PORT", DefaultValue: "7070", Description: "", Category: "server", Type: "int", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_READINESS_INSECURE_TLS", DefaultValue: "", Description: "", Category: "general", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_REDIS_ADDR", DefaultValue: "127.0.0.1:6379", Description: "", Category: "queue", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_RULES", DefaultValue: "", Description: "", Category: "server", Type: "string", IsSecret: false, IsBootstrap: false},

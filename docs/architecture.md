@@ -896,7 +896,7 @@ graph TB
 ```mermaid
 graph LR
     subgraph 基础["🟦 服务基础"]
-        PORT["GEO_PORT=8080"]
+        PORT["GEO_PORT=7070"]
     end
 
     subgraph LLM["🟣 LLM 配置"]

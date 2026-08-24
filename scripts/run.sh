@@ -7,7 +7,7 @@
 #   3. 后台启动服务并打印访问地址
 #
 # 用法：
-#   bash scripts/run.sh              # 默认端口 8080
+#   bash scripts/run.sh              # 默认端口 7070
 #   bash scripts/run.sh -p 9090      # 指定端口
 #   PORT=9090 bash scripts/run.sh    # 通过环境变量指定端口
 #   bash scripts/run.sh --no-build   # 跳过编译，直接运行已有二进制
@@ -21,7 +21,7 @@ BINARY_NAME="geo"
 BIN_PATH="$PROJECT_DIR/bin/$BINARY_NAME"
 PID_FILE="/tmp/geo-server.pid"
 LOG_FILE="/tmp/geo-server.log"
-PORT="${PORT:-8080}"
+PORT="${PORT:-7070}"
 SKIP_BUILD=false
 
 # 解析参数
@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --no-build) SKIP_BUILD=true; shift ;;
     -h|--help)
       echo "用法: bash scripts/run.sh [-p PORT] [--no-build]"
-      echo "  -p, --port    指定端口（默认 8080，也可用 PORT 环境变量）"
+      echo "  -p, --port    指定端口（默认 7070，也可用 PORT 环境变量）"
       echo "  --no-build    跳过编译，直接运行已有二进制"
       echo "  -h, --help    显示帮助"
       exit 0 ;;

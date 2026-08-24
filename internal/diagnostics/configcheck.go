@@ -91,7 +91,7 @@ func checkPort() CheckResult {
 	v := strings.TrimSpace(config.Env("GEO_PORT", ""))
 	if v == "" {
 		res.Status = SeverityInfo
-		res.Message = "未设置，使用默认 8080"
+		res.Message = "未设置，使用默认 7070"
 		return res
 	}
 	p, err := strconv.Atoi(v)
