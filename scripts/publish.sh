@@ -242,14 +242,14 @@ do_build() {
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
     build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-    # base 镜像的远端仓库前缀：必须与 app 镜像 ACR_IMAGE 使用同一个 registry 端点，
-    # 否则打包机（Linux + VPC）只登录了 VPC 内网 registry，推公网 registry 会被拒
-    # （insufficient_scope: authorization failed）。
-    # 规则与 do_push 一致：Linux 且 PUSH_VPC=1 → VPC 内网；否则公网变体。
+    # base 镜像的远端仓库：复用与 app 镜像 ACR_IMAGE 同一个「仓库」(codeup2026/geo)，
+    # 仅用不同的 tag(build-base) 区分。这样 base 和 app 推同一个已授权仓库，
+    # 彻底避免新建 geo-build-base 仓库的 scope/权限问题（insufficient_scope）。
+    # 端点规则与 do_push 一致：Linux 且 PUSH_VPC=1 → VPC 内网；否则公网变体。
     if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
-        base_remote="${ACR_REGISTRY_VPC}/geo-build-base:latest"
+        base_remote="${ACR_REGISTRY_VPC}/codeup2026/geo:build-base"
     else
-        base_remote="$(printf '%s' "${ACR_REGISTRY_PUBLIC}/geo-build-base:latest" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
+        base_remote="$(printf '%s' "${ACR_REGISTRY_PUBLIC}/codeup2026/geo:build-base" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
     fi
     do_login "$(printf '%s' "$base_remote" | sed -E 's|/.*||')"
 
