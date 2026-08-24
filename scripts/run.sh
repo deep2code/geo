@@ -19,8 +19,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BINARY_NAME="geo"
 BIN_PATH="$PROJECT_DIR/bin/$BINARY_NAME"
-PID_FILE="/tmp/geo-server.pid"
-LOG_FILE="/tmp/geo-server.log"
+# PID 和日志文件存放在项目目录下，避免 /tmp 的多用户冲突和系统清理风险
+PID_FILE="$PROJECT_DIR/geo-server.pid"
+LOG_FILE="$PROJECT_DIR/geo-server.log"
 PORT="${PORT:-7070}"
 SKIP_BUILD=false
 

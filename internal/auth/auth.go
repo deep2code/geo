@@ -223,7 +223,10 @@ func getJWTSecret() []byte {
 		slog.Warn("未配置 GEO_JWT_SECRET，使用一次性启动密钥（重启后所有会话失效）。" +
 			"生产环境建议：export GEO_JWT_SECRET=$(openssl rand -hex 32)")
 		buf := make([]byte, 32)
-		_, _ = io.ReadFull(rand.Reader, buf)
+		if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+			slog.Error("JWT 密钥生成失败，无法获取安全随机数", slog.String("err", err.Error()))
+			return nil // 调用方需处理 nil
+		}
 		s = hex.EncodeToString(buf)
 	} else if len(s) < 32 {
 		// 显式配置但强度不足：明确告警（不阻断启动，避免破坏已有部署；

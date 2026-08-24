@@ -216,7 +216,8 @@ do_build() {
         # 前端构建（Vite → internal/server/web/dist，go:embed 读取）：仅源码/配置有变化时重建
         if needs_web; then
             info "前端有变化或 dist 缺失，重新构建前端"
-            (cd "$PROJECT_DIR/web-app" && npm ci && npm run build)
+            # 显式传入 NPM_REGISTRY（国内环境加速；与 Dockerfile 保持一致）
+            (cd "$PROJECT_DIR/web-app" && npm_config_registry="${NPM_REGISTRY:-https://registry.npmmirror.com}" npm ci && npm run build)
         else
             info "前端无变化，复用已有 internal/server/web/dist"
         fi

@@ -28,7 +28,7 @@ func Open(path string) (Store, error) {
 	if path != "" {
 		dsn = path
 	} else if dsn = dbprovider.DSNFor(dbprovider.ModuleAuditHistory); dsn == "" {
-		dsn = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+		return nil, fmt.Errorf("history: 未配置 GEO_MYSQL_DSN 且未提供显式 DSN 参数；请设置环境变量 GEO_MYSQL_DSN 或传入连接串")
 	}
 	dsn = dbprovider.NormalizeMySQLDSN(dsn)
 	sqldb, err := sql.Open("mysql", dsn)

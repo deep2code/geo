@@ -43,14 +43,14 @@ const AdminLogin: React.FC = () => {
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    const em = email.trim().toLowerCase()
+    if (!em || !password) {
+      setErrMsg('请输入邮箱与密码。')
+      return
+    }
     setSubmitting(true)
     setErrMsg(null)
     try {
-      const em = email.trim().toLowerCase()
-      if (!em || !password) {
-        setErrMsg('请输入邮箱与密码。')
-        return
-      }
       let res
       try {
         res = await api.auth.login({ email: em, password })

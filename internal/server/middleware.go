@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"my-geo/internal/auth"
@@ -49,9 +50,36 @@ func parseCORSOrigins() map[string]bool {
 	return m
 }
 
-// corsOrigins 每次请求解析 CORS 白名单（读配置表/环境变量，改动即时生效）。
+// corsOrigins 返回 CORS 白名单（启动时解析并缓存，支持热重载）。
+// 使用 atomic.Value 实现无锁读取，避免每次请求都重新解析环境变量。
+var (
+	corsOriginsOnce   sync.Once
+	corsOriginsCached atomic.Value // map[string]bool
+	corsOriginsMu     sync.RWMutex // 保护热重载写入
+)
+
 func corsOrigins() map[string]bool {
-	return parseCORSOrigins()
+	// 快速路径：从缓存读取（无锁）
+	if v := corsOriginsCached.Load(); v != nil {
+		return v.(map[string]bool)
+	}
+	// 慢路径：首次解析或缓存被清除后重建
+	corsOriginsMu.Lock()
+	defer corsOriginsMu.Unlock()
+	// 双重检查：可能其他 goroutine 已完成初始化
+	if v := corsOriginsCached.Load(); v != nil {
+		return v.(map[string]bool)
+	}
+	m := parseCORSOrigins()
+	corsOriginsCached.Store(m)
+	return m
+}
+
+// ReloadCORSOrigins 强制刷新 CORS 白名单缓存（管理后台修改配置后调用）。
+func ReloadCORSOrigins() {
+	corsOriginsMu.Lock()
+	defer corsOriginsMu.Unlock()
+	corsOriginsCached.Store(parseCORSOrigins())
 }
 
 // ===== 请求日志 =====

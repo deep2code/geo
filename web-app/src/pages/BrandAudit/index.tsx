@@ -43,6 +43,7 @@ const BrandAudit: React.FC = () => {
     if (!brand) return showToast('请先选择品牌', 'error')
     setLoading(true)
     setProgress('正在连接多个 AI 引擎...')
+    let timer: ReturnType<typeof setInterval> | undefined
     try {
       const steps = [
         '查询品牌提及与引用...',
@@ -51,17 +52,19 @@ const BrandAudit: React.FC = () => {
         '生成 BVS 评分与行动建议...'
       ]
       let stepIdx = 0
-      const timer = setInterval(() => {
+      timer = setInterval(() => {
         setProgress(steps[Math.min(stepIdx++, steps.length - 1)])
       }, 8000)
       const r = await api.brandAudit(brand)
       clearInterval(timer)
+      timer = undefined
       setReport(r)
       setLastReport(r)
       showToast(`审计完成：BVS ${r.score.toFixed(1)} (${r.grade})`, 'success')
     } catch (e: any) {
       showToast(e.message || '审计失败', 'error')
     } finally {
+      if (timer) clearInterval(timer)
       setLoading(false)
       setProgress('')
     }

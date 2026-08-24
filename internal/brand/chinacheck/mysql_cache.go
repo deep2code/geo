@@ -24,20 +24,24 @@ type mysqlCacheStore struct {
 	ttl      time.Duration
 }
 
-const defaultMySQLDSN = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
+const defaultMySQLDSN = "" // 不再提供硬编码默认值；必须通过 GEO_MYSQL_DSN 或显式参数配置
 
-func resolveDSN(filePath string) string {
+func resolveDSN(filePath string) (string, error) {
 	if filePath != "" {
-		return filePath
+		return filePath, nil
 	}
 	if dsn := dbprovider.DSNFor(dbprovider.ModuleChinaCheckCache); dsn != "" {
-		return dsn
+		return dsn, nil
 	}
-	return defaultMySQLDSN
+	return "", errors.New("chinacheck: 未配置 GEO_MYSQL_DSN 且未提供显式 DSN 参数；请设置环境变量 GEO_MYSQL_DSN 或传入连接串")
 }
 
 func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
-	dsn = dbprovider.NormalizeMySQLDSN(resolveDSN(dsn))
+	resolved, err := resolveDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	dsn = dbprovider.NormalizeMySQLDSN(resolved)
 	c := &mysqlCacheStore{
 		dsn:      dsn,
 		maxItems: defaultMaxItems,

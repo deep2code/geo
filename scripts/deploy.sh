@@ -12,10 +12,12 @@
 set -euo pipefail
 
 # ===== 配置 =====
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_NAME="crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+# IMAGE_TAG：支持通过环境变量传入自定义标签（如 v1.2.3），默认 latest
+# 用法：IMAGE_TAG=v1.2.3 bash scripts/deploy.sh
+: "${IMAGE_TAG:=latest}"
 SERVICE_PORT="${GEO_PORT:-7070}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/geo}"
 BINARY_NAME="geo"

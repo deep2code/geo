@@ -14,6 +14,18 @@ func writeInternalError(w http.ResponseWriter, action string, err error) {
 	writeJSON(w, http.StatusInternalServerError, AuthNResponse{Error: "内部错误，请稍后重试", Code: "INTERNAL"})
 }
 
+// safeErrorMsg 对外错误消息脱敏：记录原始错误到日志，返回通用安全消息。
+// 防止泄露数据库表结构、文件路径、DSN 等内部实现细节。
+func safeErrorMsg(w http.ResponseWriter, errMsg string, code string, originalErr error) {
+	if originalErr != nil {
+		slog.Warn("请求参数/业务错误（已脱敏返回）",
+			slog.String("safe_msg", errMsg),
+			slog.String("code", code),
+			slog.String("original_err", originalErr.Error()))
+	}
+	writeJSON(w, http.StatusBadRequest, AuthNResponse{Error: errMsg, Code: code})
+}
+
 // ============================================================
 // 请求 / 响应结构
 // ============================================================
@@ -134,7 +146,7 @@ func (h HandlerSet) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	var req registerRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, AuthNResponse{Error: "参数解析失败: " + err.Error(), Code: "BAD_REQUEST"})
+		safeErrorMsg(w, "请求参数格式错误", "BAD_REQUEST", err)
 		return
 	}
 	u, ws, err := h.Svc.Store().CreateUser(req.Email, req.Password, req.DisplayName, req.WorkspaceName)
@@ -171,7 +183,7 @@ func (h HandlerSet) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	var req loginRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, AuthNResponse{Error: "参数解析失败: " + err.Error(), Code: "BAD_REQUEST"})
+		safeErrorMsg(w, "请求参数格式错误", "BAD_REQUEST", err)
 		return
 	}
 	pair, u, wss, err := h.Svc.Login(req.Email, req.Password, req.WorkspaceID, requestIP(r), requestUA(r))
@@ -195,7 +207,7 @@ func (h HandlerSet) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	var req refreshRequest
 	if err := readJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, AuthNResponse{Error: "参数解析失败: " + err.Error()})
+		safeErrorMsg(w, "请求参数格式错误", "BAD_REQUEST", err)
 		return
 	}
 	pair, u, err := h.Svc.Refresh(req.RefreshToken, requestIP(r), requestUA(r))

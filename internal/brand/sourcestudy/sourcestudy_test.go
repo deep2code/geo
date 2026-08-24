@@ -33,6 +33,12 @@ func sourceStudyTestRootDSN(t *testing.T) string {
 // createSourceStudyTestTable 在指定库创建测试表（DDL 与 deploy/initdb/schema.sql 一致）。
 func createSourceStudyTestTable(t *testing.T, db *sql.DB, dbName string) {
 	t.Helper()
+	// 安全校验：数据库名只允许字母、数字、下划线（防止 SQL 注入）
+	for _, r := range dbName {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			t.Fatalf("非法数据库名 %q：只允许字母、数字、下划线", dbName)
+		}
+	}
 	ddl := `CREATE TABLE IF NOT EXISTS engine_source_citations (
 		id              BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
 		workspace_id    VARCHAR(255),
@@ -47,7 +53,7 @@ func createSourceStudyTestTable(t *testing.T, db *sql.DB, dbName string) {
 		cited_at        BIGINT        NOT NULL,
 		UNIQUE KEY uq_src_record_result_url (record_id, result_index, citation_url(255))
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-	if _, err := db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", dbName)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName)); err != nil {
 		t.Fatalf("建库失败: %v", err)
 	}
 	if _, err := db.Exec(fmt.Sprintf("USE %s", dbName)); err != nil {
@@ -66,7 +72,7 @@ func TestMySQLStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	defer root.Exec("DROP DATABASE IF EXISTS " + dbName) //nolint:errcheck
+	defer root.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName)) //nolint:errcheck
 
 	createSourceStudyTestTable(t, root, dbName)
 

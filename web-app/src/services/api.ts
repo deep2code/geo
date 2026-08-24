@@ -84,16 +84,43 @@ function emitAuthError(status: 401 | 403, path: string): void {
  * 关闭标签页即清除，降低 XSS 长期窃取与凭据残留风险。
  * （刷新页面仍有效，因为刷新不结束会话。）
  */
+const TOKEN_EXP_KEY = 'geo_api_token_exp'
+
+/** 解码 JWT payload 的 exp 声明（不验证签名，仅客户端过期预检）。 */
+function parseJwtExp(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch {
+    return null
+  }
+}
+
 export const setApiAuthToken = (token: string | null): void => {
   if (!token) {
     sessionStorage.removeItem(AUTH_TOKEN_KEY)
+    sessionStorage.removeItem(TOKEN_EXP_KEY)
     return
   }
   sessionStorage.setItem(AUTH_TOKEN_KEY, token)
+  // 缓存过期时间戳，避免每次请求都解码 JWT
+  const exp = parseJwtExp(token)
+  if (exp) sessionStorage.setItem(TOKEN_EXP_KEY, String(exp))
 }
 
-/** 当前持有的 API Bearer Token（未设置返回空串）。 */
+/** 当前持有的 API Bearer Token（未设置返回空串）；已过期则自动清除并返回空串。 */
 export const getApiAuthToken = (): string => {
+  // 先检查缓存的有效期
+  const cachedExp = sessionStorage.getItem(TOKEN_EXP_KEY)
+  if (cachedExp) {
+    const now = Math.floor(Date.now() / 1000)
+    if (now >= Number(cachedExp)) {
+      // Token 已过期：主动清除，减少无效 401 请求
+      sessionStorage.removeItem(AUTH_TOKEN_KEY)
+      sessionStorage.removeItem(TOKEN_EXP_KEY)
+      return ''
+    }
+  }
   let tok = sessionStorage.getItem(AUTH_TOKEN_KEY)
   if (!tok) {
     // 平滑迁移：旧版凭据残留于 localStorage，读到后搬到 sessionStorage 并清除旧值
@@ -102,6 +129,9 @@ export const getApiAuthToken = (): string => {
       sessionStorage.setItem(AUTH_TOKEN_KEY, legacy)
       localStorage.removeItem(AUTH_TOKEN_KEY)
       tok = legacy
+      // 迁移时也解码一次有效期
+      const exp = parseJwtExp(legacy)
+      if (exp) sessionStorage.setItem(TOKEN_EXP_KEY, String(exp))
     }
   }
   return tok ?? ''
@@ -528,23 +558,35 @@ export const api = {
     stats: () => request<OfflineDBStats>('/brand/offlinedb/stats', { method: 'GET', skipAuthRedirect: true }),
     provinces: () => request<string[]>('/brand/offlinedb/provinces', { method: 'GET', skipAuthRedirect: true }),
     // 上传 JSON 文件导入（multipart）
+    // 注意：multipart 无法使用统一的 JSON request() 封装，但保留超时和鉴权一致性
     importFile: async (file: File, batch?: number): Promise<OfflineDBImportResult> => {
       const fd = new FormData()
       fd.append('file', file)
       if (batch) fd.append('batch', String(batch))
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 600000) // 10分钟超时（大文件上传）
       const headers: Record<string, string> = {}
       const tok = getApiAuthToken()
       if (tok) headers['Authorization'] = `Bearer ${tok}`
-      const res = await fetch(`${API_BASE}/brand/offlinedb/import`, {
-        method: 'POST',
-        body: fd,
-        headers
-      })
-      if (!res.ok) {
-        const e = (await res.json().catch(() => ({}))) as any
-        throw new Error(e?.error || `HTTP ${res.status}`)
+      try {
+        const res = await fetch(`${API_BASE}/brand/offlinedb/import`, {
+          method: 'POST',
+          body: fd,
+          headers,
+          signal: controller.signal
+        })
+        // 401/403 拦截（与统一 request() 保持一致）
+        if ((res.status === 401 || res.status === 403)) {
+          emitAuthError(res.status, '/brand/offlinedb/import')
+        }
+        if (!res.ok) {
+          const e = (await res.json().catch(() => ({}))) as Record<string, unknown>
+          throw new Error((e?.error as string) || `HTTP ${res.status}`)
+        }
+        return (await res.json()) as OfflineDBImportResult
+      } finally {
+        clearTimeout(timer)
       }
-      return (await res.json()) as OfflineDBImportResult
     },
     // 直连 GitHub 下载并导入
     importGitHub: (payload: OfflineDBImportGitHubRequest) =>

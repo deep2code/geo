@@ -33,7 +33,13 @@ set -euo pipefail
 HOST="${GEO_MYSQL_HOST:-mysql}"
 PORT="${GEO_MYSQL_PORT:-3306}"
 USER="${GEO_MYSQL_USER:-geo}"
-PASSWORD="${GEO_MYSQL_PASSWORD:-docker2026ID@}"
+# 密码必须通过环境变量显式配置，不再提供硬编码默认值（安全要求）
+PASSWORD="${GEO_MYSQL_PASSWORD:-}"
+if [[ -z "$PASSWORD" ]]; then
+  echo "[ERROR] GEO_MYSQL_PASSWORD 环境变量未设置（备份需要数据库访问凭据）" >&2
+  echo "        用法：GEO_MYSQL_PASSWORD=your_password bash scripts/backup.sh" >&2
+  exit 1
+fi
 BACKUP_DIR="${GEO_BACKUP_DIR:-/data/geo/backups}"
 DBS="${GEO_BACKUP_DBS:-geo}"
 KEEP_DAYS="${GEO_BACKUP_KEEP_DAYS:-14}"

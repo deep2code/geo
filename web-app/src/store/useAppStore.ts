@@ -47,6 +47,7 @@ interface ContentSlice {
 interface UISlice {
   sidebarOpen: boolean
   toast: { message: string; type: 'success' | 'error' | 'info' | 'warning' } | null
+  _toastTimer: ReturnType<typeof setTimeout> | null // 内部状态：Toast 自动关闭定时器 ID
   setSidebarOpen: (v: boolean) => void
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void
   clearToast: () => void
@@ -153,12 +154,24 @@ export const useAppStore = create<AppState>()(
 
       sidebarOpen: true,
       toast: null,
+      _toastTimer: null as ReturnType<typeof setTimeout> | null,
       setSidebarOpen: (v) => set({ sidebarOpen: v }),
       showToast: (message, type = 'info') => {
+        // 清除之前的定时器，避免快速触发时多个定时器叠加
+        const prevTimer = get()._toastTimer
+        if (prevTimer) clearTimeout(prevTimer)
         set({ toast: { message, type } })
-        setTimeout(() => get().clearToast(), 3000)
+        const timer = setTimeout(() => get().clearToast(), 3000)
+        set({ _toastTimer: timer })
       },
-      clearToast: () => set({ toast: null })
+      clearToast: () => {
+        const prevTimer = get()._toastTimer
+        if (prevTimer) {
+          clearTimeout(prevTimer)
+          set({ _toastTimer: null })
+        }
+        set({ toast: null })
+      }
     }),
     {
       name: 'geo-app-storage',

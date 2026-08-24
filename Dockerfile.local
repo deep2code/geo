@@ -20,7 +20,9 @@ LABEL org.opencontainers.image.title="MyGEO" \
       org.opencontainers.image.licenses="MIT"
 
 # 依赖：ca-certificates (HTTPS)、tzdata (时区)、libcap (低端口)
-RUN apk add --no-cache ca-certificates tzdata libcap && \
+# 使用阿里云镜像源加速国内构建（与主 Dockerfile 保持一致）
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.aliyun.com/alpine#g' /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata libcap && \
     update-ca-certificates && \
     rm -rf /var/cache/apk/*
 

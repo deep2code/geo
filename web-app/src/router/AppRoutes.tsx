@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
-import { onAuthError } from '@/services/api'
+import { onAuthError, getApiAuthToken } from '@/services/api'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const ContentOptimizer = lazy(() => import('@/pages/ContentOptimizer'))
@@ -34,6 +34,26 @@ const PageFallback: React.FC = () => (
     <div>加载中...</div>
   </div>
 )
+
+/**
+ * ProtectedRoute：需要登录态的路由守卫。
+ * 未登录时重定向到 /admin/login，保留原始路径用于登录后跳回。
+ */
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const token = getApiAuthToken()
+  if (!token) {
+    // 未登录：保存当前路径，登录后跳回
+    const qs = new URLSearchParams()
+    qs.set('redirect', `${location.pathname}${location.search}`)
+    navigate(`/admin/login?${qs.toString()}`, { replace: true })
+    return null
+  }
+
+  return <>{children}</>
+}
 
 /**
  * 把全局 401/403 统一跳转到管理员登录入口，并附带 redirect。
@@ -97,20 +117,31 @@ export const AppRoutes: React.FC = () => {
           <Route path="settings" element={
             <Suspense fallback={<PageFallback />}><Settings /></Suspense>
           } />
+          {/* 管理后台路由：需要登录态 */}
           <Route path="admin" element={
-            <Suspense fallback={<PageFallback />}><Admin /></Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageFallback />}><Admin /></Suspense>
+            </ProtectedRoute>
           } />
           <Route path="system-check" element={
-            <Suspense fallback={<PageFallback />}><SystemCheck /></Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageFallback />}><SystemCheck /></Suspense>
+            </ProtectedRoute>
           } />
           <Route path="rules" element={
-            <Suspense fallback={<PageFallback />}><Rules /></Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageFallback />}><Rules /></Suspense>
+            </ProtectedRoute>
           } />
           <Route path="evaluate" element={
-            <Suspense fallback={<PageFallback />}><Evaluate /></Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageFallback />}><Evaluate /></Suspense>
+            </ProtectedRoute>
           } />
           <Route path="brand-db-import" element={
-            <Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense>
+            </ProtectedRoute>
           } />
           <Route path="integrations" element={
             <Suspense fallback={<PageFallback />}><Integrations /></Suspense>
