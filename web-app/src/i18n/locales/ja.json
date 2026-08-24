@@ -491,6 +491,7 @@
     "ok": "OK",
     "unavailable": "利用不可",
     "disabled": "無効",
+    "warn": "警告",
     "chinacheck": "China-Check検証",
     "llmManager": "AI自動補完",
     "scheduler": "スケジューラ",

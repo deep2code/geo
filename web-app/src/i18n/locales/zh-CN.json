@@ -491,6 +491,7 @@
     "ok": "正常",
     "unavailable": "不可用",
     "disabled": "未启用",
+    "warn": "警告",
     "chinacheck": "China-Check 工商核验",
     "llmManager": "AI 智能补全",
     "scheduler": "定时调度器",

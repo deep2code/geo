@@ -39,13 +39,15 @@ const Settings: React.FC = () => {
   ]
 
   const systemItems: { key: string; label: string; value?: string }[] = [
-    { key: 'brand_engine', label: t('settings.brandEngine'), value: ready?.checks.brand_engine },
-    { key: 'history_db', label: t('settings.historyDB'), value: ready?.checks.history_db },
-    { key: 'offline_db', label: t('settings.offlineDB'), value: ready?.checks.offline_db }
+    { key: 'brand_engine', label: t('settings.brandEngine'), value: ready?.checks.brand_engine?.status },
+    { key: 'history_db', label: t('settings.historyDB'), value: ready?.checks.history_db?.status },
+    { key: 'offline_db', label: t('settings.offlineDB'), value: ready?.checks.offline_db?.status }
   ]
   const valueColor = (v?: string) => {
     if (v === 'ok') return 'success'
     if (v === 'disabled') return 'neutral'
+    if (v === 'warn') return 'warning'
+    if (v === 'fail') return 'error'
     if (v === 'unavailable') return 'error'
     return 'neutral'
   }
@@ -290,12 +292,14 @@ const Settings: React.FC = () => {
                       padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600,
                       background: valueColor(it.value) === 'success' ? 'var(--status-success-bg)'
                         : valueColor(it.value) === 'error' ? 'var(--status-error-bg)'
-                          : 'var(--bg-tertiary)',
+                          : valueColor(it.value) === 'warning' ? 'var(--status-warning-bg)'
+                            : 'var(--bg-tertiary)',
                       color: valueColor(it.value) === 'success' ? 'var(--status-success)'
                         : valueColor(it.value) === 'error' ? 'var(--status-error)'
-                          : 'var(--text-secondary)'
+                          : valueColor(it.value) === 'warning' ? 'var(--status-warning)'
+                            : 'var(--text-secondary)'
                     }}>
-                      {it.value === 'ok' ? t('settings.ok') : it.value === 'disabled' ? t('settings.disabled') : it.value === 'unavailable' ? t('settings.unavailable') : '-'}
+                      {it.value === 'ok' ? t('settings.ok') : it.value === 'disabled' ? t('settings.disabled') : it.value === 'warn' ? t('settings.warn') : it.value === 'fail' || it.value === 'unavailable' ? t('settings.unavailable') : '-'}
                     </span>
                   </div>
                 ))}

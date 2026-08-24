@@ -15,7 +15,8 @@ import type {
   HistoryStats,
   HistoryDailyResponse,
   EngineStats,
-  HistoryRecord
+  HistoryRecord,
+  ReadyCheckItem
 } from '@/types/api'
 import './Dashboard.scss'
 
@@ -29,7 +30,7 @@ const Dashboard: React.FC = () => {
   const [historyDaily, setHistoryDaily] = useState<HistoryDailyResponse | null>(null)
   const [systemReady, setSystemReady] = useState<{
     ready: boolean
-    checks: Record<string, string>
+    checks: Record<string, ReadyCheckItem>
   } | null>(null)
 
   const brands = useAppStore(s => s.brands)
@@ -269,20 +270,24 @@ const Dashboard: React.FC = () => {
           variant={systemReady?.ready ? 'success' : 'warning'}
           footer={
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {Object.entries(systemReady?.checks ?? { brand_engine: 'ok' }).map(([k, v]) => (
-                <span
-                  key={k}
-                  style={{
-                    fontSize: 11,
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    background: v === 'ok' ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
-                    color: v === 'ok' ? 'var(--status-success)' : 'var(--status-warning)'
-                  }}
-                >
-                  {k}: {v}
-                </span>
-              ))}
+              {Object.entries(systemReady?.checks ?? {}).map(([k, v]) => {
+                const ok = v?.status === 'ok'
+                return (
+                  <span
+                    key={k}
+                    title={v?.message || v?.detail || ''}
+                    style={{
+                      fontSize: 11,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: ok ? 'var(--status-success-bg)' : 'var(--status-warning-bg)',
+                      color: ok ? 'var(--status-success)' : 'var(--status-warning)'
+                    }}
+                  >
+                    {k}: {ok ? 'ok' : (v?.status ?? 'unknown')}
+                  </span>
+                )
+              })}
             </div>
           }
         />

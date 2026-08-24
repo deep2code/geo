@@ -32,10 +32,22 @@ export interface AuthLoginResponse {
   workspaces: AuthWorkspace[]
 }
 
+// 单项就绪检查结果（对应后端 internal/server/healthz.go 的 checkResult）。
+// 注意：值为对象而非字符串——旧实现曾声明为 Record<string, string>，
+// 与后端 {status,message,latency_ms,detail} 结构不匹配，导致 Dashboard 直接把对象
+// 渲染进 React 抛 #31 白屏。
+export interface ReadyCheckItem {
+  status: 'ok' | 'warn' | 'fail' | 'disabled'
+  message?: string
+  latency_ms: number
+  detail?: string
+}
+
 export interface ReadyCheck {
   status: 'ready' | 'not_ready'
-  checks: Record<string, string>
+  checks: Record<string, ReadyCheckItem>
   service: string
+  version?: string
 }
 
 export interface StrategyInfo {

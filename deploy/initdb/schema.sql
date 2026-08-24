@@ -4,11 +4,11 @@
 --
 -- 适用场景：全新部署 / 首次初始化（本项目尚未上传数据，直接整库初始化即可）。
 --
---   用法一（手动导入独立 MySQL）：
---       mysql -h<host> -u<root> -p < deploy/initdb/schema.sql
---   用法二（docker compose / mysql 容器挂载）：
+--   用法一（手动导入独立 MariaDB）：
+--       mariadb -h<host> -u<root> -p < deploy/initdb/schema.sql
+--   用法二（docker compose / mariadb 容器挂载）：
 --       docker compose 中把本文件挂到 /docker-entrypoint-initdb.d/ 下，
---       首次初始化数据卷时由 mysql 官方镜像以 root 自动执行。
+--       首次初始化数据卷时由 mariadb 官方镜像以 root 自动执行。
 --
 -- 特性：
 --   - 自包含：建应用账号 + 建 geo 库 + 授权 + 全部业务表 + 索引，一个文件跑完
@@ -22,18 +22,15 @@
 -- 注意：
 --   - 下方 'geo' 账号初始密码为 docker2026ID@（生产环境仍建议改为更强口令，并同步各 GEO_MYSQL_DSN），
 --     单库架构下所有模块共用同一 DSN，只需保证此处密码与连接串中的密码一致即可。
---   - 若已用 MYSQL_USER/MYSQL_PASSWORD 创建过 geo 用户，
---     CREATE USER IF NOT EXISTS 不会改动其现有密码，GRANT 仍可正常执行。
+--   - 本文件面向 MariaDB 编写，不兼容 MySQL；请勿在 MySQL 上执行。
 
 -- ############################################################################
 -- 0) 应用账号 + 业务库 + 授权
 -- ############################################################################
 
 -- 账号口令统一为 docker2026ID@，与下方 GEO_MYSQL_DSN 一致。
--- 注意：必须用 MariaDB 原生语法 IDENTIFIED BY（MariaDB 默认认证插件即
--- mysql_native_password，被 go-sql-driver/mysql v1.10 完整支持）。不要写成
--- MySQL 8 的 “IDENTIFIED WITH mysql_native_password BY '...'”——该语法在
--- MariaDB 11 上会报语法错，导致初始化脚本中断、geo 账号建不出来，全新部署也 denied。
+-- 使用 MariaDB 原生语法 IDENTIFIED BY（MariaDB 默认认证插件即
+-- mysql_native_password，被 go-sql-driver/mysql v1.10 完整支持）。
 CREATE USER IF NOT EXISTS 'geo'@'%'         IDENTIFIED BY 'docker2026ID@';
 CREATE USER IF NOT EXISTS 'geo'@'localhost' IDENTIFIED BY 'docker2026ID@';
 

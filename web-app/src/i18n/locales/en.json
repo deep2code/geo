@@ -491,6 +491,7 @@
     "ok": "OK",
     "unavailable": "Unavailable",
     "disabled": "Disabled",
+    "warn": "Warning",
     "chinacheck": "China-Check Verification",
     "llmManager": "AI Autocomplete",
     "scheduler": "Scheduler",
