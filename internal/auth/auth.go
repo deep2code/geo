@@ -955,7 +955,7 @@ const (
 func NewService() (*Service, error) {
 	enabled := strings.EqualFold(strings.TrimSpace(config.Env("GEO_AUTH_ENABLED", "")), "true")
 	if !enabled {
-		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED=true）：API 匿名放行，管理接口 403。生产请启用账号体系。")
+		slog.Info("账号体系未启用（未设置 GEO_AUTH_ENABLED）：API 匿名放行，管理接口 403。生产请启用账号体系。")
 		return &Service{store: nil, enabled: false, loginFails: map[string]loginFailState{}}, nil
 	}
 	st, err := OpenStore()
