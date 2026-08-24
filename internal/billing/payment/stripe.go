@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"my-geo/internal/config"
@@ -129,6 +130,14 @@ func (p *StripeProvider) VerifyWebhook(r *http.Request, body []byte) (*WebhookEv
 	ts, v1, ok := parseStripeSigHeader(sigHeader)
 	if !ok {
 		return nil, fmt.Errorf("stripe: Stripe-Signature 格式非法")
+	}
+	// 校验时间戳，防止重放攻击（允许 ±5 分钟时钟漂移）。
+	tsUnix, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("stripe: 签名时间戳非法")
+	}
+	if diff := time.Now().Unix() - tsUnix; diff < -300 || diff > 300 {
+		return nil, fmt.Errorf("stripe: 签名时间戳已过期")
 	}
 	mac := hmac.New(sha256.New, []byte(p.webhookSecret))
 	mac.Write([]byte(ts + "." + string(body)))

@@ -9,15 +9,18 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // ---- Stripe HMAC 签名校验 ----
 
 func TestStripeWebhookSignature(t *testing.T) {
 	secret := "whsec_xxx"
-	ts := "1700000000"
+	// 使用当前时间戳，避免新加的时间戳校验（±5 分钟窗口）导致固定旧时间戳失败。
+	ts := fmt.Sprintf("%d", time.Now().Unix())
 	body := []byte(`{"id":"evt_1","type":"checkout.session.completed","data":{"object":{"id":"cs_1","payment_status":"paid","client_reference_id":"ord_1"}}}`)
 
 	sig := ComputeStripeSignature(secret, ts, body)
@@ -40,6 +43,12 @@ func TestStripeWebhookSignature(t *testing.T) {
 	req2.Header.Set("Stripe-Signature", "t="+ts+",v1="+sig)
 	if _, err := p.VerifyWebhook(req2, []byte("tampered")); err == nil {
 		t.Fatal("篡改 body 应校验失败")
+	}
+	// 过期时间戳应失败
+	req3 := httptest.NewRequest("POST", "/webhook", bytes.NewReader(body))
+	req3.Header.Set("Stripe-Signature", "t=1700000000,v1="+ComputeStripeSignature(secret, "1700000000", body))
+	if _, err := p.VerifyWebhook(req3, body); err == nil {
+		t.Fatal("过期时间戳应校验失败")
 	}
 }
 

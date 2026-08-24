@@ -712,6 +712,14 @@ func (s *Server) withGzip(h http.Handler) http.Handler {
 		}
 		gw := &gzipResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		defer func() {
+			// 若内部 handler panic，外层 recovery 会写 500；本 defer 必须跳过写响应，
+			// 否则会出现 superfluous response.WriteHeader 或响应混乱。
+			if rec := recover(); rec != nil {
+				if gw.gz != nil {
+					_ = gw.gz.Close()
+				}
+				panic(rec)
+			}
 			if gw.gz != nil {
 				_ = gw.gz.Close()
 			} else if !gw.headerWritten {

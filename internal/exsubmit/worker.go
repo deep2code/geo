@@ -48,8 +48,14 @@ func (w *Worker) Stop() {
 }
 
 // run 定时循环：首次立即跑一次，之后按 interval 周期处理。
+// 单个记录的分析 panic 会被 recover，避免拖垮整个进程。
 func (w *Worker) run() {
 	defer close(w.done)
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("external worker panic 已恢复", slog.Any("recover", r))
+		}
+	}()
 	// 首次启动稍作延迟，避免与接口写入争抢连接。
 	timer := time.NewTimer(10 * time.Second)
 	defer timer.Stop()
@@ -81,9 +87,15 @@ func (w *Worker) ProcessOnce(ctx context.Context) (int, error) {
 	now := time.Now().Unix()
 	for _, sub := range pending {
 		analysis, aErr := w.analyzer.Analyze(ctx, sub.Answer)
-		if aErr != nil || analysis == nil {
+		if aErr != nil {
 			_ = w.store.UpdateAnalysis(ctx, sub.ID, nil, "failed",
 				truncate(aErr.Error(), 512), now)
+			processed++
+			continue
+		}
+		if analysis == nil {
+			_ = w.store.UpdateAnalysis(ctx, sub.ID, nil, "failed",
+				"analyzer 返回空分析结果", now)
 			processed++
 			continue
 		}

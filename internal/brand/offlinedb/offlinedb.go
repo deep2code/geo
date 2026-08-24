@@ -357,7 +357,7 @@ SELECT id, name, COALESCE(code,''), COALESCE(established_date,''),
        COALESCE(industry,''), COALESCE(legal_rep,''),
        COALESCE(registered_capital,''), COALESCE(business_scope,''),
        COALESCE(province,''), COALESCE(city,''), COALESCE(address,''),
-       COALESCE(imported_at,0)
+       COALESCE(created_at,0)
 FROM companies WHERE id > ? ORDER BY id LIMIT ?`, lastID, batch)
 		if err != nil {
 			return err

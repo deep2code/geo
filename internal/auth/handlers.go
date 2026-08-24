@@ -4,7 +4,6 @@ package auth
 import (
 	"log/slog"
 	"net/http"
-	"time"
 
 	"my-geo/internal/httputil"
 )
@@ -389,13 +388,8 @@ func (h HandlerSet) AddMember(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	now := time.Now().Unix()
-	_, e := h.Svc.Store().db.Exec(
-		`INSERT IGNORE INTO memberships(user_id,workspace_id,role,joined_at) VALUES(?,?,?,?)`,
-		target.ID, wid, string(req.Role), now,
-	)
-	if e != nil {
-		writeInternalError(w, "member.add", e)
+	if err := h.Svc.Store().AddMembership(target.ID, wid, req.Role); err != nil {
+		writeInternalError(w, "member.add", err)
 		return
 	}
 	actor := UserFromContext(r.Context())

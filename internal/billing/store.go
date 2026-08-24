@@ -36,7 +36,13 @@ func OpenStore(dsn string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("billing: 打开数据库失败: %w", err)
 	}
-	dbprovider.ConfigurePool(db, "auth")
+	dbprovider.ConfigurePool(db, "billing")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("billing: 数据库 ping 失败: %w", err)
+	}
 	return &Store{db: db, dsn: dsn}, nil
 }
 
@@ -222,6 +228,19 @@ func (s *Store) CreateOrder(ctx context.Context, o *Order) error {
 		 VALUES (?, ?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)`,
 		o.ID, o.WorkspaceID, o.Provider, string(o.Plan), o.AmountCents, o.Currency,
 		o.ProviderOrderID, o.CheckoutURL, o.CreatedAt, o.Metadata)
+	return err
+}
+
+// UpdateOrder 更新订单的可变字段（provider/status/provider_order_id/checkout_url/paid_at/metadata）。
+func (s *Store) UpdateOrder(ctx context.Context, o *Order) error {
+	if o.ID == "" {
+		return fmt.Errorf("billing: UpdateOrder 订单 ID 不能为空")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE payment_orders
+		 SET provider=?, status=?, provider_order_id=?, checkout_url=?, paid_at=?, metadata=?
+		 WHERE id=?`,
+		o.Provider, o.Status, o.ProviderOrderID, o.CheckoutURL, o.PaidAt, o.Metadata, o.ID)
 	return err
 }
 

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"my-geo/internal/dsnutil"
+
 	_ "github.com/go-sql-driver/mysql" // MySQL 驱动（注册 sql.Open("mysql")）
 )
 
@@ -109,6 +111,7 @@ func InitSettings(ctx context.Context, dsn string, seed bool) error {
 		slog.Info("config: 未配置设置库 DSN，跳过 DB 配置加载（非引导项使用代码默认值，引导项读环境变量）")
 		return nil
 	}
+	dsn = dsnutil.NormalizeMySQLDSN(dsn)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return fmt.Errorf("config: 打开设置库失败: %w", err)

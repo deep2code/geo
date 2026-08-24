@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"my-geo/internal/config"
@@ -152,16 +153,29 @@ func (p *WeChatPayProvider) signRequest(req *http.Request, body []byte) error {
 // 回调体：{id, resource:{ciphertext, nonce, associated_data, original_type}}，
 // ciphertext 用 APIv3 密钥做 AES-256-GCM 解密，得到含 out_trade_no / trade_state 的明文。
 func (p *WeChatPayProvider) VerifyWebhook(r *http.Request, body []byte) (*WebhookEvent, error) {
-	// 可选：微信平台证书验签（提升安全性；未配置证书时跳过）。
+	ts := r.Header.Get("Wechatpay-Timestamp")
+	if ts == "" {
+		return nil, fmt.Errorf("wechatpay: 缺少 Wechatpay-Timestamp 头")
+	}
+	tsUnix, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("wechatpay: 时间戳格式非法")
+	}
+	if diff := time.Now().Unix() - tsUnix; diff < -300 || diff > 300 {
+		return nil, fmt.Errorf("wechatpay: 回调时间戳已过期")
+	}
+
+	// 可选：微信平台证书验签（提升安全性；未配置证书时跳过，但记录警告）。
 	if p.platCert != nil {
 		if sig := r.Header.Get("Wechatpay-Signature"); sig != "" {
-			ts := r.Header.Get("Wechatpay-Timestamp")
 			nonce := r.Header.Get("Wechatpay-Nonce")
 			msg := strings.Join([]string{ts, nonce, string(body)}, "\n") + "\n"
 			if !verifyWeChatSignature(msg, sig, p.platCert) {
 				return nil, fmt.Errorf("wechatpay: 平台证书签名校验失败")
 			}
 		}
+	} else {
+		slog.Warn("wechatpay: 未配置平台证书，跳过平台签名校验（生产环境建议配置 GEO_WECHATPAY_PLAT_CERT 以提升安全性）")
 	}
 	var cb struct {
 		Resource struct {

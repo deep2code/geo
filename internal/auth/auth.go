@@ -677,6 +677,17 @@ func (s *Store) UpdateLastLogin(userID string) error {
 	return err
 }
 
+// AddMembership 将用户加入工作区（INSERT IGNORE 幂等）。
+func (s *Store) AddMembership(userID, workspaceID string, role Role) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(
+		"INSERT IGNORE INTO memberships(user_id,workspace_id,role,joined_at) VALUES(?,?,?,?)",
+		userID, workspaceID, string(role), time.Now().Unix(),
+	)
+	return err
+}
+
 // UpdatePassword 改密码（同时吊销该用户全部会话：refresh token 删除 +
 // token_version +1 使已签发的 access token 立即失效）。
 func (s *Store) UpdatePassword(userID, newPassword string) error {
@@ -1262,8 +1273,8 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			// 公开路径放行（/health /ready /auth/* 等）
-			if public[path] || isServerPublicPath(path) || strings.HasPrefix(path, "/api/v1/auth/") {
+			// 公开路径放行（/health /ready /auth/* /billing/webhook/* 等）
+			if public[path] || isServerPublicPath(path) || strings.HasPrefix(path, "/api/v1/auth/") || strings.HasPrefix(path, "/api/v1/billing/webhook/") {
 				h.ServeHTTP(w, r)
 				return
 			}

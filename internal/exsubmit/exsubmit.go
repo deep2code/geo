@@ -122,6 +122,9 @@ func (d *mysqlStore) Save(ctx context.Context, sub *Submission) (int64, error) {
 	if d == nil || d.db == nil {
 		return 0, fmt.Errorf("exsubmit: 存储未初始化")
 	}
+	if err := sub.Validate(); err != nil {
+		return 0, err
+	}
 	const q = `INSERT INTO external_submissions(
 		model_name, question, answer, share_link, status, workspace_id, created_at
 	) VALUES(?,?,?,?,?,?,?)`
@@ -136,6 +139,34 @@ func (d *mysqlStore) Save(ctx context.Context, sub *Submission) (int64, error) {
 		return 0, fmt.Errorf("exsubmit: 写入提交失败: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+// Validate 检查提交字段长度与格式，防止恶意/超大内容入库。
+func (s *Submission) Validate() error {
+	const (
+		maxModelName = 128
+		maxText      = 10 * 1024 * 1024 // 10MB
+		maxShareLink = 2048
+	)
+	if strings.TrimSpace(s.ModelName) == "" {
+		return fmt.Errorf("exsubmit: model_name 不能为空")
+	}
+	if len(s.ModelName) > maxModelName {
+		return fmt.Errorf("exsubmit: model_name 超过最大长度 %d", maxModelName)
+	}
+	if len(s.Question) > maxText {
+		return fmt.Errorf("exsubmit: question 超过最大长度 %d", maxText)
+	}
+	if strings.TrimSpace(s.Answer) == "" {
+		return fmt.Errorf("exsubmit: answer 不能为空")
+	}
+	if len(s.Answer) > maxText {
+		return fmt.Errorf("exsubmit: answer 超过最大长度 %d", maxText)
+	}
+	if len(s.ShareLink) > maxShareLink {
+		return fmt.Errorf("exsubmit: share_link 超过最大长度 %d", maxShareLink)
+	}
+	return nil
 }
 
 // ListPending 取最多 limit 条待分析记录。

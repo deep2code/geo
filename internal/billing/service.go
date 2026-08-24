@@ -173,7 +173,11 @@ func (s *Service) CreateOrder(ctx context.Context, wsID string, plan PlanID, pro
 	if prov == nil {
 		return nil, fmt.Errorf("billing: 支付渠道 %q 未配置或未启用，请在后台配置对应商户凭据", provider)
 	}
+	// 先落库生成订单 ID；支付渠道的 out_trade_no/order_id 必须非空，回调才能关联订单。
 	o.Provider = prov.Name()
+	if err := s.store.CreateOrder(ctx, o); err != nil {
+		return nil, err
+	}
 	checkout, err := prov.CreateCheckout(ctx, payment.Order{
 		ID:          o.ID,
 		WorkspaceID: wsID,
@@ -184,10 +188,10 @@ func (s *Service) CreateOrder(ctx context.Context, wsID string, plan PlanID, pro
 	if err != nil {
 		// 渠道已配置但调用失败：降级为手动（网络异常兜底），保证下单不阻断。
 		slog.Warn("billing: 支付渠道下单失败，降级为手动激活",
-			slog.String("provider", o.Provider), slog.Any("error", err))
+			slog.String("order", o.ID), slog.String("provider", o.Provider), slog.Any("error", err))
 		o.Provider = "manual"
 		o.Status = "created"
-		if err2 := s.store.CreateOrder(ctx, o); err2 != nil {
+		if err2 := s.store.UpdateOrder(ctx, o); err2 != nil {
 			return nil, err2
 		}
 		res.Manual = true
@@ -195,7 +199,7 @@ func (s *Service) CreateOrder(ctx context.Context, wsID string, plan PlanID, pro
 	}
 	o.ProviderOrderID = checkout.ProviderOrderID
 	o.CheckoutURL = checkout.URL
-	if err := s.store.CreateOrder(ctx, o); err != nil {
+	if err := s.store.UpdateOrder(ctx, o); err != nil {
 		return nil, err
 	}
 	res.Checkout = checkout
@@ -208,13 +212,14 @@ func (s *Service) MarkOrderPaidAndActivate(ctx context.Context, orderID, provide
 	if err != nil {
 		return err
 	}
-	// 幂等：订单已支付则跳过重复标记（webhook 重试安全，避免支付宝/Stripe 重试风暴），
-	// 仅确保套餐已激活。MarkOrderPaid 返回 ErrOrderAlreadyPaid（并发重试命中）同样忽略。
-	if o.Status != "paid" {
-		if err := s.store.MarkOrderPaid(ctx, orderID, providerOrderID); err != nil {
-			if !errors.Is(err, ErrOrderAlreadyPaid) {
-				return err
-			}
+	// 幂等：订单已支付则直接返回（webhook 重试安全，避免支付宝/Stripe 重试风暴）。
+	// SetPlan 会重置 current_period_start/end，因此已支付订单不能再走一遍激活逻辑。
+	if o.Status == "paid" {
+		return nil
+	}
+	if err := s.store.MarkOrderPaid(ctx, orderID, providerOrderID); err != nil {
+		if !errors.Is(err, ErrOrderAlreadyPaid) {
+			return err
 		}
 	}
 	period := 30

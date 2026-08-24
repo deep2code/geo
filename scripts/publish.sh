@@ -387,7 +387,8 @@ remote_health() {
         return
     fi
     step "远程健康检查: ${REMOTE_HEALTH_URL}"
-    if run_ssh "curl -fsS --max-time 15 '${REMOTE_HEALTH_URL}' >/dev/null 2>&1 && echo OK || echo FAIL"; then
+    # 直接以 curl 退出码判断；末尾不要 echo OK/FAIL，否则 echo 成功会覆盖 curl 失败码。
+    if run_ssh "curl -fsS --max-time 15 '${REMOTE_HEALTH_URL}' >/dev/null 2>&1"; then
         info "远程服务健康"
     else
         warn "远程健康检查未通过，请登录服务器排查: journalctl/面板容器日志"

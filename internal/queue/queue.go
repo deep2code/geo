@@ -145,9 +145,10 @@ func (c *Client) GetJob(ctx context.Context, id string) (*Job, error) {
 		job.Status = StatusRunning
 	case "pending", "scheduled":
 		job.Status = StatusPending
-	case "archived", "completed":
+	case "completed":
 		job.Status = StatusSucceeded
-	case "dead":
+	case "archived", "dead":
+		// archived 是 asynq 重试耗尽/失败后的归档态，与 dead 同属失败。
 		job.Status = StatusFailed
 	default:
 		job.Status = StatusPending
