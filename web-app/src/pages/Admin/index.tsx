@@ -293,6 +293,7 @@ const Admin: React.FC = () => {
     build_version: 'dev',
     build_commit: 'none',
     build_at: '',
+    build_os: '',
     memory_alloc: '128MB',
     goroutines: 42,
     start_time: new Date(Date.now() - 86400_000 * 7).toISOString(),
@@ -411,6 +412,10 @@ const Admin: React.FC = () => {
               <div className="admin-sysinfo-row">
                 <span className="admin-sysinfo-key">{t('admin.sysBuildTime')}</span>
                 <span className="admin-sysinfo-val">{sysInfo.build_at ? new Date(sysInfo.build_at).toLocaleString() : '-'}</span>
+              </div>
+              <div className="admin-sysinfo-row">
+                <span className="admin-sysinfo-key">{t('admin.sysBuildOS')}</span>
+                <span className="admin-sysinfo-val">{sysInfo.build_os || '-'}</span>
               </div>
               <div className="admin-sysinfo-row">
                 <span className="admin-sysinfo-key">{t('admin.sysGoVersion')}</span>

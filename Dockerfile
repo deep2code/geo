@@ -40,6 +40,7 @@ FROM ${BASE_IMAGE} AS builder
 ARG VERSION=dev
 ARG COMMIT=none
 ARG BUILD_AT=unknown
+ARG BUILD_OS=unknown
 # buildx 预定义的目标平台参数
 ARG TARGETOS
 ARG TARGETARCH
@@ -71,7 +72,7 @@ COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 RUN --mount=type=cache,target=/gocache \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
     -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT}" \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT} -X main.buildOS=${BUILD_OS}" \
     -o /out/geo \
     ./cmd/geo
 

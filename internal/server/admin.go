@@ -418,10 +418,11 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request) {
 		"disk_used_bytes": diskUsed,
 		"num_cpu":         runtime.NumCPU(),
 		"version":         geoVersion,
-		// 构建信息（ldflags 注入，与 geo --version 一致；管理后台展示打包时间与 git hash）
+		// 构建信息（ldflags 注入，与 geo --version 一致；管理后台展示打包时间、git hash 与打包操作系统）
 		"build_version": buildVersion,
 		"build_commit":  buildCommit,
 		"build_at":      buildAt,
+		"build_os":      buildOS,
 	})
 }
 

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,11 +24,12 @@ import (
 
 // 版本信息，通过 ldflags 注入：
 //
-//	go build -ldflags "-X main.version=v1.2.3 -X main.commit=$(git rev-parse --short HEAD) -X 'main.buildAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+//	go build -ldflags "-X main.version=v1.2.3 -X main.commit=$(git rev-parse --short HEAD) -X 'main.buildAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)' -X main.buildOS=$(uname -s)"
 var (
 	version = "dev"   // 语义化版本号（release 时由 CI 注入）
 	commit  = "none"  // git commit 短哈希
 	buildAt = "unknown" // 构建时间（UTC ISO8601）
+	buildOS = runtime.GOOS // 打包操作系统（打包机 uname -s，如 Linux/Darwin/Windows）
 )
 
 func main() {
@@ -40,13 +42,13 @@ func main() {
 	versionFlag := flag.Bool("version", false, "打印版本信息并退出")
 	flag.Parse()
 	if *versionFlag {
-		fmt.Printf("%s (commit %s, built %s)\n", version, commit, buildAt)
+		fmt.Printf("%s (commit %s, built %s, os %s)\n", version, commit, buildAt, buildOS)
 		return
 	}
 
 	initLogger()
 	// 同步构建信息到 server 包（/metrics 的 geo_build_info 与 --version 保持一致）。
-	server.SetBuildInfo(version, commit, buildAt)
+	server.SetBuildInfo(version, commit, buildAt, buildOS)
 	// 启动关键配置 fail-fast 校验（弱密钥/缺 DSN 拒绝启动）。
 	if err := config.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, "错误:", err)
@@ -134,12 +136,15 @@ func initLogger() {
 		}
 	}
 	opts := &slog.HandlerOptions{Level: level}
-	var h slog.Handler
+	var base slog.Handler
 	if format == "json" {
-		h = slog.NewJSONHandler(os.Stderr, opts)
+		base = slog.NewJSONHandler(os.Stderr, opts)
 	} else {
-		h = slog.NewTextHandler(os.Stderr, opts)
+		base = slog.NewTextHandler(os.Stderr, opts)
 	}
+	// 时区 handler：把日志时间戳转换到本地时区（默认 Asia/Shanghai，可用 TZ 覆盖），
+	// 避免标准 slog 强制 UTC 导致日志比北京时间慢 8 小时、看着“时间不对”。
+	h := newTZHandler(base, resolveLogLocation().String())
 	slog.SetDefault(slog.New(h))
 }
 

@@ -587,6 +587,7 @@
     "sysBuildVersion": "构建版本",
     "sysBuildCommit": "Git Commit",
     "sysBuildTime": "打包时间",
+    "sysBuildOS": "打包操作系统",
     "sysGoVersion": "Go 版本",
     "sysMemory": "内存分配",
     "sysGoroutines": "Goroutine 数",

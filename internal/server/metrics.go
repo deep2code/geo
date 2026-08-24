@@ -31,11 +31,12 @@ import (
 var (
 	buildVersion = "dev"
 	buildCommit  = "none"
-	buildAt      = "unknown" // 构建时间（UTC ISO8601）
+	buildAt      = "unknown"    // 构建时间（UTC ISO8601）
+	buildOS      = runtime.GOOS // 打包操作系统（打包机 uname -s，如 Linux/Darwin/Windows）
 )
 
 // SetBuildInfo 由 main 包在启动时同步版本信息（与 geo --version 一致）。
-func SetBuildInfo(version, commit, buildAtStr string) {
+func SetBuildInfo(version, commit, buildAtStr, buildOSStr string) {
 	if version != "" {
 		buildVersion = version
 	}
@@ -44,6 +45,9 @@ func SetBuildInfo(version, commit, buildAtStr string) {
 	}
 	if buildAtStr != "" {
 		buildAt = buildAtStr
+	}
+	if buildOSStr != "" {
+		buildOS = buildOSStr
 	}
 }
 

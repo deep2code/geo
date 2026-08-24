@@ -587,6 +587,7 @@
     "sysBuildVersion": "Build Version",
     "sysBuildCommit": "Git Commit",
     "sysBuildTime": "Build Time",
+    "sysBuildOS": "Build OS",
     "sysGoVersion": "Go Version",
     "sysMemory": "Memory Alloc",
     "sysGoroutines": "Goroutines",

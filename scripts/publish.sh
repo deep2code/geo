@@ -200,11 +200,12 @@ do_build() {
     # 本机编译模式（自动选择）：本机有 go+npm → 内置前端构建 + Go 交叉编译
     # （GOCACHE 常驻，增量秒级）→ Dockerfile.local 轻量打包；否则回退容器内全量构建。
     if command -v go &>/dev/null && command -v npm &>/dev/null; then
-        local archs version commit build_at arch out
+        local archs version commit build_at build_os arch out
         archs="$(printf '%s' "$PLATFORM" | tr ',' '\n' | sed 's|^linux/||' | tr '\n' ',' | sed 's/,$//')"
         version="$(git describe --tags --always 2>/dev/null || echo dev)"
         commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
         build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        build_os="$(uname -s)"
         if [[ "$DRY_RUN" == 1 ]]; then
             echo -e "${YELLOW}[DRY-RUN]${NC} 本机编译：npm ci + npm run build（web-app/，前端有变化时）→ internal/server/web/dist"
             echo -e "${YELLOW}[DRY-RUN]${NC} 交叉编译：GOOS=linux GOARCH=${archs//,/,} -ldflags(v=${version} c=${commit}) → build/geo-linux-<arch>"
@@ -224,7 +225,7 @@ do_build() {
             out="$PROJECT_DIR/build/geo-linux-${arch}"
             info "交叉编译 linux/${arch} → ${out}"
             (cd "$PROJECT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath \
-                -ldflags "-s -w -X main.version=${version} -X main.commit=${commit} -X main.buildAt=${build_at}" \
+                -ldflags "-s -w -X main.version=${version} -X main.commit=${commit} -X main.buildAt=${build_at} -X main.buildOS=${build_os}" \
                 -o "$out" ./cmd/geo)
         done
         # 轻量打包（仅 COPY 二进制；buildx 多平台时按 TARGETARCH 匹配 build/geo-linux-<arch>）
@@ -237,10 +238,11 @@ do_build() {
         return
     fi
     warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：仅固化工具链+依赖下载，app 构建走 buildx 持久缓存 /gocache 自热）"
-    local version commit build_at base_tag base_remote
+    local version commit build_at build_os base_tag base_remote
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
     build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    build_os="$(uname -s)"
 
     # base 镜像的远端仓库：复用与 app 镜像 ACR_IMAGE 同一个「仓库」(codeup2026/geo)，
     # 仅用不同的 tag(build-base) 区分。这样 base 和 app 推同一个已授权仓库，
@@ -289,6 +291,7 @@ do_build() {
             --build-arg "VERSION=${version}" \
             --build-arg "COMMIT=${commit}" \
             --build-arg "BUILD_AT=${build_at}" \
+            --build-arg "BUILD_OS=${build_os}" \
             --build-arg "NPM_REGISTRY=${NPM_REGISTRY}" \
             --build-arg "GOPROXY_URL=${GOPROXY_URL}" \
             --build-arg "GOSUMDB_URL=${GOSUMDB_URL}" \
@@ -301,6 +304,7 @@ do_build() {
             --build-arg "VERSION=${version}" \
             --build-arg "COMMIT=${commit}" \
             --build-arg "BUILD_AT=${build_at}" \
+            --build-arg "BUILD_OS=${build_os}" \
             --build-arg "NPM_REGISTRY=${NPM_REGISTRY}" \
             --build-arg "GOPROXY_URL=${GOPROXY_URL}" \
             --build-arg "GOSUMDB_URL=${GOSUMDB_URL}" \

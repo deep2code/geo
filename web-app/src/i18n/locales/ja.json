@@ -587,6 +587,7 @@
     "sysBuildVersion": "ビルドバージョン",
     "sysBuildCommit": "Gitコミット",
     "sysBuildTime": "ビルド時刻",
+    "sysBuildOS": "ビルドOS",
     "sysGoVersion": "Goバージョン",
     "sysMemory": "メモリ割当",
     "sysGoroutines": "Goroutine数",

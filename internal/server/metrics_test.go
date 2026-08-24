@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -75,9 +76,9 @@ func TestMetricsWithLLMManager(t *testing.T) {
 }
 
 func TestSetBuildInfo(t *testing.T) {
-	SetBuildInfo("v9.9.9", "abc123", "2026-08-19T10:00:00Z")
-	defer SetBuildInfo("dev", "none", "unknown")
-	if buildVersion != "v9.9.9" || buildCommit != "abc123" || buildAt != "2026-08-19T10:00:00Z" {
-		t.Errorf("SetBuildInfo 未生效: version=%q commit=%q buildAt=%q", buildVersion, buildCommit, buildAt)
+	SetBuildInfo("v9.9.9", "abc123", "2026-08-19T10:00:00Z", "Linux")
+	defer SetBuildInfo("dev", "none", "unknown", runtime.GOOS)
+	if buildVersion != "v9.9.9" || buildCommit != "abc123" || buildAt != "2026-08-19T10:00:00Z" || buildOS != "Linux" {
+		t.Errorf("SetBuildInfo 未生效: version=%q commit=%q buildAt=%q buildOS=%q", buildVersion, buildCommit, buildAt, buildOS)
 	}
 }
