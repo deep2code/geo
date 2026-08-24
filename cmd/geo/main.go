@@ -9,6 +9,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"runtime"
@@ -136,11 +137,33 @@ func initLogger() {
 		}
 	}
 	opts := &slog.HandlerOptions{Level: level}
+
+	// 输出目标：默认仅 stderr（被 Docker json-file 驱动捕获，docker compose logs 可见）。
+	// 设置 GEO_LOG_FILE 后追加文件输出（滚动：单文件 20MB、保留 7 天），
+	// stderr 始终保留，容器控制台仍可直接查看日志。
+	writers := []io.Writer{os.Stderr}
+	// GEO_LOG_FILE 是启动期日志引导项，需在 DB 设置加载前即可用，故直接读环境变量
+	// （config.Env 仅对 5 个引导类键回退 os.Getenv，GEO_LOG_FILE 不在其中）。
+	if logPath := strings.TrimSpace(os.Getenv("GEO_LOG_FILE")); logPath != "" {
+		rw, err := newRotatingWriter(logPath, 20, 7)
+		if err != nil {
+			slog.Warn("文件日志初始化失败，仅输出到 stderr", slog.String("path", logPath), slog.Any("error", err))
+		} else {
+			writers = append(writers, rw)
+		}
+	}
+	var out io.Writer
+	if len(writers) == 1 {
+		out = writers[0]
+	} else {
+		out = io.MultiWriter(writers...)
+	}
+
 	var base slog.Handler
 	if format == "json" {
-		base = slog.NewJSONHandler(os.Stderr, opts)
+		base = slog.NewJSONHandler(out, opts)
 	} else {
-		base = slog.NewTextHandler(os.Stderr, opts)
+		base = slog.NewTextHandler(out, opts)
 	}
 	// 时区 handler：把日志时间戳转换到本地时区（默认 Asia/Shanghai，可用 TZ 覆盖），
 	// 避免标准 slog 强制 UTC 导致日志比北京时间慢 8 小时、看着“时间不对”。

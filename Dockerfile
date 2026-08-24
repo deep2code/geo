@@ -102,6 +102,9 @@ RUN setcap cap_net_bind_service=+ep /app/geo && \
     chown geo:geo /app/geo && \
     chmod 0755 /app/geo
 
+# 日志目录（文件日志 GEO_LOG_FILE 可写；非 root 用户 geo 需有写权限）
+RUN mkdir -p /app/logs && chown -R geo:geo /app/logs
+
 # 切换非 root 用户
 USER geo
 

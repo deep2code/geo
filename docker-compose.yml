@@ -79,6 +79,10 @@ services:
       GEO_ADMIN_EMAIL: "${GEO_ADMIN_EMAIL:-}"
       GEO_ADMIN_PASSWORD: "${GEO_ADMIN_PASSWORD:-}"
       GEO_JWT_SECRET: "${GEO_JWT_SECRET:-}"
+      # 文件日志：单文件 20MB 滚动、保留 7 天（需挂载 geo-logs 卷；目录 /app/logs 已建好并授权 geo 用户）
+      GEO_LOG_FILE: "/app/logs/geo.log"
+    volumes:
+      - geo-logs:/app/logs
     depends_on:
       mariadb:
         condition: service_healthy
@@ -104,3 +108,4 @@ volumes:
   mariadb-data:
   redis-data:
   meili-data:
+  geo-logs:
