@@ -649,6 +649,16 @@ export interface WhitelabelMeta {
   support_email?: string
 }
 
+/** 公开构建信息（GET /api/v1/meta/system，无需登录；首页/页脚展示）。 */
+export interface MetaSystem {
+  version: string
+  build_version: string
+  build_commit: string
+  build_at: string
+  build_os: string
+  go_version: string
+}
+
 export interface CompareDimension {
   key: string
   label: string

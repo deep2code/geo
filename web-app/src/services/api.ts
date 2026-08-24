@@ -33,6 +33,7 @@ import type {
   ExternalSignalsReport,
   DiscoverResponse,
   WhitelabelMeta,
+  MetaSystem,
   BrandCompareResponse,
   LeaderboardResponse,
   SelfCheckReport,
@@ -429,6 +430,10 @@ export const api = {
 
   metaWhitelabel: () =>
     request<WhitelabelMeta>('/meta/whitelabel', { method: 'GET' }),
+
+  // 公开构建信息（无需登录，首页/页脚展示打包版本/git-hash/打包时间/打包系统）
+  metaSystem: () =>
+    request<MetaSystem>('/meta/system', { method: 'GET' }),
 
   brandCompare: (brands: string[]) => {
     const params = new URLSearchParams()

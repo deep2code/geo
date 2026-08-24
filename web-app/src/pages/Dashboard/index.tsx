@@ -16,7 +16,8 @@ import type {
   HistoryDailyResponse,
   EngineStats,
   HistoryRecord,
-  ReadyCheckItem
+  ReadyCheckItem,
+  MetaSystem
 } from '@/types/api'
 import './Dashboard.scss'
 
@@ -28,6 +29,7 @@ const Dashboard: React.FC = () => {
   const [history, setHistory] = useState<HistoryListResponse | null>(null)
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null)
   const [historyDaily, setHistoryDaily] = useState<HistoryDailyResponse | null>(null)
+  const [metaSystem, setMetaSystem] = useState<MetaSystem | null>(null)
   const [systemReady, setSystemReady] = useState<{
     ready: boolean
     checks: Record<string, ReadyCheckItem>
@@ -39,16 +41,18 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const [hist, hstats, hdaily, ready] = await Promise.all([
+        const [hist, hstats, hdaily, ready, meta] = await Promise.all([
           api.historyList(undefined, 5).catch(() => null),
           api.historyStats().catch(() => null),
           api.historyStatsDaily(30).catch(() => null),
-          api.ready().catch(() => null)
+          api.ready().catch(() => null),
+          api.metaSystem().catch(() => null)
         ])
         if (hist) setHistory(hist)
         if (hstats) setHistoryStats(hstats)
         if (hdaily) setHistoryDaily(hdaily)
         if (ready) setSystemReady({ ready: ready.status === 'ready', checks: ready.checks })
+        if (meta) setMetaSystem(meta)
       } finally {
         setLoading(false)
       }
@@ -370,6 +374,21 @@ const Dashboard: React.FC = () => {
           />
         </Card>
       </div>
+
+      {/* 系统构建信息（公开接口 /api/v1/meta/system，无需登录） */}
+      {metaSystem && (
+        <Card title="📦 系统构建信息" compact>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span><b style={{ color: 'var(--text-primary)' }}>打包版本</b>：{metaSystem.build_version}</span>
+            <span><b style={{ color: 'var(--text-primary)' }}>打包时间</b>：{metaSystem.build_at && metaSystem.build_at !== 'unknown' ? new Date(metaSystem.build_at).toLocaleString() : '-'}</span>
+            <span><b style={{ color: 'var(--text-primary)' }}>打包系统</b>：{metaSystem.build_os || '-'}</span>
+            <span style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={metaSystem.build_commit}>
+              <b style={{ color: 'var(--text-primary)' }}>git-hash</b>：{metaSystem.build_commit}</span>
+            <span><b style={{ color: 'var(--text-primary)' }}>Go</b>：{metaSystem.go_version}</span>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

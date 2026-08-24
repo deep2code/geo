@@ -561,6 +561,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/health", s.handleLiveness)
 	s.mux.HandleFunc("/api/v1/ready", s.handleReadiness)
 	s.mux.HandleFunc("/api/v1/meta/whitelabel", s.handleWhitelabel)
+	s.mux.HandleFunc("/api/v1/meta/system", s.handleMetaSystem) // 公开构建信息（首页展示，无需登录）
 	s.mux.HandleFunc("/api/v1/strategies", s.handleStrategies)
 	s.mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("/api/v1/score", s.handleScore)

@@ -3,6 +3,7 @@ package server
 import (
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 )
 
@@ -64,4 +65,23 @@ func (s *Server) handleWhitelabel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.whitelabel)
+}
+
+// handleMetaSystem 公开构建信息（无需登录）。
+// GET /api/v1/meta/system
+// 仅返回非敏感构建元数据（打包版本/git-hash/打包时间/打包操作系统），
+// 供前端首页/页脚展示；不含内存、goroutine、磁盘等运行时细节（那些在 /api/v1/admin/system）。
+func (s *Server) handleMetaSystem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":       geoVersion,
+		"build_version": buildVersion,
+		"build_commit":  buildCommit,
+		"build_at":      buildAt,
+		"build_os":      buildOS,
+		"go_version":    runtime.Version(),
+	})
 }
