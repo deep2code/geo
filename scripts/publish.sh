@@ -7,9 +7,9 @@
 #   [本地]  git add -A + commit + push origin <branch>（打包前自动完成；无改动则不提交；--skip-commit 跳过）
 #     ↓     自动选择构建方式：本机有 go+npm → 本机编译（GOCACHE 增量秒级，前端有变化才重建）
 #     ↓     docker buildx build -f Dockerfile.local（仅 COPY 二进制打包，秒级）；无工具链自动回退容器构建
-#     ↓     docker push（自动登录 ACR；本机在 VPC 内[Linux & PUSH_VPC=1]直推内网名，否则推公网变体，同仓库自动可见）
-#   [远程]  ssh 到服务器：docker login（可选）→ REMOTE_CMD（默认：内网 VPC 地址拉镜像 +
-#           compose up -d；镜像名即内网地址，1Panel 显示为内网；服务器不在内网可覆盖 REMOTE_IMAGE）→ 健康检查
+#     ↓     docker push（自动登录 ACR；本机在 VPC 内[Linux & PUSH_VPC=1]推内网名+公网名，非 Linux 只推公网；运行机用公网）
+#   [远程]  ssh 到服务器：docker login（可选）→ REMOTE_CMD（默认：docker compose pull 拉公网镜像 +
+#           compose up -d；镜像名即公网地址，与运行机 docker-compose.yml 引用一致；如需内网拉取覆盖 REMOTE_IMAGE）→ 健康检查
 #
 # 用法：
 #   ./scripts/publish.sh                 # 完整流程（提交推送 + 构建 + 发布）
@@ -22,7 +22,7 @@
 # 构建方式自动选择：本机有 go+npm → 本机编译 + Dockerfile.local 打包；否则容器内全量构建。
 #
 # 常用环境变量（均有默认值，按需覆盖）：
-#   ACR_IMAGE       完整镜像名（默认内网 VPC：crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest）
+#   ACR_IMAGE       完整镜像名（默认公网：crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:latest；运行机以公网拉取；Linux 打包机额外推 VPC 内网）
 #   ACR_LOGIN_USER / ACR_LOGIN_PASSWORD   推送到 ACR 用的账号（可选，未登录时自动 login）
 #   PLATFORM        目标架构，默认 linux/amd64（当前服务器架构）；
 #                   多架构用逗号分隔：PLATFORM="linux/amd64,linux/arm64"（慢，但 arm 服务器也能拉）
@@ -55,19 +55,24 @@ set -euo pipefail
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 # ===== 配置（环境变量可覆盖） =====
-# 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见）。
-# 运行机器在公网（仅持 docker-compose.yml），compose / 1Panel 引用【公网】端点拉取；
-# 因此规范镜像名统一为公网地址，publish.sh 直接推公网端点，确保 compose 引用的镜像一定被发布出来
-# （不再依赖 VPC/公网同仓库可见的隐式行为）。
+# 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见，但不可靠，故显式双推）。
+# 运行机器在公网（仅持 docker-compose.yml），compose / 1Panel 引用【公网】端点拉取，
+# 因此【公网端点必须推送】（否则运行机拉不到）。
+# 打包机在 VPC 内（Linux），推送时【优先走 VPC 内网】（快、免公网带宽）；
+# 故：本机 Linux → 同时推 VPC 内网 + 公网；非 Linux → 只推公网。
 ACR_REGISTRY_VPC="${ACR_REGISTRY_VPC:-crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com}"
 ACR_REGISTRY_PUBLIC="${ACR_REGISTRY_PUBLIC:-crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com}"
 ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY_PUBLIC}/codeup2026/geo:latest}"   # tag 固定 latest（公网端点，与 docker-compose.yml 引用一致）
 
 # mariadb 定制镜像（固化 schema.sql）：与 app 镜像同仓库、不同 tag，避免新建仓库的权限问题。
 # 运行机器在外网、以 image: 方式拉取该镜像（仅 docker-compose.yml 即可部署，不依赖任何本地文件）。
-# 规范镜像名即【公网】地址（与 docker-compose.yml 引用的 image 完全一致）；打包机直接推公网端点，
-# 不依赖 VPC/公网同仓库可见的隐式行为，确保 compose 引用的镜像一定被发布出来。
+# 与 app 镜像一致：必推公网端点（运行机拉取），Linux 打包机额外推 VPC 内网（快）。
 ACR_MARIADB_IMAGE="${ACR_MARIADB_IMAGE:-${ACR_REGISTRY_PUBLIC}/codeup2026/geo:mariadb}"
+
+# 是否走 VPC 内网推送：打包机在 VPC（Linux & PUSH_VPC=1）时优先内网，快。
+IS_LINUX=0
+[[ "$(uname -s)" == "Linux" ]] && IS_LINUX=1
+PUSH_VPC="${PUSH_VPC:-1}"
 
 # 构建镜像源（国内网络默认走镜像，CI 可用官方源覆盖）
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
@@ -83,10 +88,10 @@ REMOTE_HOST="${REMOTE_HOST:-}"
 REMOTE_PORT="${REMOTE_PORT:-22}"
 REMOTE_COMPOSE_DIR="${REMOTE_COMPOSE_DIR:-/opt/1panel/docker/compose/geo}"
 REMOTE_HEALTH_URL="${REMOTE_HEALTH_URL:-http://127.0.0.1:7070/api/v1/health}"
-# 远程服务器拉取镜像地址：默认 = ACR_IMAGE（已是内网 VPC 地址，服务器与 ACR 同 VPC 时走内网）；
-# 若服务器不在内网，覆盖 REMOTE_IMAGE 为公网地址即可。
+# 远程服务器拉取镜像地址：默认 = ACR_IMAGE（公网地址，运行机在外网以公网拉取）；
+# 若服务器与 ACR 同 VPC 且想走内网，覆盖 REMOTE_IMAGE 为 VPC 端点（crpi-...-vpc...）即可。
 REMOTE_IMAGE="${REMOTE_IMAGE:-${ACR_IMAGE}}"
-# 远程默认升级命令（可整体自定义）：内网拉取 → compose up -d（镜像名即内网地址，1Panel 显示内网）
+# 远程默认升级命令（可整体自定义）：公网拉取 → compose up -d（镜像名即公网地址，与运行机 compose 引用一致）
 REMOTE_CMD="${REMOTE_CMD:-cd '${REMOTE_COMPOSE_DIR}' && docker pull '${REMOTE_IMAGE}' && docker compose up -d}"
 
 # ACR 登录（可选）
@@ -328,6 +333,28 @@ do_login() { # do_login <registry>（docker login 到指定 registry）
     fi
 }
 
+# push_to_both <local_tag> <public_img> <vpc_img>
+# 始终推【公网】端点（运行机器 compose 引用公网拉取）；
+# 本机在 VPC 内（Linux & PUSH_VPC=1）时额外推【内网】端点（快、免公网带宽）。
+# local_tag 为本地已构建镜像（如 ACR_IMAGE），脚本会把它 tag 成公网/内网目标名再分别推送。
+push_to_both() {
+    local local_tag="$1" public_img="$2" vpc_img="$3"
+    # 1) 公网（必推：运行机在外网以公网端点拉取）
+    do_login "$(printf '%s' "$public_img" | sed -E 's|/.*||')"
+    run docker tag "$local_tag" "$public_img"
+    info "推送公网端点（本机 $(uname -s)）: ${public_img}"
+    run docker push "$public_img"
+    # 2) 内网 VPC（仅 Linux 且在 VPC 时推，快）
+    if [[ "$IS_LINUX" == 1 && "$PUSH_VPC" == "1" ]]; then
+        do_login "$(printf '%s' "$vpc_img" | sed -E 's|/.*||')"
+        run docker tag "$local_tag" "$vpc_img"
+        info "推送内网 VPC 端点（快）: ${vpc_img}"
+        run docker push "$vpc_img"
+    else
+        info "非 Linux / PUSH_VPC=0：仅推公网端点"
+    fi
+}
+
 # 推送成功后清理本地镜像：镜像已在仓库，本地副本冗余，删除以节省打包机磁盘。
 # 注意：docker image rm 只删镜像 tag 与层引用，buildx 构建缓存层不受影响，
 #       因此下次基础镜像重建仍命中缓存、速度快。buildx 缓存过大可另用 docker buildx prune。
@@ -356,26 +383,16 @@ cleanup_local_images() { # cleanup_local_images <push_image>
 }
 
 do_push() {
-    step "推送镜像到 ACR"
+    step "推送镜像到 ACR（app: latest）"
     if [[ "$SKIP_PUSH" == 1 ]]; then
         warn "--skip-push：跳过推送"
         return
     fi
-    # 规范镜像名即公网地址（与 docker-compose.yml 引用的 image 一致）；运行机器在外网以公网拉取，
-    # 故直接推公网端点，不再走 VPC/Linux 分支（避免推 VPC 端点、compose 却引用公网端点导致拉不到）。
-    local push_image push_registry
-    push_image="$ACR_IMAGE"
-    push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
-    do_login "$push_registry"
-    if [[ "$push_image" != "$ACR_IMAGE" ]]; then
-        run docker tag "$ACR_IMAGE" "$push_image"
-    fi
-    info "推送镜像到 ACR（本机 $(uname -s)，端点 ${push_registry}）: ${push_image}"
-    run docker push "$push_image"
-    info "推送完成: ${push_image}"
-    # 推送成功后删除本地镜像（buildx 缓存层保留，下次重建仍快）；dry-run 不执行删除
+    # 必推公网（运行机 compose 引用），Linux 在 VPC 额外推内网（快）。
+    push_to_both "$ACR_IMAGE" "$ACR_IMAGE" "${ACR_REGISTRY_VPC}/codeup2026/geo:latest"
+    # 推送成功后清理本地镜像（buildx 缓存层保留，下次重建仍快）；dry-run 不执行删除
     if [[ "$DRY_RUN" == 0 ]]; then
-        cleanup_local_images "$push_image"
+        cleanup_local_images "$ACR_IMAGE"
     fi
 }
 
@@ -403,30 +420,21 @@ build_mariadb_image() {
 }
 
 push_mariadb_image() {
-    step "推送 mariadb 镜像到 ACR"
+    step "推送 mariadb 镜像到 ACR（mariadb:mariadb）"
     if [[ "$SKIP_PUSH" == 1 ]]; then
         warn "--skip-push：跳过推送"
         return
     fi
-    local push_image push_registry
-    # 规范镜像名即公网地址（与 docker-compose.yml 引用的 image 一致）；运行机器在外网以公网拉取，
-    # 故直接推公网端点，不再走 VPC/Linux 分支（避免推 VPC 端点、compose 却引用公网端点导致拉不到）。
-    push_image="$ACR_MARIADB_IMAGE"
-    push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
-    # app 镜像已登录过同一 registry（codeup2026/geo 仓库），此处 do_login 幂等无副作用
-    do_login "$push_registry"
-    if [[ "$push_image" != "$ACR_MARIADB_IMAGE" ]]; then
-        run docker tag "$ACR_MARIADB_IMAGE" "$push_image"
-    fi
-    info "推送 mariadb 镜像到 ACR（本机 $(uname -s)，端点 ${push_registry}）: ${push_image}"
-    run docker push "$push_image"
-    info "推送完成: ${push_image}"
+    # 必推公网（运行机 compose 引用），Linux 在 VPC 额外推内网（快）。
+    push_to_both "$ACR_MARIADB_IMAGE" "$ACR_MARIADB_IMAGE" "${ACR_REGISTRY_VPC}/codeup2026/geo:mariadb"
     if [[ "$DRY_RUN" == 0 ]]; then
-        if docker image inspect "$push_image" &>/dev/null; then
-            run docker image rm -f "$push_image" || true
-        fi
-        if [[ "$push_image" != "$ACR_MARIADB_IMAGE" ]] && docker image inspect "$ACR_MARIADB_IMAGE" &>/dev/null; then
+        if docker image inspect "$ACR_MARIADB_IMAGE" &>/dev/null; then
             run docker image rm -f "$ACR_MARIADB_IMAGE" || true
+        fi
+        # 同时清掉 VPC 内网 tag（同一镜像的另一个引用，避免悬空堆积）
+        local vpc_tag="${ACR_REGISTRY_VPC}/codeup2026/geo:mariadb"
+        if [[ "$IS_LINUX" == 1 && "$PUSH_VPC" == "1" ]] && docker image inspect "$vpc_tag" &>/dev/null; then
+            run docker image rm -f "$vpc_tag" || true
         fi
     fi
 }
