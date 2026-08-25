@@ -76,10 +76,12 @@ services:
       # 已启用：首次启动用 GEO_ADMIN_EMAIL/GEO_ADMIN_PASSWORD 创建管理员账号，
       # 登录后台（web 前端有登录页）后可自行改密；GEO_JWT_SECRET 用于签发登录令牌。
       # 注意：启用账号体系要求数据库可用（登录用户表在 geo 库中）。
-      GEO_AUTH_ENABLED: "true"
-      GEO_ADMIN_EMAIL: "root"
-      GEO_ADMIN_PASSWORD: "xxx"
-      GEO_JWT_SECRET: "97788a0468696188cb5501d85407e380718f62c92d38857a7a566e2e181c7564"
+      # 秘密不写死在 compose（会进 git）：由同目录 .env 提供（.gitignore 已忽略 .env），
+      # docker compose 自动读取；运行机需在 compose 同目录放一份 .env，否则取默认值（AUTH 关）。
+      GEO_AUTH_ENABLED: "${GEO_AUTH_ENABLED:-false}"
+      GEO_ADMIN_EMAIL: "${GEO_ADMIN_EMAIL:-}"
+      GEO_ADMIN_PASSWORD: "${GEO_ADMIN_PASSWORD:-}"
+      GEO_JWT_SECRET: "${GEO_JWT_SECRET:-}"
       # 文件日志：单文件 20MB 滚动、保留 7 天（需挂载 geo-logs 卷；目录 /app/logs 已建好并授权 geo 用户）
       GEO_LOG_FILE: "/app/logs/geo.log"
     volumes:

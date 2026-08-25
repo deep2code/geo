@@ -23,24 +23,20 @@ import (
 // CORS 与认证中间件配置。
 //
 // 安全模型：
-//   - GEO_CORS_ORIGINS：允许的跨域源（逗号分隔），默认仅 localhost。设为 "*" 表示全开放（仅限本地开发）。
+//   - GEO_CORS_ORIGINS：允许的跨域源（逗号分隔）。默认不配置（或 "*"）时 CSRF 校验关闭、
+//     写操作不限制 Origin（零配置开箱即用）；配置了具体 Origin 列表后，写操作仅放行白名单（CSRF 开启）。
 //   - GEO_AUTH_ENABLED：账号体系（JWT）。启用后除公开路径外均需登录；未启用时 API 匿名放行（本地开发/反代场景）。
-//   - 写操作（POST/DELETE/clear/import）在 CORS 设为具体源时始终校验 Origin（CSRF 防护）。
+//   - 写操作（POST/DELETE/clear/import）仅在 GEO_CORS_ORIGINS 配置了具体源时校验 Origin（CSRF 防护）。
 //   - GEO_TRUSTED_PROXIES：可信代理列表（逗号分隔的 IP/CIDR）。设置后 X-Forwarded-For 仅在
 //     RemoteAddr 属于可信代理时才解析；否则直接用 RemoteAddr，避免 IP 伪造绕过限流/WAF。
 func parseCORSOrigins() map[string]bool {
 	raw := strings.TrimSpace(config.Env("GEO_CORS_ORIGINS", ""))
+	// 未配置（默认）或 "*"：返回 nil，表示不限制 Origin —— CSRF 校验默认关闭
+	// （零配置开箱即用）；生产建议在 app_settings 配置 GEO_CORS_ORIGINS 白名单以开启 CSRF。
+	if raw == "" || raw == "*" {
+		return nil
+	}
 	m := map[string]bool{}
-	if raw == "" {
-		// 默认仅允许本地开发常用源
-		m["http://localhost"] = true
-		m["http://localhost:7070"] = true
-		m["http://127.0.0.1:7070"] = true
-		return m
-	}
-	if raw == "*" {
-		return nil // nil 表示全开放
-	}
 	for _, o := range strings.Split(raw, ",") {
 		o = strings.TrimSpace(o)
 		if o != "" {
@@ -286,9 +282,9 @@ func isLocalhostOrigin(origin string) bool {
 
 // withCSRF 对写操作（POST/PUT/PATCH/DELETE）校验 Origin。
 //
-// 安全策略（deny by default）：
-//   - corsOrigins 非 nil：写操作的 Origin 必须在白名单中
-//   - corsOrigins 为 nil：localhost 放行，非 localhost 写操作拒绝
+// 安全策略（默认关闭，显式配置才开启）：
+//   - corsOrigins 非 nil（GEO_CORS_ORIGINS 配置了具体 Origin 列表）：写操作的 Origin 必须在白名单中
+//   - corsOrigins 为 nil（未配置或 "*"）：不校验 Origin（CSRF 默认关闭，零配置开箱即用）
 //   - Origin 缺失：允许（浏览器同源导航不携带 Origin，但非浏览器客户端也无 Origin）
 func (s *Server) withCSRF(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -297,9 +293,11 @@ func (s *Server) withCSRF(h http.Handler) http.Handler {
 			if origin != "" {
 				allowed := false
 				if corsOrigins() != nil {
+					// 显式配置了白名单：Origin 必须匹配
 					allowed = corsOrigins()[origin]
 				} else {
-					allowed = isLocalhostOrigin(origin)
+					// 未配置白名单（默认）或 "*"：不校验
+					allowed = true
 				}
 				if !allowed {
 					writeJSON(w, http.StatusForbidden, ErrorResponse{Error: "CSRF 校验失败：Origin 不在白名单", Code: "CSRF_ORIGIN_MISMATCH"})
