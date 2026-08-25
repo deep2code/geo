@@ -1277,10 +1277,15 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			}
 
 			// 公开路径放行。
+			// SPA 架构：非 /api/ 路径一律公开——前端 HTML/JS/CSS 壳与前端路由路径
+			// （/landing、/dashboard、/admin/login 等）无敏感数据，handleWebSPA 负责
+			// 静态资源 + SPA fallback；数据与操作鉴权全部收敛在 /api/*（公开端点走下方
+			// 白名单，其余需 JWT，管理类另有 requireDataAdmin 等角色守卫）。
 			// 注意：仅注册/登录/刷新/登出这 4 个 auth 端点免鉴权；其余 /api/v1/auth/*
 			// （me / change-password / workspace/* / admin/audit）需要 JWT 上下文，
 			// 若整前缀豁免会让它们拿到 nil user → 一律 401/403（账号管理功能全废）。
 			if public[path] || isServerPublicPath(path) ||
+				!strings.HasPrefix(path, "/api/") ||
 				path == "/api/v1/auth/register" || path == "/api/v1/auth/login" ||
 				path == "/api/v1/auth/refresh" || path == "/api/v1/auth/logout" ||
 				strings.HasPrefix(path, "/api/v1/billing/webhook/") {
