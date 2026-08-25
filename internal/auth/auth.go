@@ -1337,8 +1337,19 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 // isServerPublicPath 全局公开路径（保持与 middleware.go 一致）。
 // 探活端点必须放行，否则启用 API Key 后 K8s/云平台探活会 401 误判宕机。
 func isServerPublicPath(path string) bool {
-	return path == "/" || path == "/api/v1/health" || path == "/api/v1/ready" ||
-		path == "/healthz" || path == "/readyz"
+	if path == "/" || path == "/api/v1/health" || path == "/api/v1/ready" ||
+		path == "/healthz" || path == "/readyz" {
+		return true
+	}
+	// 前端 dist 静态资源（go:embed 嵌入的 chunks / 图标 / manifest 等）
+	// 必须在 auth 之前放行，否则浏览器加载 HTML 后拉 JS/CSS 会 401 → React 不执行 → 白屏
+	if strings.HasPrefix(path, "/assets/") ||
+		path == "/favicon.ico" || path == "/favicon.svg" ||
+		path == "/manifest.webmanifest" || path == "/safari-pinned-tab.svg" ||
+		path == "/index.html" || path == "/robots.txt" || path == "/legal/bot" {
+		return true
+	}
+	return false
 }
 
 // RequirePermissionMiddleware 返回权限检查（授权）中间件。
