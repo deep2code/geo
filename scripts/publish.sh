@@ -55,17 +55,19 @@ set -euo pipefail
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 # ===== 配置（环境变量可覆盖） =====
-# 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见，推一个另一个立即可见）。
-# 规范镜像名（容器运行 / compose / 1Panel 引用）= 内网 VPC 地址，让面板显示为内网地址。
-# 推送端点自动选择：本机在 VPC 内（Linux 且 PUSH_VPC=1）→ 直接推内网名；
-#   否则（Mac / 非 VPC 机器）推公网变体（同仓库自动可见，不占内网带宽也无妨）。
+# 阿里云 ACR 个人版：内网 VPC 与公网指向【同一仓库】（互相可见）。
+# 运行机器在公网（仅持 docker-compose.yml），compose / 1Panel 引用【公网】端点拉取；
+# 因此规范镜像名统一为公网地址，publish.sh 直接推公网端点，确保 compose 引用的镜像一定被发布出来
+# （不再依赖 VPC/公网同仓库可见的隐式行为）。
 ACR_REGISTRY_VPC="${ACR_REGISTRY_VPC:-crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com}"
 ACR_REGISTRY_PUBLIC="${ACR_REGISTRY_PUBLIC:-crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com}"
-ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY_VPC}/codeup2026/geo:latest}"   # tag 固定 latest
+ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY_PUBLIC}/codeup2026/geo:latest}"   # tag 固定 latest（公网端点，与 docker-compose.yml 引用一致）
 
 # mariadb 定制镜像（固化 schema.sql）：与 app 镜像同仓库、不同 tag，避免新建仓库的权限问题。
-# 运行机器以 image: 方式拉取该镜像，不依赖任何本地文件（仅 docker-compose.yml 即可部署）。
-ACR_MARIADB_IMAGE="${ACR_MARIADB_IMAGE:-${ACR_REGISTRY_VPC}/codeup2026/geo:mariadb}"
+# 运行机器在外网、以 image: 方式拉取该镜像（仅 docker-compose.yml 即可部署，不依赖任何本地文件）。
+# 规范镜像名即【公网】地址（与 docker-compose.yml 引用的 image 完全一致）；打包机直接推公网端点，
+# 不依赖 VPC/公网同仓库可见的隐式行为，确保 compose 引用的镜像一定被发布出来。
+ACR_MARIADB_IMAGE="${ACR_MARIADB_IMAGE:-${ACR_REGISTRY_PUBLIC}/codeup2026/geo:mariadb}"
 
 # 构建镜像源（国内网络默认走镜像，CI 可用官方源覆盖）
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
@@ -359,16 +361,10 @@ do_push() {
         warn "--skip-push：跳过推送"
         return
     fi
-    # 推送端点选择：
-    #  - 本机在 VPC 内（Linux 且 PUSH_VPC=1）→ 直接推内网名 ACR_IMAGE（crpi-xxx-vpc）；
-    #  - 否则（Mac / 非 VPC 机器）→ 推公网变体（crpi-xxx，无 -vpc），ACR 个人版公网/内网同仓库自动可见。
-    # Mac 无法直连 VPC，只能走公网，但这不影响最终结果：镜像在仓库里只有一个，面板按 ACR_IMAGE（内网名）运行。
+    # 规范镜像名即公网地址（与 docker-compose.yml 引用的 image 一致）；运行机器在外网以公网拉取，
+    # 故直接推公网端点，不再走 VPC/Linux 分支（避免推 VPC 端点、compose 却引用公网端点导致拉不到）。
     local push_image push_registry
-    if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
-        push_image="$ACR_IMAGE"
-    else
-        push_image="$(printf '%s' "$ACR_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
-    fi
+    push_image="$ACR_IMAGE"
     push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
     do_login "$push_registry"
     if [[ "$push_image" != "$ACR_IMAGE" ]]; then
@@ -413,11 +409,9 @@ push_mariadb_image() {
         return
     fi
     local push_image push_registry
-    if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
-        push_image="$ACR_MARIADB_IMAGE"
-    else
-        push_image="$(printf '%s' "$ACR_MARIADB_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
-    fi
+    # 规范镜像名即公网地址（与 docker-compose.yml 引用的 image 一致）；运行机器在外网以公网拉取，
+    # 故直接推公网端点，不再走 VPC/Linux 分支（避免推 VPC 端点、compose 却引用公网端点导致拉不到）。
+    push_image="$ACR_MARIADB_IMAGE"
     push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
     # app 镜像已登录过同一 registry（codeup2026/geo 仓库），此处 do_login 幂等无副作用
     do_login "$push_registry"
