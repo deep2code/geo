@@ -33,7 +33,7 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   { key: 'dpa', to: '/dpa', icon: '📋', labelKey: 'nav.dpa' }
 ]
 
-export const Layout: React.FC = () => {
+export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
@@ -179,7 +179,7 @@ export const Layout: React.FC = () => {
         </header>
 
         <main className="app-content">
-          <Outlet />
+          {children ?? <Outlet />}
         </main>
       </div>
 
