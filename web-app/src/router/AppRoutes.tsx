@@ -86,38 +86,39 @@ export const AppRoutes: React.FC = () => {
       <AuthErrorRedirector />
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* 未登录首页：根路径直接进公开落地页（Landing） */}
+          <Route index element={<Navigate to="/landing" replace />} />
+          {/* 业务/管理页面：均需登录态（未登录跳登录页，登录后回原路径） */}
           <Route path="dashboard" element={
-            <Suspense fallback={<PageFallback />}><Dashboard /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><Dashboard /></Suspense></ProtectedRoute>
           } />
           <Route path="compare" element={
-            <Suspense fallback={<PageFallback />}><Compare /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><Compare /></Suspense></ProtectedRoute>
           } />
           <Route path="leaderboard" element={
-            <Suspense fallback={<PageFallback />}><Leaderboard /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><Leaderboard /></Suspense></ProtectedRoute>
           } />
           <Route path="content-optimizer" element={
-            <Suspense fallback={<PageFallback />}><ContentOptimizer /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><ContentOptimizer /></Suspense></ProtectedRoute>
           } />
           <Route path="brand-management" element={
-            <Suspense fallback={<PageFallback />}><BrandManagement /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><BrandManagement /></Suspense></ProtectedRoute>
           } />
           <Route path="brand-audit" element={
-            <Suspense fallback={<PageFallback />}><BrandAudit /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><BrandAudit /></Suspense></ProtectedRoute>
           } />
           <Route path="keyword-discovery" element={
-            <Suspense fallback={<PageFallback />}><KeywordDiscovery /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><KeywordDiscovery /></Suspense></ProtectedRoute>
           } />
           <Route path="report-export" element={
-            <Suspense fallback={<PageFallback />}><ReportExport /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><ReportExport /></Suspense></ProtectedRoute>
           } />
           <Route path="alert-email" element={
-            <Suspense fallback={<PageFallback />}><AlertEmail /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><AlertEmail /></Suspense></ProtectedRoute>
           } />
           <Route path="settings" element={
-            <Suspense fallback={<PageFallback />}><Settings /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><Settings /></Suspense></ProtectedRoute>
           } />
-          {/* 管理后台路由：需要登录态 */}
           <Route path="admin" element={
             <ProtectedRoute>
               <Suspense fallback={<PageFallback />}><Admin /></Suspense>
@@ -144,8 +145,9 @@ export const AppRoutes: React.FC = () => {
             </ProtectedRoute>
           } />
           <Route path="integrations" element={
-            <Suspense fallback={<PageFallback />}><Integrations /></Suspense>
+            <ProtectedRoute><Suspense fallback={<PageFallback />}><Integrations /></Suspense></ProtectedRoute>
           } />
+          {/* 公开页（无需登录）：帮助 / 工单 / 法务 */}
           <Route path="help" element={
             <Suspense fallback={<PageFallback />}><Help /></Suspense>
           } />
@@ -161,7 +163,8 @@ export const AppRoutes: React.FC = () => {
           <Route path="dpa" element={
             <Suspense fallback={<PageFallback />}><DPA /></Suspense>
           } />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* 未匹配路径 → 根路径（根路径再跳公开落地页） */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
         {/* 管理员登录：独立全屏，不带 Layout。 */}
         <Route path="/admin/login" element={
