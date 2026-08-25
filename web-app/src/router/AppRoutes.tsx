@@ -80,100 +80,105 @@ const AuthErrorRedirector: React.FC = () => {
   return null
 }
 
+// 后台业务页统一外壳：Layout（侧边导航）+ 登录守卫
+const ProtectedPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Layout>
+    <ProtectedRoute>{children}</ProtectedRoute>
+  </Layout>
+)
+
+// 公开业务页（无需登录，如帮助/工单/法务）：仅 Layout 外壳
+const PublicPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Layout>{children}</Layout>
+)
+
 export const AppRoutes: React.FC = () => {
   return (
     <>
       <AuthErrorRedirector />
       <Routes>
-        <Route path="/" element={<Layout />}>
-          {/* 未登录首页：根路径直接进公开落地页（Landing） */}
-          <Route index element={<Navigate to="/landing" replace />} />
-          {/* 业务/管理页面：均需登录态（未登录跳登录页，登录后回原路径） */}
-          <Route path="dashboard" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><Dashboard /></Suspense></ProtectedRoute>
-          } />
-          <Route path="compare" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><Compare /></Suspense></ProtectedRoute>
-          } />
-          <Route path="leaderboard" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><Leaderboard /></Suspense></ProtectedRoute>
-          } />
-          <Route path="content-optimizer" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><ContentOptimizer /></Suspense></ProtectedRoute>
-          } />
-          <Route path="brand-management" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><BrandManagement /></Suspense></ProtectedRoute>
-          } />
-          <Route path="brand-audit" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><BrandAudit /></Suspense></ProtectedRoute>
-          } />
-          <Route path="keyword-discovery" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><KeywordDiscovery /></Suspense></ProtectedRoute>
-          } />
-          <Route path="report-export" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><ReportExport /></Suspense></ProtectedRoute>
-          } />
-          <Route path="alert-email" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><AlertEmail /></Suspense></ProtectedRoute>
-          } />
-          <Route path="settings" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><Settings /></Suspense></ProtectedRoute>
-          } />
-          <Route path="admin" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageFallback />}><Admin /></Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="system-check" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageFallback />}><SystemCheck /></Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="rules" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageFallback />}><Rules /></Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="evaluate" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageFallback />}><Evaluate /></Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="brand-db-import" element={
-            <ProtectedRoute>
-              <Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense>
-            </ProtectedRoute>
-          } />
-          <Route path="integrations" element={
-            <ProtectedRoute><Suspense fallback={<PageFallback />}><Integrations /></Suspense></ProtectedRoute>
-          } />
-          {/* 公开页（无需登录）：帮助 / 工单 / 法务 */}
-          <Route path="help" element={
-            <Suspense fallback={<PageFallback />}><Help /></Suspense>
-          } />
-          <Route path="tickets" element={
-            <Suspense fallback={<PageFallback />}><Tickets /></Suspense>
-          } />
-          <Route path="terms" element={
-            <Suspense fallback={<PageFallback />}><Terms /></Suspense>
-          } />
-          <Route path="privacy" element={
-            <Suspense fallback={<PageFallback />}><Privacy /></Suspense>
-          } />
-          <Route path="dpa" element={
-            <Suspense fallback={<PageFallback />}><DPA /></Suspense>
-          } />
-          {/* 未匹配路径 → 根路径（根路径再跳公开落地页） */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-        {/* 管理员登录：独立全屏，不带 Layout。 */}
-        <Route path="/admin/login" element={
-          <Suspense fallback={<PageFallback />}><AdminLogin /></Suspense>
+        {/* 公开首页：根路径直接渲染 Landing（不做 /landing 跳转，URL 保持 /） */}
+        <Route path="/" element={
+          <Suspense fallback={<PageFallback />}><Landing /></Suspense>
         } />
-        {/* 落地页独立全屏页面，不使用 Layout */}
+        {/* 兼容直达 /landing（仍是同一首页） */}
         <Route path="/landing" element={
           <Suspense fallback={<PageFallback />}><Landing /></Suspense>
         } />
+        {/* 管理员登录：独立全屏，不带 Layout */}
+        <Route path="/admin/login" element={
+          <Suspense fallback={<PageFallback />}><AdminLogin /></Suspense>
+        } />
+
+        {/* 后台业务页（需登录） */}
+        <Route path="/dashboard" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Dashboard /></Suspense></ProtectedPage>
+        } />
+        <Route path="/compare" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Compare /></Suspense></ProtectedPage>
+        } />
+        <Route path="/leaderboard" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Leaderboard /></Suspense></ProtectedPage>
+        } />
+        <Route path="/content-optimizer" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><ContentOptimizer /></Suspense></ProtectedPage>
+        } />
+        <Route path="/brand-management" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><BrandManagement /></Suspense></ProtectedPage>
+        } />
+        <Route path="/brand-audit" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><BrandAudit /></Suspense></ProtectedPage>
+        } />
+        <Route path="/keyword-discovery" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><KeywordDiscovery /></Suspense></ProtectedPage>
+        } />
+        <Route path="/report-export" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><ReportExport /></Suspense></ProtectedPage>
+        } />
+        <Route path="/alert-email" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><AlertEmail /></Suspense></ProtectedPage>
+        } />
+        <Route path="/settings" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Settings /></Suspense></ProtectedPage>
+        } />
+        <Route path="/admin" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Admin /></Suspense></ProtectedPage>
+        } />
+        <Route path="/system-check" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><SystemCheck /></Suspense></ProtectedPage>
+        } />
+        <Route path="/rules" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Rules /></Suspense></ProtectedPage>
+        } />
+        <Route path="/evaluate" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Evaluate /></Suspense></ProtectedPage>
+        } />
+        <Route path="/brand-db-import" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense></ProtectedPage>
+        } />
+        <Route path="/integrations" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Integrations /></Suspense></ProtectedPage>
+        } />
+
+        {/* 公开业务页（帮助/工单/法务） */}
+        <Route path="/help" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><Help /></Suspense></PublicPage>
+        } />
+        <Route path="/tickets" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><Tickets /></Suspense></PublicPage>
+        } />
+        <Route path="/terms" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><Terms /></Suspense></PublicPage>
+        } />
+        <Route path="/privacy" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><Privacy /></Suspense></PublicPage>
+        } />
+        <Route path="/dpa" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><DPA /></Suspense></PublicPage>
+        } />
+
+        {/* 未匹配路径 → 首页 */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   )
