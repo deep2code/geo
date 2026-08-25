@@ -68,7 +68,7 @@ services:
     # 零配置：连接地址用 compose 服务名，Meilisearch 默认无鉴权；
     # 若需给 Meilisearch 加鉴权，在此追加 MEILI_MASTER_KEY 并同步 GEO_MEILISEARCH_API_KEY 即可。
     environment:
-      GEO_MYSQL_DSN: "geo:docker2026ID%40@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
+      GEO_MYSQL_DSN: "geo:docker2026ID@@tcp(mariadb:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local"
       GEO_REDIS_ADDR: "redis:6379"
       GEO_MEILISEARCH_URL: "http://meilisearch:7700"
       GEO_MEILISEARCH_API_KEY: ""
