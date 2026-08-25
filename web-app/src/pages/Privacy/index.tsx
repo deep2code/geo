@@ -20,7 +20,7 @@ const Privacy: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card title="一、引言" compact>
           <div style={{ lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-            <p style={{ marginBottom: 12 }}>MyGEO（以下简称「我们」）深知个人信息对您的重要性，并致力于保护您的隐私安全。本隐私政策将帮助您了解我们如何收集、使用、存储和保护您的个人信息。</p>
+            <p style={{ marginBottom: 12 }}>崛起GEO（以下简称「我们」）深知个人信息对您的重要性，并致力于保护您的隐私安全。本隐私政策将帮助您了解我们如何收集、使用、存储和保护您的个人信息。</p>
             <p>在使用我们的服务前，请您务必仔细阅读并充分理解本政策的全部内容。</p>
           </div>
         </Card>

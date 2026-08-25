@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/gocache \
 # ===== 阶段 3：运行镜像（最小化，含 curl 做健康检查）=====
 FROM alpine:3.20
 
-LABEL org.opencontainers.image.title="MyGEO" \
+LABEL org.opencontainers.image.title="崛起GEO" \
       org.opencontainers.image.description="生成式引擎优化系统 (Generative Engine Optimization)" \
       org.opencontainers.image.source="https://github.com/deep2code/geo" \
       org.opencontainers.image.licenses="MIT"

@@ -14,7 +14,7 @@
 
 FROM alpine:3.20
 
-LABEL org.opencontainers.image.title="MyGEO" \
+LABEL org.opencontainers.image.title="崛起GEO" \
       org.opencontainers.image.description="生成式引擎优化系统 (Generative Engine Optimization)" \
       org.opencontainers.image.source="https://github.com/deep2code/geo" \
       org.opencontainers.image.licenses="MIT"

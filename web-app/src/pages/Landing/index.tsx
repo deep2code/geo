@@ -109,7 +109,7 @@ const Landing: React.FC = () => {
       <nav className="landing-nav">
         <div className="landing-nav-brand">
           <div className="landing-nav-logo">G</div>
-          <span>MyGEO</span>
+          <span>崛起GEO</span>
         </div>
         <div className="landing-nav-links">
           <a href="#features">{t('landing.navFeatures')}</a>
@@ -203,7 +203,7 @@ const Landing: React.FC = () => {
       <footer className="landing-footer">
         <div className="landing-footer-content">
           <div className="landing-footer-copy">
-            © 2026 MyGEO. {t('landing.footerRights')}
+            © 2026 崛起GEO. {t('landing.footerRights')}
           </div>
           <div className="landing-footer-links">
             <a href="#features">{t('landing.navFeatures')}</a>

@@ -22,8 +22,8 @@ const DPA: React.FC = () => {
           <div style={{ lineHeight: 1.8, color: 'var(--text-secondary)' }}>
             <p style={{ marginBottom: 12 }}>本数据处理协议（以下简称「本 DPA」）由以下双方签订：</p>
             <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
-              <li style={{ marginBottom: 6 }}><strong>数据控制者（Controller）</strong>：使用 MyGEO 服务的用户（即您），决定个人数据的处理目的和方式</li>
-              <li><strong>数据处理者（Processor）</strong>：MyGEO 运营方，按照控制者的指示处理个人数据</li>
+              <li style={{ marginBottom: 6 }}><strong>数据控制者（Controller）</strong>：使用 崛起GEO 服务的用户（即您），决定个人数据的处理目的和方式</li>
+              <li><strong>数据处理者（Processor）</strong>：崛起GEO 运营方，按照控制者的指示处理个人数据</li>
             </ul>
             <p>本 DPA 的目的是确保双方在处理个人数据时符合《中华人民共和国个人信息保护法》（PIPL）、《通用数据保护条例》（GDPR，如适用）及其他相关数据保护法律法规的要求。</p>
           </div>

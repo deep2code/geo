@@ -20,8 +20,8 @@ const Terms: React.FC = () => {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card title="一、服务说明" compact>
           <div style={{ lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-            <p style={{ marginBottom: 12 }}>欢迎使用 MyGEO（以下简称「本服务」）。本服务条款（以下简称「本条款」）是您与 MyGEO 运营方之间就使用本服务所订立的协议。</p>
-            <p style={{ marginBottom: 12 }}>MyGEO 是一套面向 AI 搜索引擎的内容与品牌可见度优化平台，提供品牌可见度审计（BVS）、内容优化、竞品对标、关键词发现、报告导出等功能。</p>
+            <p style={{ marginBottom: 12 }}>欢迎使用 崛起GEO（以下简称「本服务」）。本服务条款（以下简称「本条款」）是您与 崛起GEO 运营方之间就使用本服务所订立的协议。</p>
+            <p style={{ marginBottom: 12 }}>崛起GEO 是一套面向 AI 搜索引擎的内容与品牌可见度优化平台，提供品牌可见度审计（BVS）、内容优化、竞品对标、关键词发现、报告导出等功能。</p>
             <p>在使用本服务前，请您仔细阅读本条款的全部内容。您一旦注册或使用本服务，即视为您已阅读并同意接受本条款的全部约束。</p>
           </div>
         </Card>
@@ -49,7 +49,7 @@ const Terms: React.FC = () => {
 
         <Card title="四、知识产权" compact>
           <div style={{ lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-            <p style={{ marginBottom: 12 }}>1. 本服务的所有内容（包括但不限于软件、界面设计、商标、Logo、文档等）的知识产权归 MyGEO 运营方所有。</p>
+            <p style={{ marginBottom: 12 }}>1. 本服务的所有内容（包括但不限于软件、界面设计、商标、Logo、文档等）的知识产权归 崛起GEO 运营方所有。</p>
             <p style={{ marginBottom: 12 }}>2. 您通过本服务上传的品牌信息、内容数据等，其知识产权归您或相关权利人所有。您授予我们在服务范围内使用、存储、处理该等数据的许可。</p>
             <p>3. 审计报告、优化建议等本服务生成的内容，您可在合法范围内自由使用。</p>
           </div>

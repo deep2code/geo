@@ -245,7 +245,7 @@ const Settings: React.FC = () => {
                   color: 'white', fontSize: 32, fontWeight: 700,
                   marginBottom: 16, boxShadow: 'var(--shadow-md)'
                 }}>G</div>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>MyGEO</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>崛起GEO</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16 }}>
                   AI 搜索引擎可见度优化平台
                 </div>
@@ -324,7 +324,7 @@ const Settings: React.FC = () => {
                     fontSize: 24, fontWeight: 700
                   }}>G</div>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>MyGEO</div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>崛起GEO</div>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{t('settings.aboutVersion')}: 1.0.0 · {t('settings.aboutLicense')}: MIT</div>
                   </div>
                 </div>

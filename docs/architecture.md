@@ -847,7 +847,7 @@ graph TB
 
 ### 硬件要求与部署规格
 
-> **设计原则**：MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），
+> **设计原则**：崛起GEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），
 > 所有计算集中在**爬虫 HTML 解析 + 评分加权 + MySQL 写入**，
 > 因此**不需要 GPU**，按场景用 CPU/内存/SSD 三要素即可选型。
 >

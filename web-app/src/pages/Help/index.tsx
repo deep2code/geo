@@ -40,9 +40,9 @@ const mockArticles: ArticleItem[] = [
   {
     id: 'overview',
     title: '平台功能总览',
-    summary: '一张图看懂 MyGEO 能为你做什么',
+    summary: '一张图看懂 崛起GEO 能为你做什么',
     category: 'quickstart',
-    content: 'MyGEO 是面向生成式引擎优化（GEO）的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。核心模块：品牌管理、品牌审计、内容优化器、关键词发现、竞品对标、引擎来源研究、外部提交分析、报告导出、告警邮件、管理后台。'
+    content: '崛起GEO 是面向生成式引擎优化（GEO）的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。核心模块：品牌管理、品牌审计、内容优化器、关键词发现、竞品对标、引擎来源研究、外部提交分析、报告导出、告警邮件、管理后台。'
   },
   {
     id: 'getting-started',

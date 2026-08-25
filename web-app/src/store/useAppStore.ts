@@ -6,7 +6,7 @@ export type ThemeMode = 'light' | 'dark' | 'brand'
 export type UIDensity = 'compact' | 'comfortable' | 'spacious'
 
 export const DEFAULT_WHITELABEL: WhitelabelMeta = {
-  brand_name: 'MyGEO',
+  brand_name: '崛起GEO',
   primary_color: '#6366f1'
 }
 

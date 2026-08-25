@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# backup.sh — MyGEO 生产级 MySQL 备份 / 恢复
+# backup.sh — 崛起GEO 生产级 MySQL 备份 / 恢复
 #
 # 覆盖 1 个业务库：geo（单库架构，auth/billing/history/chinacheck/offline 共用）
 #   - mysqldump + gzip，时间戳命名

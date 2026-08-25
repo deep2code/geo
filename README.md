@@ -35,7 +35,7 @@ graph LR
 
 ### 🖥️ 部署硬件快速参考
 
-MyGEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），**无需 GPU**，按 CPU / 内存 / SSD 三要素选型即可。生产推荐 **Linux x86_64 / arm64**，公网出口 ≥ 100 Mbps：
+崛起GEO 不做本地 LLM 推理（全部走云端 API：OpenAI / GLM / DeepSeek / Qwen 等），**无需 GPU**，按 CPU / 内存 / SSD 三要素选型即可。生产推荐 **Linux x86_64 / arm64**，公网出口 ≥ 100 Mbps：
 
 | 场景 | 形态 | CPU | 内存 | SSD | 典型用户 |
 |------|------|-----|------|-----|----------|

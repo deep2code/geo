@@ -121,7 +121,7 @@ Disallow: /private/</pre>
 <div class="footer">
  © `)
 	sb.WriteString(fmt.Sprintf("%d", year))
-	sb.WriteString(` MyGEO · 合规联系 <a href="mailto:`)
+	sb.WriteString(` 崛起GEO · 合规联系 <a href="mailto:`)
 	sb.WriteString(contact)
 	sb.WriteString(`">`)
 	sb.WriteString(contact)
@@ -139,7 +139,7 @@ Disallow: /private/</pre>
 //   - Sitemap 目前未生成，暂不填
 func (s *Server) handleRobotsTxt(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprint(w, `# MyGEO robots.txt
+	fmt.Fprint(w, `# 崛起GEO robots.txt
 # 生成时间: `+time.Now().Format(time.RFC3339)+`
 
 User-agent: *
@@ -283,7 +283,7 @@ const (
 	aiGeneratedDisclaimerShort = "内容由 AI 生成，仅供参考，不构成商业或法律建议。请以原始引用来源为准。"
 
 	// aiGeneratedDisclaimerFull 完整版（用于 PDF/HTML 报告页脚等显著位置）。
-	aiGeneratedDisclaimerFull = `⚠️ AI 生成内容声明：本报告/邮件中的品牌评分、摘要、改写建议、运营行动项均由 AI (大语言模型) 生成，仅供内部参考，不构成任何投资、商业、法律或税务建议。MyGEO 对 AI 生成内容的准确性、完整性与及时性不做保证。所有结论建议您结合品牌实际情况与原始引用来源（已在报告正文中附引用链接与引擎来源）进行独立验证与判断。若发现事实错误或权利投诉，请联系 compliance@mygeo.ai，我们将在 3 个工作日内完成核实与修正/删除。`
+	aiGeneratedDisclaimerFull = `⚠️ AI 生成内容声明：本报告/邮件中的品牌评分、摘要、改写建议、运营行动项均由 AI (大语言模型) 生成，仅供内部参考，不构成任何投资、商业、法律或税务建议。崛起GEO 对 AI 生成内容的准确性、完整性与及时性不做保证。所有结论建议您结合品牌实际情况与原始引用来源（已在报告正文中附引用链接与引擎来源）进行独立验证与判断。若发现事实错误或权利投诉，请联系 compliance@mygeo.ai，我们将在 3 个工作日内完成核实与修正/删除。`
 )
 
 // ── 辅助：统一给响应加 X-AI-Generated / X-Content-Source 响应头 ──

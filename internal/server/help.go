@@ -43,10 +43,10 @@ func init() {
 		{
 			ID:       "overview",
 			Title:    "平台功能总览",
-			Summary:  "一张图看懂 MyGEO 能为你做什么",
+			Summary:  "一张图看懂崛起GEO 能为你做什么",
 			Category: "quickstart",
 			Order:    1,
-			Content:  "MyGEO 是面向「生成式引擎优化（GEO）」的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。\n\n核心模块一览：\n\n- 品牌管理：维护品牌画像（名称、域名、行业、提示词、竞品）\n- 品牌审计：模拟真实提问，检测各 AI 引擎的提及率、引用率、情感与位置，得出 BVS 分数\n- 内容优化器：针对单篇内容给出提升 AI 可见度的具体建议\n- 关键词发现：从种子词拓展高价值提问词\n- 竞品对标：与竞品横向对比 AI 可见度\n- 引擎来源研究：统计每个大模型更常引用哪些来源（如评测站、文档、社媒）\n- 外部提交分析：采集真实用户与 AI 的对话，定时抽取情感/主题/来源，反哺优化\n- 报告导出 / 告警邮件：分享与持续监控\n- 管理后台：租户、用量、系统设置、外部提交等运维能力\n\n建议新用户按「快速开始」四步走，15 分钟内跑通首次审计。",
+			Content:  "崛起GEO 是面向「生成式引擎优化（GEO）」的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。\n\n核心模块一览：\n\n- 品牌管理：维护品牌画像（名称、域名、行业、提示词、竞品）\n- 品牌审计：模拟真实提问，检测各 AI 引擎的提及率、引用率、情感与位置，得出 BVS 分数\n- 内容优化器：针对单篇内容给出提升 AI 可见度的具体建议\n- 关键词发现：从种子词拓展高价值提问词\n- 竞品对标：与竞品横向对比 AI 可见度\n- 引擎来源研究：统计每个大模型更常引用哪些来源（如评测站、文档、社媒）\n- 外部提交分析：采集真实用户与 AI 的对话，定时抽取情感/主题/来源，反哺优化\n- 报告导出 / 告警邮件：分享与持续监控\n- 管理后台：租户、用量、系统设置、外部提交等运维能力\n\n建议新用户按「快速开始」四步走，15 分钟内跑通首次审计。",
 		},
 		{
 			ID:       "getting-started",
@@ -182,7 +182,7 @@ func init() {
 			Summary:  "在服务端环境变量配置各引擎密钥",
 			Category: "settings",
 			Order:    17,
-			Content:  "MyGEO 需要各 AI 引擎的 API Key 才能发起审计。请在服务端环境变量中配置，例如：\n\n- GEO_CHATGPT_KEY\n- GEO_CLAUDE_KEY\n- GEO_PERPLEXITY_KEY\n- GEO_GEMINI_KEY\n- GEO_QWEN_KEY\n- GEO_GLM_KEY\n- GEO_DEEPSEEK_KEY\n- GEO_WENXIN_KEY（文心）\n\n在「系统设置 > API」页面可查看各引擎的配置状态（已配置 / 未配置）。未配置的引擎在审计时将自动跳过。",
+			Content:  "崛起GEO 需要各 AI 引擎的 API Key 才能发起审计。请在服务端环境变量中配置，例如：\n\n- GEO_CHATGPT_KEY\n- GEO_CLAUDE_KEY\n- GEO_PERPLEXITY_KEY\n- GEO_GEMINI_KEY\n- GEO_QWEN_KEY\n- GEO_GLM_KEY\n- GEO_DEEPSEEK_KEY\n- GEO_WENXIN_KEY（文心）\n\n在「系统设置 > API」页面可查看各引擎的配置状态（已配置 / 未配置）。未配置的引擎在审计时将自动跳过。",
 		},
 		{
 			ID:       "setup-alert-email",
