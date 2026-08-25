@@ -63,6 +63,10 @@ ACR_REGISTRY_VPC="${ACR_REGISTRY_VPC:-crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.pers
 ACR_REGISTRY_PUBLIC="${ACR_REGISTRY_PUBLIC:-crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com}"
 ACR_IMAGE="${ACR_IMAGE:-${ACR_REGISTRY_VPC}/codeup2026/geo:latest}"   # tag 固定 latest
 
+# mariadb 定制镜像（固化 schema.sql）：与 app 镜像同仓库、不同 tag，避免新建仓库的权限问题。
+# 运行机器以 image: 方式拉取该镜像，不依赖任何本地文件（仅 docker-compose.yml 即可部署）。
+ACR_MARIADB_IMAGE="${ACR_MARIADB_IMAGE:-${ACR_REGISTRY_VPC}/codeup2026/geo:mariadb}"
+
 # 构建镜像源（国内网络默认走镜像，CI 可用官方源覆盖）
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
 GOPROXY_URL="${GOPROXY_URL:-https://goproxy.cn,direct}"
@@ -379,6 +383,60 @@ do_push() {
     fi
 }
 
+# 构建并推送定制 mariadb 镜像（固化 schema.sql）：运行机器以 image: 拉取，
+# 无需任何本地文件（仅 docker-compose.yml 即可部署），解决 bind mount / build: 的依赖问题。
+build_mariadb_image() {
+    step "构建 mariadb 镜像（固化 schema.sql）${ACR_MARIADB_IMAGE}（platform: ${PLATFORM}）"
+    if [[ "$SKIP_BUILD" == 1 ]]; then
+        warn "--skip-build：复用本地已有 mariadb 镜像"
+        docker image inspect "$ACR_MARIADB_IMAGE" &>/dev/null || { error "本地不存在镜像 ${ACR_MARIADB_IMAGE}"; exit 1; }
+        return
+    fi
+    cd "$PROJECT_DIR"
+    if ! docker buildx version &>/dev/null; then
+        error "需要 docker buildx（Docker Desktop / buildx 插件）"
+        exit 1
+    fi
+    # 上下文为 deploy/（Dockerfile 内 COPY initdb/schema.sql）；仓库根 .dockerignore 不含 deploy/，schema.sql 可正常 COPY。
+    if [[ "$PLATFORM" == *","* ]]; then
+        run docker buildx build --platform "$PLATFORM" --push -f deploy/mariadb/Dockerfile -t "$ACR_MARIADB_IMAGE" deploy
+    else
+        run docker buildx build --platform "$PLATFORM" --load -f deploy/mariadb/Dockerfile -t "$ACR_MARIADB_IMAGE" deploy
+    fi
+    info "mariadb 镜像构建完成: ${ACR_MARIADB_IMAGE}"
+}
+
+push_mariadb_image() {
+    step "推送 mariadb 镜像到 ACR"
+    if [[ "$SKIP_PUSH" == 1 ]]; then
+        warn "--skip-push：跳过推送"
+        return
+    fi
+    local push_image push_registry
+    if [[ "$(uname -s)" == "Linux" && "${PUSH_VPC:-1}" == "1" ]]; then
+        push_image="$ACR_MARIADB_IMAGE"
+    else
+        push_image="$(printf '%s' "$ACR_MARIADB_IMAGE" | sed -E 's|^crpi-([a-z0-9]+)-vpc\.(cn-[a-z0-9-]+)\.|crpi-\1.\2.|')"
+    fi
+    push_registry="$(printf '%s' "$push_image" | sed -E 's|/.*||')"
+    # app 镜像已登录过同一 registry（codeup2026/geo 仓库），此处 do_login 幂等无副作用
+    do_login "$push_registry"
+    if [[ "$push_image" != "$ACR_MARIADB_IMAGE" ]]; then
+        run docker tag "$ACR_MARIADB_IMAGE" "$push_image"
+    fi
+    info "推送 mariadb 镜像到 ACR（本机 $(uname -s)，端点 ${push_registry}）: ${push_image}"
+    run docker push "$push_image"
+    info "推送完成: ${push_image}"
+    if [[ "$DRY_RUN" == 0 ]]; then
+        if docker image inspect "$push_image" &>/dev/null; then
+            run docker image rm -f "$push_image" || true
+        fi
+        if [[ "$push_image" != "$ACR_MARIADB_IMAGE" ]] && docker image inspect "$ACR_MARIADB_IMAGE" &>/dev/null; then
+            run docker image rm -f "$ACR_MARIADB_IMAGE" || true
+        fi
+    fi
+}
+
 remote_upgrade() {
     if [[ -z "$REMOTE_HOST" ]]; then
         warn "未配置 REMOTE_HOST，跳过远程升级"
@@ -428,6 +486,8 @@ main() {
     # 2) 无论有无代码变化，一律重新打包并推送远程
     do_build
     do_push
+    build_mariadb_image
+    push_mariadb_image
     if [[ "$SKIP_REMOTE" == 1 ]]; then
         warn "--skip-remote：跳过远程升级"
     else

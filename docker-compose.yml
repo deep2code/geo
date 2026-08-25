@@ -4,8 +4,11 @@
 # 说明：geo 服务直接使用 ACR 公网镜像，新机器无需安装 Go/Node、无需本地构建、无需 .env 文件。
 #
 # 说明：
-#   - mariadb 挂载 ./deploy/initdb 到 /docker-entrypoint-initdb.d，首次启动自动执行
-#     schema.sql 建库建表（geo 账号口令为 docker2026ID@，与下方 GEO_MYSQL_DSN 一致）。
+#   - mariadb 使用【定制镜像】(crpi-.../codeup2026/geo:mariadb)，已固化 schema.sql
+#     （构建时 COPY 进 /docker-entrypoint-initdb.d），首次启动自动建库建表 + 创建 geo 账号
+#     （口令 docker2026ID@，与下方 GEO_MYSQL_DSN 一致）。该镜像由 scripts/publish.sh 在
+#     打包机构建并推 ACR；运行机器只需 docker compose pull，不依赖任何本地文件
+#     （本机只有 docker-compose.yml 即可部署）。需重建 mariadb 镜像时：打包机 git pull 后重跑 publish.sh。
 #   - geo 通过 environment 把连接地址改写成 compose 服务名（mariadb/redis/meilisearch），
 #     若你改了 geo 账号口令，只需同步改下方 GEO_MYSQL_DSN。
 #   - Meilisearch 默认无鉴权（MEILI_MASTER_KEY 为空）；如需鉴权，在本文件 geo/meilisearch
@@ -14,12 +17,13 @@
 
 services:
   mariadb:
-    image: mariadb:11
+    # 定制 mariadb 镜像（由 publish.sh 构建并推 ACR，tag=mariadb）：已固化 schema.sql，
+    # 初次启动（空卷）自动建库建表 + 创建 geo 账号，运行机器无需任何本地文件。
+    image: crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:mariadb
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MARIADB_ROOT_PASSWORD: geoRootPass
     volumes:
-      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro   # 首次启动自动执行 schema.sql 建库建表
       - mariadb-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
