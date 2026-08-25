@@ -19,7 +19,7 @@ services:
   mariadb:
     # 定制 mariadb 镜像（由 publish.sh 构建并推 ACR，tag=mariadb）：已固化 schema.sql，
     # 初次启动（空卷）自动建库建表 + 创建 geo 账号，运行机器无需任何本地文件。
-    image: crpi-0xi5k79l9j4opzta-vpc.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:mariadb
+    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:mariadb
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MARIADB_ROOT_PASSWORD: geoRootPass
@@ -27,7 +27,7 @@ services:
       - mariadb-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 10
 
@@ -56,7 +56,7 @@ services:
     volumes: ["meili-data:/meili_data"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
       # 首次启动要加载/重建索引，可能超过 interval*retries(50s) 才 healthy；
@@ -98,7 +98,7 @@ services:
       - "7070:7070"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:7070/api/v1/health"]
-      interval: 15s
+      interval: 60s
       timeout: 5s
       retries: 5
       start_period: 30s
