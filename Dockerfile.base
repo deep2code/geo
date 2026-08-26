@@ -32,7 +32,9 @@ RUN go mod download
 
 # ===== 预热前端依赖 =====
 COPY web-app/package.json web-app/package-lock.json ./web-app/
-RUN cd web-app && npm ci
+# cache mount：npm 下载缓存持久化，重建基础镜像时依赖包不重新下载
+RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
+    cd web-app && npm ci
 
 # 注：不再在基础镜像内预热 Go 编译缓存（GOCACHE）。app 镜像构建走 buildx 的持久缓存
 # 挂载 /gocache 自热（首次冷编全部依赖写入 /gocache，之后增量命中），基础镜像无需重复预热。

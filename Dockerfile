@@ -27,7 +27,8 @@ ENV npm_config_registry=$NPM_REGISTRY
 # 仅拷贝 package 定义，充分利用 layer 缓存（依赖未变则不重装）
 COPY web-app/package.json web-app/package-lock.json ./
 # cache mount：npm 缓存持久化，依赖未变时下载走缓存（基础镜像已预热 /root/.npm）
-RUN --mount=type=cache,target=/root/.npm \
+# 显式 id 固定缓存身份，避免构建器默认派生 id 漂移导致缓存失效
+RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
     npm ci
 
 # 拷贝源码并构建（产物在 dist/ 目录，将被 Go go:embed 读取）
@@ -69,7 +70,8 @@ COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 #   - 首次构建冷编全部依赖并写入 /gocache，之后增量命中，仅重编改动的业务代码。
 #   - 不再从基础镜像层 cp 预热缓存：overlay 下拷几 GB 海量小文件极慢，且预热的 flag
 #     未带 -trimpath、与正式编译对不上，拷过去也用不上（纯属时间黑洞）。
-RUN --mount=type=cache,target=/gocache \
+#   - sharing=locked：同一缓存目录多并发构建时串行化，防缓存写入撕裂。
+RUN --mount=type=cache,id=gocache,sharing=locked,target=/gocache \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
     -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT} -X main.buildOS=${BUILD_OS}" \

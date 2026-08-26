@@ -250,6 +250,7 @@ do_build() {
         return
     fi
     warn "本机缺少 go/npm，使用容器内构建（自动先构建 geo-build-base 基础镜像：仅固化工具链+依赖下载，app 构建走 buildx 持久缓存 /gocache 自热）"
+    info "提示：若在打包机安装 go+npm（Go 1.26 + Node 20），下次将自动切换「本机编译 + Dockerfile.local」快路径（约快 3-5 倍，且免重建基础镜像）"
     local version commit build_at build_os base_tag base_remote
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
