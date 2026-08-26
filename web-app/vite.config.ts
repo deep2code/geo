@@ -14,6 +14,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        // Dart Sass 现代 JS API：消除 legacy-js-api 弃用警告（Dart Sass 2.0 移除旧 API）
+        api: 'modern'
+      }
+    }
+  },
   server: {
     port: 5173,
     proxy: {
