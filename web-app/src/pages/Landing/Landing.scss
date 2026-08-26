@@ -388,4 +388,761 @@
       }
     }
   }
+
+  // GEO 动作流程（动画）
+  .landing-how {
+    padding: 64px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+
+    &.reveal-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .landing-section-title {
+      text-align: center;
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .landing-section-subtitle {
+      text-align: center;
+      color: var(--text-tertiary);
+      margin-bottom: var(--spacing-2xl);
+      font-size: var(--font-size-base);
+    }
+
+    .landing-how-flow {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: var(--spacing-md);
+      flex-wrap: wrap;
+
+      .landing-how-step {
+        flex: 1 1 200px;
+        max-width: 240px;
+        text-align: center;
+        padding: var(--spacing-lg);
+        border-radius: var(--radius-lg);
+        background: var(--surface-secondary);
+        border: 1px solid var(--border-primary);
+      }
+
+      .landing-how-icon {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto var(--spacing-md);
+
+        .geo-glyph {
+          width: 100%;
+          height: 100%;
+        }
+
+        // 雷达扫描
+        .geo-ring {
+          fill: none;
+          stroke: color-mix(in srgb, var(--brand-primary) 35%, transparent);
+          stroke-width: 2;
+        }
+
+        .geo-ring--2 {
+          stroke: color-mix(in srgb, var(--brand-primary) 20%, transparent);
+        }
+
+        .geo-sweep {
+          stroke: var(--brand-primary);
+          stroke-width: 2.5;
+          transform-origin: 32px 32px;
+        }
+
+        .geo-dot {
+          fill: var(--brand-primary);
+        }
+
+        // 分析柱状
+        .geo-bar {
+          fill: var(--brand-primary);
+          transform-box: fill-box;
+          transform-origin: bottom;
+          transform: scaleY(0.5);
+        }
+
+        .geo-bar--2 {
+          fill: var(--brand-secondary);
+        }
+
+        .geo-bar--3 {
+          fill: color-mix(in srgb, var(--brand-primary) 70%, var(--brand-secondary));
+        }
+
+        // 优化星火
+        .geo-spark {
+          fill: var(--brand-primary);
+          transform-box: fill-box;
+          transform-origin: center;
+        }
+
+        .geo-spark--2 {
+          fill: var(--brand-secondary);
+        }
+
+        // 监控盾牌
+        .geo-shield {
+          fill: color-mix(in srgb, var(--status-success) 18%, transparent);
+          stroke: var(--status-success);
+          stroke-width: 2.5;
+        }
+
+        .geo-pulse {
+          fill: var(--status-success);
+          transform-box: fill-box;
+          transform-origin: center;
+        }
+      }
+
+      .landing-how-step-title {
+        font-size: var(--font-size-lg);
+        font-weight: var(--font-weight-semibold);
+        margin-bottom: var(--spacing-xs);
+      }
+
+      .landing-how-step-desc {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        line-height: var(--line-height-normal);
+      }
+
+      .landing-how-arrow {
+        align-self: center;
+        font-size: var(--font-size-2xl);
+        color: var(--brand-primary);
+        font-weight: var(--font-weight-bold);
+
+        @media (max-width: 768px) {
+          display: none;
+        }
+      }
+    }
+
+    // 查询 -> 品牌浮现 的可视化
+    .landing-how-visual {
+      margin-top: var(--spacing-2xl);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-lg);
+      padding: var(--spacing-xl);
+      border-radius: var(--radius-xl);
+      background: radial-gradient(ellipse at center, color-mix(in srgb, var(--brand-primary) 10%, var(--surface-secondary)), var(--surface-secondary));
+      border: 1px solid var(--border-primary);
+
+      .landing-how-query {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .landing-how-query-label {
+          font-size: var(--font-size-xs);
+          color: var(--text-tertiary);
+        }
+
+        .landing-how-query-text {
+          font-size: var(--font-size-base);
+          font-weight: var(--font-weight-medium);
+          color: var(--text-secondary);
+        }
+      }
+
+      .landing-how-pulse {
+        position: relative;
+        width: 28px;
+        height: 28px;
+
+        .landing-how-pulse-dot {
+          position: absolute;
+          inset: 11px;
+          border-radius: 50%;
+          background: var(--brand-primary);
+        }
+
+        .landing-how-pulse-ring,
+        .landing-how-pulse-ring--2 {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 2px solid var(--brand-primary);
+          opacity: 0;
+        }
+      }
+
+      .landing-how-result {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-end;
+
+        .landing-how-result-brand {
+          font-size: var(--font-size-lg);
+          font-weight: var(--font-weight-bold);
+          color: var(--brand-primary);
+        }
+
+        .landing-how-result-text {
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+        }
+      }
+
+      @media (max-width: 768px) {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+      }
+    }
+
+    @media (max-width: 768px) {
+      padding: 40px 20px;
+    }
+  }
+
+  // GEO 优化前 / 优化后 对比
+  .landing-beforeafter {
+    padding: 64px 48px;
+    background: var(--surface-secondary);
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+
+    &.reveal-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .landing-section-title {
+      text-align: center;
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .landing-section-subtitle {
+      text-align: center;
+      color: var(--text-tertiary);
+      margin-bottom: var(--spacing-2xl);
+      font-size: var(--font-size-base);
+    }
+
+    .landing-ba-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-lg);
+      max-width: 1000px;
+      margin: 0 auto;
+
+      .landing-ba-card {
+        padding: var(--spacing-xl);
+        border-radius: var(--radius-xl);
+        border: 1px solid var(--border-primary);
+        background: var(--surface-primary);
+
+        &.landing-ba-card--before {
+          border-color: color-mix(in srgb, var(--status-error) 40%, var(--border-primary));
+        }
+
+        &.landing-ba-card--after {
+          border-color: color-mix(in srgb, var(--status-success) 50%, var(--border-primary));
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-success) 25%, transparent);
+        }
+      }
+
+      .landing-ba-tag {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: var(--radius-full);
+        font-size: var(--font-size-xs);
+        font-weight: var(--font-weight-bold);
+        margin-bottom: var(--spacing-md);
+
+        .landing-ba-card--before & {
+          background: color-mix(in srgb, var(--status-error) 12%, transparent);
+          color: var(--status-error);
+        }
+
+        .landing-ba-card--after & {
+          background: color-mix(in srgb, var(--status-success) 14%, transparent);
+          color: var(--status-success);
+        }
+      }
+
+      .landing-ba-query {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        margin-bottom: var(--spacing-sm);
+      }
+
+      .landing-ba-answer {
+        font-size: var(--font-size-base);
+        line-height: var(--line-height-relaxed);
+        color: var(--text-secondary);
+        min-height: 84px;
+        padding: var(--spacing-md);
+        border-radius: var(--radius-md);
+        background: var(--surface-secondary);
+        margin-bottom: var(--spacing-lg);
+      }
+
+      .geo-cite {
+        background: color-mix(in srgb, var(--status-success) 20%, transparent);
+        color: var(--status-success);
+        font-weight: var(--font-weight-bold);
+        padding: 0 4px;
+        border-radius: 4px;
+      }
+
+      .landing-ba-metric {
+        .landing-ba-metric-head {
+          display: flex;
+          justify-content: space-between;
+          font-size: var(--font-size-sm);
+          color: var(--text-secondary);
+          margin-bottom: 6px;
+
+          .landing-ba-metric-value {
+            font-weight: var(--font-weight-bold);
+          }
+
+          .landing-ba-card--before & .landing-ba-metric-value {
+            color: var(--status-error);
+          }
+
+          .landing-ba-card--after & .landing-ba-metric-value {
+            color: var(--status-success);
+          }
+        }
+      }
+
+      .landing-ba-bar {
+        height: 10px;
+        border-radius: 6px;
+        background: var(--surface-secondary);
+        overflow: hidden;
+
+        .landing-ba-bar-fill {
+          display: block;
+          height: 100%;
+          width: 0;
+          border-radius: 6px;
+
+          &.landing-ba-bar-fill--before {
+            background: var(--status-error);
+          }
+
+          &.landing-ba-bar-fill--after {
+            background: var(--status-success);
+          }
+        }
+      }
+
+      @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    // reveal 后触发进度条动画
+    &.reveal-in {
+      .landing-ba-bar-fill {
+        animation: barGrow 1.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+    }
+
+    .landing-ba-uplift {
+      text-align: center;
+      margin-top: var(--spacing-xl);
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--status-success);
+    }
+
+    @media (max-width: 768px) {
+      padding: 40px 20px;
+    }
+  }
+
+  // 报告示例
+  .landing-report {
+    padding: 64px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+
+    &.reveal-in {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .landing-section-title {
+      text-align: center;
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .landing-section-subtitle {
+      text-align: center;
+      color: var(--text-tertiary);
+      margin-bottom: var(--spacing-2xl);
+      font-size: var(--font-size-base);
+    }
+
+    .landing-report-card {
+      padding: var(--spacing-2xl);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border-primary);
+      background: var(--surface-primary);
+      box-shadow: var(--shadow-lg);
+      max-width: 880px;
+      margin: 0 auto;
+
+      .landing-report-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacing-lg);
+        padding-bottom: var(--spacing-lg);
+        border-bottom: 1px solid var(--border-primary);
+        margin-bottom: var(--spacing-lg);
+
+        .landing-report-brand-name {
+          font-size: var(--font-size-2xl);
+          font-weight: var(--font-weight-bold);
+        }
+
+        .landing-report-brand-sub {
+          font-size: var(--font-size-sm);
+          color: var(--text-tertiary);
+          margin-top: 4px;
+        }
+
+        .landing-report-gauge {
+          position: relative;
+          width: 120px;
+          height: 120px;
+
+          .gauge-svg {
+            width: 100%;
+            height: 100%;
+          }
+
+          .gauge-bg {
+            fill: none;
+            stroke: var(--surface-secondary);
+            stroke-width: 10;
+          }
+
+          .gauge-fg {
+            fill: none;
+            stroke: var(--brand-primary);
+            stroke-width: 10;
+            stroke-linecap: round;
+            stroke-dasharray: var(--c);
+            stroke-dashoffset: var(--c);
+          }
+
+          .gauge-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+
+            .gauge-num {
+              font-size: var(--font-size-2xl);
+              font-weight: var(--font-weight-bold);
+              background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              background-clip: text;
+            }
+
+            .gauge-grade {
+              font-size: var(--font-size-xs);
+              color: var(--text-tertiary);
+            }
+          }
+        }
+      }
+
+      .landing-report-section {
+        margin-bottom: var(--spacing-lg);
+
+        .landing-report-section-title {
+          font-size: var(--font-size-lg);
+          font-weight: var(--font-weight-semibold);
+          margin-bottom: var(--spacing-md);
+
+          &::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 16px;
+            background: var(--brand-primary);
+            border-radius: 2px;
+            margin-right: 8px;
+            vertical-align: -2px;
+          }
+        }
+      }
+
+      .landing-report-engines {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--spacing-md);
+
+        .landing-report-engine {
+          .landing-report-engine-name {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-medium);
+            margin-bottom: 6px;
+          }
+
+          .landing-report-engine-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+
+          .landing-report-bar {
+            position: relative;
+            height: 18px;
+            background: var(--surface-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+
+            span {
+              position: absolute;
+              left: 0;
+              top: 0;
+              height: 100%;
+              width: 0;
+              border-radius: 4px;
+
+              .landing-report-bar--mention & {
+                background: linear-gradient(90deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 70%, var(--brand-secondary)));
+              }
+
+              .landing-report-bar--citation & {
+                background: linear-gradient(90deg, var(--brand-secondary), color-mix(in srgb, var(--brand-secondary) 70%, var(--brand-primary)));
+              }
+            }
+
+            i {
+              position: absolute;
+              right: 8px;
+              top: 0;
+              line-height: 18px;
+              font-size: var(--font-size-xs);
+              font-style: normal;
+              color: var(--text-secondary);
+              z-index: 1;
+            }
+          }
+        }
+
+        @media (max-width: 600px) {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .landing-report-prompts {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-sm);
+
+        .landing-report-prompt {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: var(--spacing-md);
+          padding: var(--spacing-sm) var(--spacing-md);
+          border-radius: var(--radius-md);
+          background: var(--surface-secondary);
+
+          .landing-report-prompt-text {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+          }
+
+          .landing-report-badge {
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-bold);
+            padding: 2px 10px;
+            border-radius: var(--radius-full);
+
+            &.is-cited {
+              background: color-mix(in srgb, var(--status-success) 16%, transparent);
+              color: var(--status-success);
+            }
+
+            &.is-miss {
+              background: color-mix(in srgb, var(--text-tertiary) 16%, transparent);
+              color: var(--text-tertiary);
+            }
+          }
+        }
+      }
+
+      .landing-report-actions {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 var(--spacing-lg);
+
+        li {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: var(--font-size-sm);
+          color: var(--text-secondary);
+          margin-bottom: 10px;
+
+          &::before {
+            content: '✦';
+            color: var(--brand-primary);
+            font-weight: var(--font-weight-bold);
+          }
+        }
+      }
+
+      @media (max-width: 768px) {
+        padding: var(--spacing-lg);
+      }
+    }
+
+    // reveal 后触发进度条 / 仪表盘动画
+    &.reveal-in {
+      .landing-report-bar span {
+        animation: barGrow 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .gauge-fg {
+        animation: drawGauge 1.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+    }
+
+    @media (max-width: 768px) {
+      ipadding: 40px 20px;
+    }
+  }
 }
+
+// GEO 前后对比：进入视口后品牌高亮脉冲
+.landing-beforeafter.reveal-in {
+  .geo-cite {
+    animation: citePulse 1.8s ease-in-out infinite;
+  }
+}
+
+// 共享关键帧
+@keyframes barGrow {
+  to {
+    width: var(--target, 100%);
+  }
+}
+
+@keyframes drawGauge {
+  to {
+    stroke-dashoffset: calc(var(--c) * (1 - var(--pct) / 100));
+  }
+}
+
+@keyframes citePulse {
+  0%, 100% {
+    background: color-mix(in srgb, var(--status-success) 12%, transparent);
+  }
+  50% {
+    background: color-mix(in srgb, var(--status-success) 32%, transparent);
+  }
+}
+
+// 进入视口后，GEO 步骤图标动画启动
+.landing-how.reveal-in {
+  .geo-sweep {
+    animation: sweepRotate 2.6s linear infinite;
+  }
+
+  .geo-bar {
+    animation: barPulse 1.6s ease-in-out infinite;
+  }
+
+  .geo-bar--1 {
+    animation-delay: 0s;
+  }
+
+  .geo-bar--2 {
+    animation-delay: 0.25s;
+  }
+
+  .geo-bar--3 {
+    animation-delay: 0.5s;
+  }
+
+  .geo-spark--1 {
+    animation: sparkle 1.8s ease-in-out infinite;
+  }
+
+  .geo-spark--2 {
+    animation: sparkle 1.8s ease-in-out infinite 0.6s;
+  }
+
+  .geo-pulse {
+    animation: shieldPulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes sweepRotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes barPulse {
+  0%, 100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+@keyframes shieldPulse {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+

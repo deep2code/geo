@@ -81,7 +81,7 @@ services:
       GEO_AUTH_ENABLED: "${GEO_AUTH_ENABLED:-true}"
       GEO_ADMIN_EMAIL: "${GEO_ADMIN_EMAIL:-}"
       GEO_ADMIN_PASSWORD: "${GEO_ADMIN_PASSWORD:-}"
-      GEO_JWT_SECRET: "${GEO_JWT_SECRET:-}"
+      GEO_JWT_SECRET: "${GEO_JWT_SECRET:-c44c662a2f7751dcfb8a0330dbe8fcf2abe0b88ddf7e9d9455b22de9bf7264b3}"
       # 文件日志：单文件 20MB 滚动、保留 7 天（需挂载 geo-logs 卷；目录 /app/logs 已建好并授权 geo 用户）
       GEO_LOG_FILE: "/app/logs/geo.log"
     volumes:

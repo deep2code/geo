@@ -37,6 +37,7 @@ jobs:
         working-directory: web-app
         run: |
           npm ci
+          npm run typecheck
           npm run build
 
       - name: Build Final (with embedded SPA)

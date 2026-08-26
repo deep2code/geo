@@ -43,6 +43,7 @@ jobs:
         working-directory: web-app
         run: |
           npm ci
+          npm run typecheck
           npm run build
 
   # ─── 多平台交叉编译 + Release ───
@@ -70,6 +71,7 @@ jobs:
         working-directory: web-app
         run: |
           npm ci
+          npm run typecheck
           npm run build
 
       - name: Determine tag
