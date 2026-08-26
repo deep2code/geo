@@ -59,7 +59,7 @@
     }
   },
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "崛起GEO",
     "compare": "Competitor Compare",
     "leaderboard": "Public Leaderboard",
     "contentOptimizer": "Content Optimizer",
@@ -82,7 +82,7 @@
     "dpa": "DPA"
   },
   "dashboard": {
-    "title": "Dashboard",
+    "title": "崛起GEO",
     "subtitle": "AI Search Engine Visibility Overview",
     "overviewBvs": "Brand Visibility Score (BVS)",
     "overviewScore": "Overall Score",

@@ -1,7 +1,9 @@
 import React, { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Layout } from '@/components/Layout'
 import { onAuthError, getApiAuthToken } from '@/services/api'
+import { useAppStore, SITE_TAGLINE } from '@/store/useAppStore'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const ContentOptimizer = lazy(() => import('@/pages/ContentOptimizer'))
@@ -80,6 +82,64 @@ const AuthErrorRedirector: React.FC = () => {
   return null
 }
 
+/**
+ * 页面级标题管理器：按当前路由设置 document.title。
+ * 格式约定：
+ *   - 首页 / 登录页        → 「崛起GEO · AI 平台」
+ *   - /dashboard           → 「崛起GEO」（品牌名即页面名）
+ *   - 其余业务页           → 「崛起GEO,<页面名>」（页面名取 i18n nav.*）
+ * 与 useAppStore 的 whitelabel 品牌名联动（改品牌名时标题同步更新）。
+ */
+const PAGE_TITLES: { prefix: string; key?: string; brandOnly?: boolean }[] = [
+  { prefix: '/dashboard', brandOnly: true },
+  { prefix: '/compare', key: 'nav.compare' },
+  { prefix: '/leaderboard', key: 'nav.leaderboard' },
+  { prefix: '/content-optimizer', key: 'nav.contentOptimizer' },
+  { prefix: '/brand-management', key: 'nav.brandManagement' },
+  { prefix: '/brand-audit', key: 'nav.brandAudit' },
+  { prefix: '/keyword-discovery', key: 'nav.keywordDiscovery' },
+  { prefix: '/report-export', key: 'nav.reportExport' },
+  { prefix: '/alert-email', key: 'nav.alertEmail' },
+  { prefix: '/settings', key: 'nav.settings' },
+  { prefix: '/system-check', key: 'nav.systemCheck' },
+  { prefix: '/rules', key: 'nav.rules' },
+  { prefix: '/evaluate', key: 'nav.evaluate' },
+  { prefix: '/brand-db-import', key: 'nav.brandDBImport' },
+  { prefix: '/integrations', key: 'nav.integrations' },
+  { prefix: '/help', key: 'nav.help' },
+  { prefix: '/tickets', key: 'nav.tickets' },
+  { prefix: '/admin', key: 'nav.admin' },
+  { prefix: '/terms', key: 'nav.terms' },
+  { prefix: '/privacy', key: 'nav.privacy' },
+  { prefix: '/dpa', key: 'nav.dpa' }
+]
+
+const PageTitleManager: React.FC = () => {
+  const location = useLocation()
+  const { t } = useTranslation()
+  const brandName = useAppStore(s => s.whitelabel.brand_name) || '崛起GEO'
+
+  useEffect(() => {
+    const path = location.pathname
+    // 首页 / 登录页：品牌名 · 站点标语
+    if (path === '/' || path === '/landing' || path === '/admin/login') {
+      document.title = `${brandName} · ${SITE_TAGLINE}`
+      return
+    }
+    // 精确前缀匹配（避免 /admin 误匹配 /admin/login 等）
+    const hit = PAGE_TITLES.find(p => path === p.prefix || path.startsWith(`${p.prefix}/`))
+    if (hit) {
+      document.title = hit.brandOnly
+        ? brandName
+        : `${brandName},${t(hit.key!)}`
+    } else {
+      document.title = `${brandName} · ${SITE_TAGLINE}`
+    }
+  }, [location.pathname, brandName, t])
+
+  return null
+}
+
 // 后台业务页统一外壳：Layout（侧边导航）+ 登录守卫
 const ProtectedPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Layout>
@@ -96,6 +156,7 @@ export const AppRoutes: React.FC = () => {
   return (
     <>
       <AuthErrorRedirector />
+      <PageTitleManager />
       <Routes>
         {/* 公开首页：根路径直接渲染 Landing（不做 /landing 跳转，URL 保持 /） */}
         <Route path="/" element={

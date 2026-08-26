@@ -23,13 +23,13 @@
 .branddb-sub {
   margin: 0;
   color: var(--text-tertiary, #6b7280);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
 }
 
 .branddb-section-title {
   margin: 0 0 12px;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .branddb-stats {
@@ -49,7 +49,7 @@
 }
 
 .branddb-stat label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-tertiary, #6b7280);
 }
 
@@ -65,7 +65,7 @@
   padding: 7px 16px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary, #374151);
 }
 
@@ -78,7 +78,7 @@
 .branddb-hint {
   margin: 0 0 10px;
   color: var(--text-tertiary, #6b7280);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .branddb-field {
@@ -86,7 +86,7 @@
   flex-direction: column;
   gap: 4px;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-tertiary, #6b7280);
 }
 
@@ -94,7 +94,7 @@
   padding: 9px 12px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--bg-elevated, #fff);
   color: var(--text-primary, #111827);
 }
@@ -106,7 +106,7 @@
 .branddb-error {
   margin-top: 12px;
   color: #dc2626;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .branddb-result {
@@ -124,5 +124,5 @@
 
 .branddb-result-meta {
   color: var(--text-tertiary, #6b7280);
-  font-size: 13px;
+  font-size: 14px;
 }

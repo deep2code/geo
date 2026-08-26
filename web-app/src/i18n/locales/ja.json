@@ -59,7 +59,7 @@
     }
   },
   "nav": {
-    "dashboard": "ダッシュボード",
+    "dashboard": "崛起GEO",
     "compare": "競合比較",
     "leaderboard": "公開ランキング",
     "contentOptimizer": "コンテンツ最適化",
@@ -82,7 +82,7 @@
     "dpa": "データ処理契約 (DPA)"
   },
   "dashboard": {
-    "title": "ダッシュボード",
+    "title": "崛起GEO",
     "subtitle": "AI検索エンジン可視性の全体像",
     "overviewBvs": "ブランド可視性スコア (BVS)",
     "overviewScore": "総合スコア",

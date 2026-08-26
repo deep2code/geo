@@ -16,19 +16,19 @@
 .evaluate-sub {
   margin: 0;
   color: var(--text-tertiary, #6b7280);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
 }
 
 .evaluate-section-title {
   margin: 0 0 10px;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .evaluate-hint {
   margin: 0 0 10px;
   color: var(--text-tertiary, #6b7280);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .evaluate-textarea {
@@ -38,7 +38,7 @@
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   resize: vertical;
   background: var(--bg-elevated, #fff);
@@ -51,7 +51,7 @@
   gap: 6px;
   cursor: pointer;
   color: var(--primary, #3b82f6);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   margin-top: 10px;
 }
@@ -65,7 +65,7 @@
 }
 
 .evaluate-opt-label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-tertiary, #6b7280);
   margin-right: 8px;
 }
@@ -82,7 +82,7 @@
   background: var(--bg-elevated, #fff);
   padding: 6px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary, #374151);
 }
 
@@ -95,7 +95,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
 }
 
@@ -119,7 +119,7 @@
   padding: 9px 12px;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--bg-elevated, #fff);
   color: var(--text-primary, #111827);
 }
@@ -131,7 +131,7 @@
 .evaluate-error {
   margin-top: 12px;
   color: #dc2626;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .evaluate-report-head {
@@ -141,7 +141,7 @@
 }
 
 .evaluate-mode {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-tertiary, #6b7280);
   font-family: ui-monospace, monospace;
 }
@@ -151,7 +151,7 @@
   color: #e2e8f0;
   padding: 14px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
   max-height: 520px;
   overflow: auto;

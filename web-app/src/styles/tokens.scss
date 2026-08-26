@@ -159,14 +159,14 @@
   --spacing-2xl: 48px;
   --spacing-3xl: 64px;
 
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-base: 16px;
-  --font-size-lg: 18px;
-  --font-size-xl: 20px;
-  --font-size-2xl: 24px;
-  --font-size-3xl: 30px;
-  --font-size-4xl: 36px;
+  --font-size-xs: 13px;
+  --font-size-sm: 15px;
+  --font-size-base: 17px;
+  --font-size-lg: 19px;
+  --font-size-xl: 21px;
+  --font-size-2xl: 25px;
+  --font-size-3xl: 31px;
+  --font-size-4xl: 37px;
 
   --font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
   --font-family-mono: 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
@@ -209,7 +209,7 @@
 
 /* ── 全局响应式工具类 ────────────────────────────────── */
 @media (max-width: 768px) {
-  html { font-size: 14px; }
+  html { font-size: 15px; }
   .hide-md { display: none !important; }
   .stack-md > * + * { margin-top: var(--spacing-sm); }
   .stack-md { display: flex; flex-direction: column; gap: var(--spacing-sm); }
@@ -218,7 +218,7 @@
 }
 
 @media (max-width: 480px) {
-  html { font-size: 13px; }
+  html { font-size: 14px; }
   .hide-sm { display: none !important; }
   .stack-sm > * + * { margin-top: var(--spacing-xs); }
   .stack-sm { display: flex; flex-direction: column; gap: var(--spacing-xs); }

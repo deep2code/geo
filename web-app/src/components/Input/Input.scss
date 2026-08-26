@@ -134,7 +134,7 @@
   .input-wrapper {
     gap: 2px;
     &-label { font-size: var(--font-size-xs); }
-    &-hint, &-error { font-size: 11px; }
+    &-hint, &-error { font-size: 13px; }
   }
   .input, .textarea {
     padding: var(--spacing-xs) var(--spacing-sm);

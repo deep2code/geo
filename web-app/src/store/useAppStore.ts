@@ -56,7 +56,7 @@ interface UISlice {
 export type AppState = WhitelabelSlice & SettingsSlice & BrandSlice & ContentSlice & UISlice
 
 // 站点名称（浏览器标签标题），用于动态覆盖 document.title
-export const SITE_TAGLINE = 'AI 搜索引擎可见度优化平台'
+export const SITE_TAGLINE = 'AI 平台'
 
 const DEFAULT_BRAND: BrandProfile = {
   name: '示例科技',

@@ -59,7 +59,7 @@
     }
   },
   "nav": {
-    "dashboard": "仪表盘",
+    "dashboard": "崛起GEO",
     "compare": "竞品对标",
     "leaderboard": "公开排行榜",
     "contentOptimizer": "内容优化",
@@ -82,7 +82,7 @@
     "dpa": "数据处理协议"
   },
   "dashboard": {
-    "title": "仪表盘",
+    "title": "崛起GEO",
     "subtitle": "AI 搜索引擎可见度总览",
     "overviewBvs": "品牌可见度评分 (BVS)",
     "overviewScore": "综合评分",

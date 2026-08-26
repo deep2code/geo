@@ -140,7 +140,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .app-main {
@@ -191,7 +191,7 @@
   background: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   transition: all var(--transition-fast);
 
   &:hover {
@@ -237,11 +237,11 @@
 }
 
 .app-lang-flag {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .app-lang-code {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
 }
@@ -383,7 +383,7 @@
     width: 28px;
     height: 26px;
   }
-  .app-lang-flag { font-size: 12px; }
+  .app-lang-flag { font-size: 13px; }
   .app-lang-btn { padding: 2px 4px; height: 26px; }
   .app-header-tabs {
     max-width: none;
