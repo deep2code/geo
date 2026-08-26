@@ -61,7 +61,7 @@ func buildCatalog() []Setting {
 		{Key: "GEO_TRUSTED_PROXIES", DefaultValue: "", Description: "", Category: "general", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_WECHAT_INDEX_KEY", DefaultValue: "", Description: "", Category: "general", Type: "secret", IsSecret: true, IsBootstrap: false},
 		{Key: "GEO_WL_AGENCY_NAME", DefaultValue: "", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},
-		{Key: "GEO_WL_BRAND_NAME", DefaultValue: "GEO", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},
+		{Key: "GEO_WL_BRAND_NAME", DefaultValue: "崛起GEO", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_WL_DOMAIN", DefaultValue: "", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_WL_FAVICON_URL", DefaultValue: "", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},
 		{Key: "GEO_WL_LOGO_URL", DefaultValue: "", Description: "", Category: "whitelabel", Type: "string", IsSecret: false, IsBootstrap: false},

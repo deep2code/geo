@@ -466,7 +466,7 @@ VALUES
   ('GEO_TRUSTED_PROXIES', '', '', '可信代理 IP/CIDR（逗号分隔；用于正确解析客户端 IP）', 'general', 'string', 0, 0, 1, 0),
   ('GEO_WECHAT_INDEX_KEY', '', '', '', 'general', 'secret', 1, 0, 0, 0),
   ('GEO_WL_AGENCY_NAME', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
-  ('GEO_WL_BRAND_NAME', 'GEO', 'GEO', '', 'whitelabel', 'string', 0, 0, 0, 0),
+  ('GEO_WL_BRAND_NAME', '崛起GEO', '崛起GEO', '', 'whitelabel', 'string', 0, 0, 0, 0),
   ('GEO_WL_DOMAIN', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
   ('GEO_WL_FAVICON_URL', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),
   ('GEO_WL_LOGO_URL', '', '', '', 'whitelabel', 'string', 0, 0, 0, 0),

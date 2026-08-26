@@ -97,7 +97,7 @@ type Server struct {
 // loadWhitelabelFromEnv 从环境变量读取白标定制配置，提供默认值与空值容错。
 func loadWhitelabelFromEnv() Whitelabel {
 	return Whitelabel{
-		BrandName:    config.Env("GEO_WL_BRAND_NAME", "GEO"),
+		BrandName:    config.Env("GEO_WL_BRAND_NAME", "崛起GEO"),
 		LogoURL:      config.Env("GEO_WL_LOGO_URL", ""),
 		PrimaryColor: config.Env("GEO_WL_PRIMARY_COLOR", "#3B82F6"),
 		FaviconURL:   config.Env("GEO_WL_FAVICON_URL", ""),
