@@ -233,10 +233,14 @@ do_build() {
             info "前端无变化，复用已有 internal/server/web/dist"
         fi
         # 交叉编译（CGO_ENABLED=0 可跨平台；ldflags 注入版本信息）
+        # 显式传 GOPROXY/GOSUMDB（与容器路径一致走 goproxy.cn）：宿主机 go 默认官方源，
+        # 国内/阿里云 VPC 访问 proxy.golang.org 会长时间卡在 go: downloading。
         for arch in ${archs//,/ }; do
             out="$PROJECT_DIR/build/geo-linux-${arch}"
             info "交叉编译 linux/${arch} → ${out}"
-            (cd "$PROJECT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath \
+            (cd "$PROJECT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+                GOPROXY="${GOPROXY_URL:-https://goproxy.cn,direct}" GOSUMDB="${GOSUMDB_URL:-off}" \
+                go build -trimpath \
                 -ldflags "-s -w -X main.version=${version} -X main.commit=${commit} -X main.buildAt=${build_at} -X main.buildOS=${build_os}" \
                 -o "$out" ./cmd/geo)
         done
