@@ -697,7 +697,58 @@
     "onboardingSubtitle": "完成 4 步快速上手 崛起GEO",
     "onboardingDone": "已完成",
     "onboardingTodo": "去完成",
-    "onboardingStepCompleted": "已完成步骤"
+    "onboardingStepCompleted": "已完成步骤",
+    "journeyTab": "精通路线",
+    "journeyTitle": "一步步精通 崛起GEO",
+    "journeySubtitle": "从零到专家，按 5 个阶段循序渐进，每阶段都有明确的验收标准",
+    "journeyGoal": "阶段目标",
+    "journeyAcceptance": "验收标准",
+    "journeySteps": "操作步骤",
+    "journeyS1Title": "阶段 1 · 跑通系统",
+    "journeyS1Goal": "安装并启动，零配置体验核心功能",
+    "journeyS1Acceptance": "不配任何 Key，完成一次内容评分 + 一次系统自检",
+    "journeyS1Steps": [
+      "安装（源码编译 / Go install / Docker 三选一）",
+      "执行 deploy/initdb/schema.sql 建库",
+      "启动服务并访问 :7070",
+      "内容优化页评分 + 系统自检页检查"
+    ],
+    "journeyS2Title": "阶段 2 · 接上 AI",
+    "journeyS2Goal": "配置 LLM Key，体验 AI 优化改写",
+    "journeyS2Acceptance": "同一段内容优化前后评分对比，看懂 6 维评分",
+    "journeyS2Steps": [
+      "配置 .env LLM Key（推荐 DeepSeek / GLM 免费额度）",
+      "内容优化页粘贴一段内容",
+      "选择目标引擎，点击优化",
+      "对比优化前后评分，理解 6 维差异"
+    ],
+    "journeyS3Title": "阶段 3 · 核心玩法",
+    "journeyS3Goal": "掌握品牌审计与 9 法优化策略",
+    "journeyS3Acceptance": "跑通一次品牌审计，看懂告警信号，能人工修正",
+    "journeyS3Steps": [
+      "品牌管理创建品牌画像",
+      "品牌审计选择品牌与引擎开始",
+      "解读 BVS 分数与 5 类告警",
+      "查看规则集掌握 9 法优化策略"
+    ],
+    "journeyS4Title": "阶段 4 · 进阶功能",
+    "journeyS4Goal": "工商库、关键词发现、定时任务",
+    "journeyS4Acceptance": "导入真实数据，跑一次关键词发现并生成 GEO 报告",
+    "journeyS4Steps": [
+      "导入离线工商库（本地上传 / GitHub 直连）",
+      "关键词发现：输入关键词匹配企业",
+      "竞品对标：跨品牌对比可见度",
+      "配置定时审计 + 告警邮件"
+    ],
+    "journeyS5Title": "阶段 5 · 专家调优",
+    "journeyS5Goal": "就绪度门禁、引擎研究与采样调优",
+    "journeyS5Acceptance": "跑通 CI 闸门，研究各引擎引用来源，配置定时任务",
+    "journeyS5Steps": [
+      "AI 就绪度 8 维检查（可作 CI 闸门）",
+      "引擎来源研究：分析各引擎引用偏好",
+      "多次采样与联网搜索开关调优",
+      "定时审计 + Webhook 自动化"
+    ]
   },
   "tickets": {
     "title": "工单系统",

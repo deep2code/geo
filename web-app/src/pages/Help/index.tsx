@@ -110,6 +110,63 @@ const onboardingSteps: { step: number; title: string; desc: string; route: strin
   { step: 4, title: '导出报告', desc: '导出审计报告并分享给团队', route: '/report-export', icon: '📄' }
 ]
 
+// 精通路线：5 个阶段，每阶段含目标 / 操作步骤（可跳转）/ 验收标准
+const journeyStages: {
+  stage: number
+  icon: string
+  titleKey: string
+  goalKey: string
+  acceptanceKey: string
+  stepsKey: string
+  routes: string[]
+}[] = [
+  {
+    stage: 1,
+    icon: '🚀',
+    titleKey: 'help.journeyS1Title',
+    goalKey: 'help.journeyS1Goal',
+    acceptanceKey: 'help.journeyS1Acceptance',
+    stepsKey: 'help.journeyS1Steps',
+    routes: ['/content-optimizer', '/system-check', '/content-optimizer', '/system-check']
+  },
+  {
+    stage: 2,
+    icon: '🤖',
+    titleKey: 'help.journeyS2Title',
+    goalKey: 'help.journeyS2Goal',
+    acceptanceKey: 'help.journeyS2Acceptance',
+    stepsKey: 'help.journeyS2Steps',
+    routes: ['/settings', '/content-optimizer', '/content-optimizer', '/content-optimizer']
+  },
+  {
+    stage: 3,
+    icon: '🎯',
+    titleKey: 'help.journeyS3Title',
+    goalKey: 'help.journeyS3Goal',
+    acceptanceKey: 'help.journeyS3Acceptance',
+    stepsKey: 'help.journeyS3Steps',
+    routes: ['/brand-management', '/brand-audit', '/brand-audit', '/rules']
+  },
+  {
+    stage: 4,
+    icon: '🧩',
+    titleKey: 'help.journeyS4Title',
+    goalKey: 'help.journeyS4Goal',
+    acceptanceKey: 'help.journeyS4Acceptance',
+    stepsKey: 'help.journeyS4Steps',
+    routes: ['/brand-db-import', '/keyword-discovery', '/compare', '/alert-email']
+  },
+  {
+    stage: 5,
+    icon: '🛠️',
+    titleKey: 'help.journeyS5Title',
+    goalKey: 'help.journeyS5Goal',
+    acceptanceKey: 'help.journeyS5Acceptance',
+    stepsKey: 'help.journeyS5Steps',
+    routes: ['/system-check', '/brand-audit', '/settings', '/alert-email']
+  }
+]
+
 const Help: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -307,6 +364,51 @@ const Help: React.FC = () => {
                     <span className={`help-onboarding-status help-onboarding-status-${completed ? 'done' : 'todo'}`}>
                       {completed ? `✓ ${t('help.onboardingDone')}` : t('help.onboardingTodo')}
                     </span>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </TabPane>
+
+        {/* Tab 3: 精通路线（一步步精通） */}
+        <TabPane tabKey="journey" tab={`🧭 ${t('help.journeyTab')}`}>
+          <Card title={t('help.journeyTitle')} subtitle={t('help.journeySubtitle')} compact>
+            <div className="help-journey-list">
+              {journeyStages.map(stage => {
+                const steps: string[] = Array.isArray(t(stage.stepsKey)) ? t(stage.stepsKey) as unknown as string[] : []
+                return (
+                  <div key={stage.stage} className="help-journey-stage">
+                    <div className="help-journey-stage-head">
+                      <div className="help-journey-stage-badge">{stage.icon}</div>
+                      <div>
+                        <div className="help-journey-stage-title">{t(stage.titleKey)}</div>
+                        <div className="help-journey-stage-goal">{t('help.journeyGoal')}：{t(stage.goalKey)}</div>
+                      </div>
+                    </div>
+                    <div className="help-journey-stage-body">
+                      <div className="help-journey-steps">
+                        <div className="help-journey-steps-label">{t('help.journeySteps')}</div>
+                        <ol className="help-journey-steps-list">
+                          {steps.map((step, i) => (
+                            <li key={i} className="help-journey-step-item">
+                              <button
+                                type="button"
+                                className="help-journey-step-link"
+                                onClick={() => navigate(stage.routes[i] ?? '/help')}
+                              >
+                                {step}
+                                <span className="help-journey-step-arrow">→</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      <div className="help-journey-acceptance">
+                        <span className="help-journey-acceptance-label">🎯 {t('help.journeyAcceptance')}</span>
+                        <div className="help-journey-acceptance-text">{t(stage.acceptanceKey)}</div>
+                      </div>
+                    </div>
                   </div>
                 )
               })}

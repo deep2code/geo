@@ -697,7 +697,58 @@
     "onboardingSubtitle": "Complete 4 steps to master 崛起GEO",
     "onboardingDone": "Completed",
     "onboardingTodo": "To do",
-    "onboardingStepCompleted": "Step completed"
+    "onboardingStepCompleted": "Step completed",
+    "journeyTab": "Mastery Path",
+    "journeyTitle": "Master 崛起GEO Step by Step",
+    "journeySubtitle": "From zero to expert in 5 stages, each with clear acceptance criteria",
+    "journeyGoal": "Stage Goal",
+    "journeyAcceptance": "Acceptance",
+    "journeySteps": "Steps",
+    "journeyS1Title": "Stage 1 · Run the system",
+    "journeyS1Goal": "Install, start, and try core features with zero config",
+    "journeyS1Acceptance": "Score content and run system check without any API key",
+    "journeyS1Steps": [
+      "Install (source / go install / Docker)",
+      "Run deploy/initdb/schema.sql to init DB",
+      "Start service and open :7070",
+      "Score content + run system check"
+    ],
+    "journeyS2Title": "Stage 2 · Connect AI",
+    "journeyS2Goal": "Configure an LLM key and try AI rewriting",
+    "journeyS2Acceptance": "Compare before/after scores and understand the 6 dimensions",
+    "journeyS2Steps": [
+      "Set .env LLM key (DeepSeek / GLM free tier)",
+      "Paste content in Content Optimizer",
+      "Pick target engine and optimize",
+      "Compare scores and understand the 6 dimensions"
+    ],
+    "journeyS3Title": "Stage 3 · Core workflow",
+    "journeyS3Goal": "Master brand audit and the 9 tactics",
+    "journeyS3Acceptance": "Run an audit, read alerts, and apply manual corrections",
+    "journeyS3Steps": [
+      "Create a brand profile",
+      "Run audit with brand + engine",
+      "Read BVS score and 5 alert types",
+      "Learn the 9 GEO tactics in Rules"
+    ],
+    "journeyS4Title": "Stage 4 · Advanced features",
+    "journeyS4Goal": "Company DB, keyword discovery, schedules",
+    "journeyS4Acceptance": "Import real data, run keyword discovery, and export a GEO report",
+    "journeyS4Steps": [
+      "Import offline company DB (upload / GitHub)",
+      "Keyword discovery: search companies",
+      "Compare brands side by side",
+      "Schedule audits + alert emails"
+    ],
+    "journeyS5Title": "Stage 5 · Expert tuning",
+    "journeyS5Goal": "Readiness gate, source research, sampling",
+    "journeyS5Acceptance": "Run the CI gate, research engine sources, and schedule tasks",
+    "journeyS5Steps": [
+      "AI readiness 8-dimension check (CI gate)",
+      "Engine source research",
+      "Sampling + web search toggles",
+      "Scheduled audits + webhooks"
+    ]
   },
   "tickets": {
     "title": "Tickets",

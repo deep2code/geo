@@ -697,7 +697,58 @@
     "onboardingSubtitle": "4ステップで崛起GEOを使いこなす",
     "onboardingDone": "完了",
     "onboardingTodo": "未完了",
-    "onboardingStepCompleted": "ステップ完了"
+    "onboardingStepCompleted": "ステップ完了",
+    "journeyTab": "習得ロードマップ",
+    "journeyTitle": "崛起GEO を段階的にマスター",
+    "journeySubtitle": "ゼロからエキスパートまで、各段階に明確な合格基準",
+    "journeyGoal": "段階目標",
+    "journeyAcceptance": "合格基準",
+    "journeySteps": "手順",
+    "journeyS1Title": "段階 1 · システム起動",
+    "journeyS1Goal": "インストールして起動、設定なしで核心機能を体験",
+    "journeyS1Acceptance": "キーなしでコンテンツ評価とシステム自己診断を完了",
+    "journeyS1Steps": [
+      "インストール（ソース / go install / Docker）",
+      "deploy/initdb/schema.sql で DB 初期化",
+      "起動して :7070 を開く",
+      "コンテンツ評価 + システム自己診断"
+    ],
+    "journeyS2Title": "段階 2 · AI 接続",
+    "journeyS2Goal": "LLM キーを設定して AI リライトを体験",
+    "journeyS2Acceptance": "最適化前後のスコアを比較し、6 次元を理解",
+    "journeyS2Steps": [
+      ".env に LLM キーを設定（DeepSeek / GLM 無料枠）",
+      "コンテンツ最適化に文章を貼り付け",
+      "対象エンジンを選択して最適化",
+      "前後スコアを比較し 6 次元を理解"
+    ],
+    "journeyS3Title": "段階 3 · 核心ワークフロー",
+    "journeyS3Goal": "ブランド監査と 9 つの戦略を習得",
+    "journeyS3Acceptance": "監査を実行し、アラートを読み、手動修正できる",
+    "journeyS3Steps": [
+      "ブランド管理でブランドを作成",
+      "ブランド監査で監査開始",
+      "BVS スコアと 5 種類のアラートを読む",
+      "ルールで 9 戦略を学ぶ"
+    ],
+    "journeyS4Title": "段階 4 · 応用機能",
+    "journeyS4Goal": "企業 DB、キーワード発見、スケジュール",
+    "journeyS4Acceptance": "実データをインポートし、キーワード発見とレポート出力を実行",
+    "journeyS4Steps": [
+      "オフライン企業 DB をインポート",
+      "キーワード発見で企業を検索",
+      "競合比較で横断比較",
+      "定期監査 + アラートメール設定"
+    ],
+    "journeyS5Title": "段階 5 · エキスパート調整",
+    "journeyS5Goal": "準備度ゲート、ソース調査、サンプリング",
+    "journeyS5Acceptance": "CI ゲートを実行し、エンジン引用源を調査し、定期タスクを設定",
+    "journeyS5Steps": [
+      "AI 準備度 8 次元チェック（CI ゲート）",
+      "エンジン引用源調査",
+      "サンプリングと Web 検索トグル調整",
+      "定期監査 + Webhook 自動化"
+    ]
   },
   "tickets": {
     "title": "チケットシステム",
