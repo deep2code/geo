@@ -247,7 +247,7 @@ const Settings: React.FC = () => {
                 }}>G</div>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>崛起GEO</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16 }}>
-                  AI 搜索引擎可见度优化平台
+                  AI 平台
                 </div>
                 <Button onClick={() => showToast('点击浏览器地址栏安装图标（→）安装', 'info')}>
                   🖥️ {t('settings.pwaInstall')}

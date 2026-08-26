@@ -8,6 +8,7 @@ import { Table, type TableColumn } from '@/components/Table'
 import { Tabs, TabPane } from '@/components/Tabs'
 import SettingsTab from './SettingsTab'
 import ExternalSubmissions from './ExternalSubmissions'
+import AIBotVisits from './AIBotVisits'
 import { useAppStore } from '@/store/useAppStore'
 import api, { getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
@@ -533,6 +534,11 @@ const Admin: React.FC = () => {
         {/* Tab 6: 外部提交分析（外部系统提交的大模型对话 + 定时分析） */}
         <TabPane tabKey="ext-submissions" tab={`📥 ${t('admin.tabExternalSubmissions')}`}>
           <ExternalSubmissions />
+        </TabPane>
+
+        {/* Tab 7: AI 爬虫访问监控（哪些大模型来爬过本站） */}
+        <TabPane tabKey="aibots" tab={`🤖 ${t('admin.tabAIBots')}`}>
+          <AIBotVisits />
         </TabPane>
       </Tabs>
     </div>

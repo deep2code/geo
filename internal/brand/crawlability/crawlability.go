@@ -53,7 +53,8 @@ type AIBot struct {
 }
 
 // 27 个主流 AI 爬虫（借鉴 geo-optimizer-skill 的分类）。
-var aiBots = []AIBot{
+// AIBots 导出供访问监控等模块复用（UA 识别）。
+var AIBots = []AIBot{
 	// 训练用爬虫（用于模型训练数据采集）
 	{"GPTBot", "GPTBot", TierTraining, "OpenAI"},
 	{"ChatGPT-User", "ChatGPT User", TierUser, "OpenAI"},
@@ -249,10 +250,10 @@ func fetchRobotsTxt(ctx context.Context, baseURL string) string {
 
 // checkBots 解析 robots.txt，判断每个 AI 爬虫是否被允许。
 func checkBots(robotsTxt string) []BotCheckResult {
-	results := make([]BotCheckResult, 0, len(aiBots))
+	results := make([]BotCheckResult, 0, len(AIBots))
 	if robotsTxt == "" {
 		// 无 robots.txt：默认全部允许
-		for _, bot := range aiBots {
+		for _, bot := range AIBots {
 			results = append(results, BotCheckResult{
 				Bot: bot, Allowed: true, RuleType: "no_rule",
 				Evidence: "robots.txt 不存在，默认允许所有爬虫",
@@ -262,7 +263,7 @@ func checkBots(robotsTxt string) []BotCheckResult {
 	}
 	// 解析 robots.txt 为 User-agent -> [Disallow paths]
 	rules := parseRobots(robotsTxt)
-	for _, bot := range aiBots {
+	for _, bot := range AIBots {
 		// 查找精确匹配的 User-agent（大小写不敏感）
 		disallows, found := findRules(rules, bot.UserAgent)
 		if !found {

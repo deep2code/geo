@@ -1,0 +1,21 @@
+# 崛起GEO
+
+> 崛起GEO 是生成式引擎优化（GEO）平台：帮助品牌提升在 AI 大模型（ChatGPT、DeepSeek、豆包、通义、文心、Kimi 等）回答中的可见度与引用率。提供内容优化、品牌审计、关键词发现、竞品对标、离线工商库检索、AI 就绪度检查等能力。
+
+## 核心能力
+
+- [内容优化（9 法策略）](https://mygeo.ai/#optimize)：6 维评分（可引用信号/结构/流畅度/权威性/结论前置/独特词汇），9 种 GEO 策略改写，3 领域自适应，支持 13+ AI 引擎偏好。
+- [品牌可见度审计](https://mygeo.ai/#audit)：BVS 7 维加权评分，多引擎对比，5 类模型告警，定时扫描 + Webhook。
+- [关键词发现](https://mygeo.ai/#discover)：离线工商库（千万级企业）检索，自动生成品牌画像，一键 GEO 报告。
+- [竞品对标](https://mygeo.ai/#compare)：跨品牌可见度对比，声量份额（SOV）分析。
+- [引擎来源研究](https://mygeo.ai/#research)：分析各 AI 引擎偏好引用哪些来源域名。
+- [AI 就绪度检查](https://mygeo.ai/#readiness)：8 维检查（robots.txt/llms.txt/结构化数据/sitemap/TTFB/标题/FAQ/实体），支持 CI 闸门。
+
+## 关于 GEO
+
+GEO（Generative Engine Optimization，生成式引擎优化）是让内容被 AI 大模型在回答中引用与推荐的方法论。与 SEO 优化搜索引擎排名不同，GEO 优化的是 AI 回答中的提及率与引用率。Princeton GEO（KDD 2024）论文实测：9 种优化策略可提升引用率 18%-41%。
+
+## 联系方式
+
+- 项目主页：https://github.com/deep2code/geo
+- 合规说明：https://mygeo.ai/legal/bot

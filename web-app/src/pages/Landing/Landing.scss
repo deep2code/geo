@@ -1146,3 +1146,86 @@
   }
 }
 
+
+// ── AI 引用友好数据区块 ──────────────────────────────
+.landing-facts {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 64px 24px;
+
+  .landing-facts-quote {
+    margin: 32px auto;
+    padding: 24px 32px;
+    max-width: 720px;
+    text-align: center;
+    font-size: var(--font-size-lg);
+    font-style: italic;
+    color: var(--text-secondary);
+    border-left: 4px solid var(--brand-primary);
+    background: var(--surface-secondary);
+    border-radius: var(--radius-md);
+    line-height: var(--line-height-relaxed);
+  }
+
+  .landing-facts-table-wrap {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: var(--spacing-lg);
+    align-items: start;
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .landing-facts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+    background: var(--surface-primary);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-primary);
+    }
+
+    th {
+      background: var(--surface-secondary);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+    }
+
+    td strong {
+      color: var(--status-success);
+      font-size: var(--font-size-base);
+    }
+
+    tr:hover td {
+      background: var(--bg-hover);
+    }
+  }
+
+  .landing-facts-bvs {
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--brand-primary) 6%, var(--surface-primary));
+    border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, transparent);
+
+    .landing-facts-bvs-title {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold);
+      color: var(--brand-primary);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .landing-facts-bvs-text {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: var(--line-height-relaxed);
+      margin: 0;
+    }
+  }
+}

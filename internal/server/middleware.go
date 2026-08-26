@@ -118,6 +118,10 @@ func (s *Server) requestLogger(h http.Handler) http.Handler {
 		rw := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		h.ServeHTTP(rw, r)
 		observeRequest(r.URL.Path, rw.status)
+		// AI 爬虫访问监控（识别 GPTBot/ClaudeBot 等 UA，进程内记录）
+		if s.aiBotMon != nil {
+			s.aiBotMon.record(r.UserAgent(), r.URL.Path, clientIP(r), rw.status)
+		}
 		rid := RequestIDFromContext(r.Context())
 		if rid == "" {
 			slog.Info("http request",
@@ -179,6 +183,10 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 			"/api/v1/landing/stats":    true,
 			"/api/v1/mail/status":      true,
 			"/api/v1/meta/compliance":  true,
+			// 帮助中心公开接口（帮助文章/新手引导无需登录即可查看与完成）
+			"/api/v1/help/articles":             true,
+			"/api/v1/help/onboarding":           true,
+			"/api/v1/help/onboarding/complete":  true,
 		},
 	}
 	return s.recovery(

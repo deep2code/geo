@@ -1354,6 +1354,11 @@ func isServerPublicPath(path string) bool {
 		path == "/index.html" || path == "/robots.txt" || path == "/legal/bot" {
 		return true
 	}
+	// 帮助中心公开接口（帮助文章/新手引导，无需登录即可查看与完成）。
+	// 前缀匹配覆盖 /api/v1/help/articles/{id} 带 ID 的详情路径。
+	if strings.HasPrefix(path, "/api/v1/help/") {
+		return true
+	}
 	return false
 }
 

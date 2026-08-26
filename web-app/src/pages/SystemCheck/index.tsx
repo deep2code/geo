@@ -59,6 +59,42 @@ const SystemCheck: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 本站 AI 就绪度自检（复用 crawlability.Audit 审计本站）
+  const [aiAudit, setAiAudit] = useState<AiCrawlabilityResult | null>(null)
+  const [aiAuditLoading, setAiAuditLoading] = useState(false)
+
+  // 本站 AI 就绪度自检结果（与后端 crawlability.AuditResult 对齐）
+  interface AiCrawlabilityResult {
+    url: string
+    total_score: number
+    grade: string
+    bot_checks: {
+      bot: { name: string; vendor: string; user_agent: string }
+      allowed: boolean
+      rule_type: string
+    }[]
+    schema_check: { has_json_ld: boolean; schema_types: string[]; richness: string }
+    llms_txt_check: { present: boolean; has_h1: boolean; has_quote: boolean; sections: number; links: number; has_full_txt: boolean; depth: string }
+    knowledge_graph_check: { wikidata: boolean; wikipedia_en: boolean; wikipedia_zh: boolean; baidu_baike: boolean }
+    recommendations: string[]
+    audited_at: string
+  }
+
+  const runAiAudit = useCallback(async () => {
+    setAiAuditLoading(true)
+    setAiAudit(null)
+    try {
+      // 自检本站：用当前访问域名（localStorage 可覆盖为生产域名）
+      const host = window.location.host || 'localhost:7070'
+      const data = await api.crawlabilityAudit(host)
+      setAiAudit(data as unknown as AiCrawlabilityResult)
+    } catch (err: any) {
+      const status = (err && (err.status as number | undefined)) || 0
+      setError(status === 403 ? '本站 AI 就绪度自检需要管理员权限' : `AI 就绪度自检失败（HTTP ${status || 'unknown'}）`)
+    } finally {
+      setAiAuditLoading(false)
+    }
+  }, [])
 
   const runCheck = useCallback(async () => {
     setLoading(true)
@@ -189,6 +225,93 @@ const SystemCheck: React.FC = () => {
           </div>
         </>
       )}
+
+      {/* 本站 AI 就绪度自检：用自家 crawlability 引擎审计本站 robots.txt / llms.txt / JSON-LD */}
+      <section className="sc-section sc-ai-section">
+        <div className="sc-section-head">
+          <h3 className="sc-section-title">🤖 本站 AI 就绪度自检</h3>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={aiAuditLoading}
+            onClick={runAiAudit}
+          >
+            {aiAuditLoading ? '审计中…' : '🔄 审计本站'}
+          </Button>
+        </div>
+        <p className="sc-section-desc">
+          用平台自带的 AI 可爬取性引擎（crawlability）审计本站：robots.txt 对 27 个 AI 爬虫的放行状态、llms.txt、JSON-LD 结构化数据、知识图谱。
+        </p>
+
+        {aiAudit ? (
+          <div className="sc-ai-result">
+            <div className={`sc-ai-score sc-ai-grade-${(aiAudit.grade || 'F').toLowerCase()}`}>
+              <div className="sc-ai-score-num">{Math.round(aiAudit.total_score)}</div>
+              <div className="sc-ai-score-meta">
+                <div className="sc-ai-grade">等级 {aiAudit.grade}</div>
+                <div className="sc-ai-score-url">{aiAudit.url}</div>
+              </div>
+            </div>
+
+            <div className="sc-ai-checks">
+              <div className="sc-ai-check">
+                <span className="sc-ai-check-label">llms.txt</span>
+                <span className={`sc-ai-check-value ${aiAudit.llms_txt_check.present ? 'is-ok' : 'is-bad'}`}>
+                  {aiAudit.llms_txt_check.present ? `✅ 存在（${aiAudit.llms_txt_check.depth}）` : '❌ 缺失'}
+                </span>
+                <span className="sc-ai-check-sub">
+                  {aiAudit.llms_txt_check.present
+                    ? `H1:${aiAudit.llms_txt_check.has_h1 ? '✓' : '✗'} 分区:${aiAudit.llms_txt_check.sections} 链接:${aiAudit.llms_txt_check.links} full:${aiAudit.llms_txt_check.has_full_txt ? '✓' : '✗'}`
+                    : '建议新增 llms.txt 站点说明书'}
+                </span>
+              </div>
+
+              <div className="sc-ai-check">
+                <span className="sc-ai-check-label">JSON-LD</span>
+                <span className={`sc-ai-check-value ${aiAudit.schema_check.has_json_ld ? 'is-ok' : 'is-bad'}`}>
+                  {aiAudit.schema_check.has_json_ld ? `✅ 存在（${aiAudit.schema_check.richness}）` : '❌ 缺失'}
+                </span>
+                <span className="sc-ai-check-sub">
+                  {aiAudit.schema_check.schema_types.join(', ') || '无 schema 类型'}
+                </span>
+              </div>
+
+              <div className="sc-ai-check">
+                <span className="sc-ai-check-label">知识图谱</span>
+                <span className={`sc-ai-check-value ${aiAudit.knowledge_graph_check.wikidata || aiAudit.knowledge_graph_check.wikipedia_zh ? 'is-ok' : 'is-warn'}`}>
+                  实体 {aiAudit.knowledge_graph_check.wikidata || aiAudit.knowledge_graph_check.wikipedia_zh ? '✅' : '⚠️'}
+                </span>
+                <span className="sc-ai-check-sub">
+                  Wikidata:{aiAudit.knowledge_graph_check.wikidata ? '✓' : '✗'} · WikipediaZH:{aiAudit.knowledge_graph_check.wikipedia_zh ? '✓' : '✗'} · 百度百科:{aiAudit.knowledge_graph_check.baidu_baike ? '✓' : '✗'}
+                </span>
+              </div>
+
+              <div className="sc-ai-check">
+                <span className="sc-ai-check-label">AI 爬虫放行</span>
+                <span className={`sc-ai-check-value ${aiAudit.bot_checks.some(b => b.allowed) ? 'is-ok' : 'is-warn'}`}>
+                  {aiAudit.bot_checks.filter(b => b.allowed).length}/{aiAudit.bot_checks.length} 个被放行
+                </span>
+                <span className="sc-ai-check-sub">
+                  {aiAudit.bot_checks.slice(0, 5).map(b => b.bot.name).join('、')}
+                  {aiAudit.bot_checks.length > 5 ? ' 等' : ''}
+                </span>
+              </div>
+            </div>
+
+            {aiAudit.recommendations.length > 0 && (
+              <ul className="sc-ai-recommendations">
+                {aiAudit.recommendations.map((r, i) => (
+                  <li key={i}>💡 {r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : (
+          <div className="sc-ai-idle">
+            {aiAuditLoading ? '正在审计本站（robots.txt / llms.txt / JSON-LD / 知识图谱）…' : '点击「审计本站」用自家引擎检查本站 AI 可见度就绪度。'}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

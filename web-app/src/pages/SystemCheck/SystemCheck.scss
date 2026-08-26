@@ -181,3 +181,130 @@
     font-size: 13px;
   }
 }
+
+/* 本站 AI 就绪度自检 */
+.sc-ai-section {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.sc-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sc-section-desc {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+  margin: 0 0 16px;
+}
+
+.sc-ai-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sc-ai-score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--surface-secondary);
+
+  .sc-ai-score-num {
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+
+  .sc-ai-score-meta {
+    .sc-ai-grade {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .sc-ai-score-url {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      word-break: break-all;
+    }
+  }
+
+  &.sc-ai-grade-a { border-color: var(--status-success); .sc-ai-score-num { color: var(--status-success); } }
+  &.sc-ai-grade-b { border-color: var(--status-info); .sc-ai-score-num { color: var(--status-info); } }
+  &.sc-ai-grade-c { border-color: var(--status-warning); .sc-ai-score-num { color: var(--status-warning); } }
+  &.sc-ai-grade-d, &.sc-ai-grade-e, &.sc-ai-grade-f { border-color: var(--status-error); .sc-ai-score-num { color: var(--status-error); } }
+}
+
+.sc-ai-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.sc-ai-check {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-primary);
+  background: var(--surface-primary);
+
+  .sc-ai-check-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+  }
+
+  .sc-ai-check-value {
+    font-size: 14px;
+    font-weight: 500;
+
+    &.is-ok { color: var(--status-success); }
+    &.is-warn { color: var(--status-warning); }
+    &.is-bad { color: var(--status-error); }
+  }
+
+  .sc-ai-check-sub {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    word-break: break-all;
+  }
+}
+
+.sc-ai-recommendations {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  li {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+}
+
+.sc-ai-idle {
+  padding: 20px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-secondary);
+  background: var(--surface-secondary);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}

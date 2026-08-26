@@ -427,6 +427,40 @@ const Landing: React.FC = () => {
         </div>
       </Reveal>
 
+      {/* AI 引用友好数据（可直接被大模型引用的事实） */}
+      <Reveal id="facts" className="landing-facts">
+        <h2 className="landing-section-title">{t('landing.factsTitle')}</h2>
+        <p className="landing-section-subtitle">{t('landing.factsSubtitle')}</p>
+        <blockquote className="landing-facts-quote">
+          “{t('landing.factsQuote')}”
+        </blockquote>
+        <div className="landing-facts-table-wrap">
+          <table className="landing-facts-table">
+            <thead>
+              <tr>
+                <th>{t('landing.factsTactic')}</th>
+                <th>{t('landing.factsGain')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>{t('landing.factsT1')}</td><td><strong>{t('landing.factsG41')}</strong></td></tr>
+              <tr><td>{t('landing.factsT2')}</td><td><strong>{t('landing.factsG33')}</strong></td></tr>
+              <tr><td>{t('landing.factsT3')}</td><td><strong>{t('landing.factsG29')}</strong></td></tr>
+              <tr><td>{t('landing.factsT4')}</td><td><strong>{t('landing.factsG27')}</strong></td></tr>
+              <tr><td>{t('landing.factsT5')}</td><td><strong>{t('landing.factsG25')}</strong></td></tr>
+              <tr><td>{t('landing.factsT6')}</td><td><strong>{t('landing.factsG24')}</strong></td></tr>
+              <tr><td>{t('landing.factsT7')}</td><td><strong>{t('landing.factsG22')}</strong></td></tr>
+              <tr><td>{t('landing.factsT8')}</td><td><strong>{t('landing.factsG20')}</strong></td></tr>
+              <tr><td>{t('landing.factsT9')}</td><td><strong>{t('landing.factsG18')}</strong></td></tr>
+            </tbody>
+          </table>
+          <div className="landing-facts-bvs">
+            <div className="landing-facts-bvs-title">{t('landing.factsBvsTitle')}</div>
+            <p className="landing-facts-bvs-text">{t('landing.factsBvsText')}</p>
+          </div>
+        </div>
+      </Reveal>
+
       {/* 定价方案 */}
       <section id="pricing" className="landing-pricing">
         <h2 className="landing-section-title">{t('landing.pricingTitle')}</h2>

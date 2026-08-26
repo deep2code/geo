@@ -1,3 +1,110 @@
-User-agent: *
+# 崛起GEO robots.txt
+# 策略：仅放行 AI 大模型爬虫（用于训练/推理/引用本站内容），
+# 其余普通爬虫一律禁止，防止非大模型抓取与内容剽窃。
+
+# ── 允许：AI 大模型爬虫 ─────────────────────────────
+User-agent: GPTBot
 Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Google-Other
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Amazonbot
+Allow: /
+
+User-agent: meta-externalagent
+Allow: /
+
+User-agent: AI2Bot
+Allow: /
+
+User-agent: Diffbot
+Allow: /
+
+User-agent: ImagesiftBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: FacebookBot
+Allow: /
+
+# ── 禁止：自有 GEO 审计爬虫（不回环访问自身，避免自审计死循环）──
+User-agent: MyGEOBot
+Disallow: /
+
+# ── 频控：AI 爬虫统一请求间隔（1 秒，降低高峰期负载）──
+User-agent: GPTBot
+Crawl-delay: 1
+User-agent: OAI-SearchBot
+Crawl-delay: 1
+User-agent: ClaudeBot
+Crawl-delay: 1
+User-agent: Claude-Web
+Crawl-delay: 1
+User-agent: PerplexityBot
+Crawl-delay: 1
+User-agent: Perplexity-User
+Crawl-delay: 1
+User-agent: Google-Extended
+Crawl-delay: 1
+User-agent: Applebot-Extended
+Crawl-delay: 1
+User-agent: Bytespider
+Crawl-delay: 1
+User-agent: CCBot
+Crawl-delay: 1
+User-agent: cohere-ai
+Crawl-delay: 1
+User-agent: Amazonbot
+Crawl-delay: 1
+User-agent: meta-externalagent
+Crawl-delay: 1
+User-agent: AI2Bot
+Crawl-delay: 1
+User-agent: Diffbot
+Crawl-delay: 1
+User-agent: ImagesiftBot
+Crawl-delay: 1
+
+# ── 禁止：其余所有爬虫（普通搜索/采集/镜像/爬虫工具）──
+User-agent: *
+Disallow: /
+
+# 站点地图
 Sitemap: /sitemap.xml
+

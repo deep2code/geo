@@ -1,0 +1,63 @@
+# 崛起GEO — 完整站点说明（llms-full.txt）
+
+> 本文档为 AI 大模型爬虫提供本站完整内容说明。概括版见 llms.txt。站点语言：中文（zh-CN），部分界面提供 English / 日本語。
+
+## 平台简介
+
+崛起GEO 是一个生成式引擎优化（GEO, Generative Engine Optimization）平台。核心使命：让品牌在 AI 大模型回答中被正确提及与引用。平台面向品牌方、内容运营者与 SEO 从业者，提供从内容优化到品牌可见度监控的一站式能力。
+
+## 核心功能
+
+### 内容优化器（Content Optimizer）
+- 6 维 GEO 评分：可引用信号（Citability Signals）、结构（Structure）、流畅度（Fluency）、权威性（Authority）、结论前置（Conclusion First）、独特词汇（Unique Vocabulary），0-100 分。
+- 9 法优化策略（Princeton GEO 论文验证）：引用语、统计数据、流畅度、引用来源、权威语气、结论前置、结构化、技术术语、独特词汇，实测提升引用率 18%-41%。
+- 3 领域自适应：通用 / 科技 / 商业，针对不同领域调整策略权重。
+- 支持 13+ AI 引擎偏好：ChatGPT、Perplexity、Gemini、Claude、通义千问、智谱 GLM、DeepSeek、文心一言、Kimi、豆包 等。
+
+### 品牌可见度审计（Brand Audit）
+- BVS（Brand Visibility Score）7 维加权评分，等级 A-F。
+- 多引擎对比：同一品牌在不同 AI 引擎中的可见度横向对比。
+- 5 类模型告警：未被提及、被错误引用、被关联竞品、实体识别错误、情感倾向异常。
+- 定时扫描 + Webhook 通知，审计历史留存与人工修正闭环。
+
+### 关键词发现（Keyword Discovery）
+- 离线工商库检索：千万级中国工商企业数据（MariaDB + Meilisearch 中文检索）。
+- 输入关键词自动匹配相关企业，支持多结果选择。
+- 自动生成品牌画像（名称、别名、域名、产品、行业、竞品、查询词）。
+- 一键生成 GEO 优化报告。
+
+### 竞品对标（Compare）
+- 跨品牌可见度对比，BVS 分数并列展示。
+- 声量份额（SOV, Share of Voice）图表。
+
+### 引擎来源研究（Engine Source Research）
+- 分析各 AI 引擎在回答中引用了哪些来源域名。
+- Top / 趋势 / 对比三种视角。
+
+### AI 就绪度检查（AI Readiness）
+- 8 维检查：robots.txt AI 爬虫检查、llms.txt、结构化数据（JSON-LD）、sitemap.xml、页面性能（TTFB）、标题清晰度、FAQ 质量、实体身份。
+- 支持 CI/CD 闸门模式：低于阈值（默认 80 分）阻断发布。
+
+### 离线工商库（Offline Company DB）
+- 数据来源：国家企业信用信息公示系统公开数据。
+- 导入方式：本地上传 JSON 文件或 GitHub 直连。
+- 配套 China-Check 实时核验与缓存管理。
+
+## 技术架构
+
+- 后端：Go（单二进制，Web + REST API + MCP Server 同进程）
+- 前端：TypeScript / React / Vite（SCSS 设计令牌）
+- 数据库：MariaDB（统一库）+ Meilisearch（中文检索）
+- AI 引擎：13+ 适配器（OpenAI 兼容 / 国内厂商 / 海外厂商）
+- 部署：Docker 镜像 / 1Panel 单容器，默认端口 7070
+
+## 使用方式
+
+- Web UI：http://localhost:7070（浏览器访问，唯一入口）
+- MCP Server：同进程 :9090，可被 Claude / Cursor 等编程助手调用
+- 评分 / 工商库 / 就绪度检查等基础功能无需 API Key；优化改写与品牌审计需配置对应引擎 Key
+
+## 合规与声明
+
+- 爬虫遵循 robots.txt；自有审计爬虫 MyGEOBot 不回环访问自身站点。
+- 详细合规说明见 https://mygeo.ai/legal/bot

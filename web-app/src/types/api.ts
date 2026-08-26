@@ -836,3 +836,21 @@ export interface OfflineDBImportGitHubRequest {
   base_url?: string
   timeout_seconds?: number
 }
+
+// AI 爬虫访问监控（后端 aibot_monitor 快照）
+export interface AIBotVisit {
+  bot: string
+  vendor: string
+  path: string
+  ua: string
+  status: number
+  client_ip: string
+  at: string
+}
+
+export interface AIBotVisitsReport {
+  total: number
+  bots: Record<string, number>
+  visits: AIBotVisit[]
+  uptime: string
+}

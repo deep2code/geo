@@ -88,6 +88,7 @@ type Server struct {
 	promptStore *promptversion.MemoryStore // Prompt 版本/实验归因存储（P1-e，内存）
 	externalStore exsubmit.Store            // 外部提交存储（未启用时为 nil）
 	externalWorker *exsubmit.Worker         // 外部提交定时分析 worker（未启用时为 nil）
+	aiBotMon    *aiBotMonitor               // AI 爬虫访问监控（进程内，零 schema）
 	addr        string
 	mux         *http.ServeMux
 	httpServer  *http.Server // 用于 graceful shutdown
@@ -138,6 +139,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		brandEngine: be,
 		whitelabel:  loadWhitelabelFromEnv(),
 		promptStore: promptversion.NewMemoryStore(),
+		aiBotMon:    newAIBotMonitor(500),
 		addr:        addr,
 		mux:         http.NewServeMux(),
 		authSvc:     authSvc,
@@ -677,6 +679,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/admin/system", s.handleAdminSystem)
 	s.mux.HandleFunc("/api/v1/admin/cost", s.handleAdminCost) // LLM 成本仪表盘
 	s.mux.HandleFunc("/api/v1/admin/selfcheck", s.handleAdminSelfCheck) // 系统自检报告
+	// AI 爬虫访问监控（哪些大模型来爬过本站，进程内记录）
+	s.mux.HandleFunc("/api/v1/admin/aibots/visits", s.handleAIBotVisits)
 	// 人工修正审计判定（运营纠错，审计留痕 + 报告重算）
 	s.mux.HandleFunc("/api/v1/admin/audit/correction", s.handleAuditCorrection)
 	// 引擎来源偏好研究（每个大模型喜欢采用哪里的文章：排行/趋势/引擎对比）
