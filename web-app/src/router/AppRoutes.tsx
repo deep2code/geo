@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Layout } from '@/components/Layout'
+import { PublicShell } from '@/components/PublicShell'
 import { onAuthError, getApiAuthToken } from '@/services/api'
 import { useAppStore, SITE_TAGLINE } from '@/store/useAppStore'
 
@@ -147,9 +148,10 @@ const ProtectedPage: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   </Layout>
 )
 
-// 公开业务页（无需登录，如帮助/工单/法务）：仅 Layout 外壳
+// 公开业务页（无需登录，如帮助/工单/法务）：用 Landing 首页风格外壳（PublicShell），
+// 不落入管理后台（Layout 侧边栏）布局。
 const PublicPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Layout>{children}</Layout>
+  <PublicShell>{children}</PublicShell>
 )
 
 export const AppRoutes: React.FC = () => {

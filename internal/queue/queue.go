@@ -191,6 +191,47 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// QueueStats 队列统计信息。
+type QueueStats struct {
+	Pending   int            `json:"pending"`
+	Active    int            `json:"active"`
+	Scheduled int            `json:"scheduled"`
+	Completed int            `json:"completed"`
+	Failed    int            `json:"failed"`
+	Retry     int            `json:"retry"`
+	Total     int            `json:"total"`
+	Jobs      []QueueJobInfo `json:"jobs,omitempty"`
+}
+
+// QueueJobInfo 队列任务简要信息。
+type QueueJobInfo struct {
+	ID        string `json:"id"`
+	BrandName string `json:"brand_name"`
+	Status    string `json:"status"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// GetStats 获取队列各状态的任务数量。
+func (c *Client) GetStats() (*QueueStats, error) {
+	if c.insp == nil {
+		return &QueueStats{}, nil
+	}
+	qi, err := c.insp.GetQueueInfo(QueueAudit)
+	if err != nil {
+		return nil, err
+	}
+	stats := &QueueStats{
+		Pending:   qi.Pending,
+		Active:    qi.Active,
+		Scheduled: qi.Scheduled,
+		Completed: qi.Completed,
+		Failed:    qi.Archived,
+		Retry:     qi.Retry,
+	}
+	stats.Total = stats.Pending + stats.Active + stats.Scheduled + stats.Completed + stats.Failed + stats.Retry
+	return stats, nil
+}
+
 // Server 后台 worker（asynq Server），处理 audit 队列中的任务。
 type Server struct {
 	srv    *asynq.Server

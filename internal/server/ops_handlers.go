@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"my-geo/internal/auth"
 	"my-geo/internal/brand/offlinedb"
 	"my-geo/internal/config"
 	"my-geo/internal/eval"
@@ -386,4 +387,129 @@ func parseInt(s string) (int, error) {
 	var n int
 	_, err := fmt.Sscanf(s, "%d", &n)
 	return n, err
+}
+
+// ── 规则集版本管理 ──
+
+// handleRulesVersions GET /api/v1/rules/versions 列出所有版本。
+func (s *Server) handleRulesVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	versions := s.rulesetStore.List()
+	activeID := s.rulesetStore.ActiveID()
+	type versionView struct {
+		ID          string  `json:"id"`
+		Name        string  `json:"name"`
+		Version     string  `json:"version"`
+		Description string  `json:"description"`
+		Active      bool    `json:"active"`
+		CreatedAt   string  `json:"created_at"`
+		Weights     int     `json:"weights_count"`
+	}
+	out := make([]versionView, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, versionView{
+			ID:          v.ID,
+			Name:        v.RuleSet.Name,
+			Version:     v.RuleSet.Version,
+			Description: v.Description,
+			Active:      v.ID == activeID,
+			CreatedAt:   v.CreatedAt.Format("2006-01-02 15:04:05"),
+			Weights:     len(v.RuleSet.Weights),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"versions": out, "active_id": activeID})
+}
+
+// handleRulesVersionsSave POST /api/v1/rules/versions 保存新版本。
+func (s *Server) handleRulesVersionsSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+	var body struct {
+		ID          string `json:"id"`
+		Content     string `json:"content"`
+		Description string `json:"description"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if body.ID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "id 不能为空"})
+		return
+	}
+	if body.Content == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
+		return
+	}
+	var actor string
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actor = u.Email
+	}
+	if err := s.rulesetStore.SaveJSON(body.ID, []byte(body.Content), actor, body.Description); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "id": body.ID})
+}
+
+// handleRulesVersionsActivate PUT /api/v1/rules/versions/:id/activate 切换激活版本。
+func (s *Server) handleRulesVersionsActivate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 PUT"})
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/rules/versions/")
+	id = strings.TrimSuffix(id, "/activate")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少版本 ID"})
+		return
+	}
+	if err := s.rulesetStore.Activate(id); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "active_id": id})
+}
+
+// handleRulesVersionsDelete DELETE /api/v1/rules/versions/:id 删除版本。
+func (s *Server) handleRulesVersionsDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 DELETE"})
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/v1/rules/versions/")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少版本 ID"})
+		return
+	}
+	if err := s.rulesetStore.Delete(id); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// ── 任务队列统计 ──
+
+// handleQueueStats GET /api/v1/queue/stats 获取队列各状态任务数量。
+func (s *Server) handleQueueStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	if s.queueClient == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "队列未启用（需配置 GEO_REDIS_ADDR）"})
+		return
+	}
+	stats, err := s.queueClient.GetStats()
+	if err != nil {
+		writeInternalError(w, err, "获取队列统计")
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
 }

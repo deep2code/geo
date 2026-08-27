@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"my-geo/internal/auth"
 	"my-geo/internal/util"
 )
 
@@ -232,16 +233,24 @@ func (s *Server) handleLegalDataDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newDataRightsResp("delete", sla, note))
 }
 
-// recordDataRightsEvent 占位：后续接入账号体系后写入审计表。
-// 当前实现仅确保编译通过；未来将替换为调用 audit log store。
+// recordDataRightsEvent 记录数据权利请求到审计日志（GDPR/个保法合规追溯）。
 func (s *Server) recordDataRightsEvent(action string, r *http.Request) error {
-	// TODO(#80): 写入审计日志（Admin Audit Log）表：
-	//   event_type = "data_rights." + action
-	//   actor_ip   = real client IP（from X-Forwarded-For / RemoteAddr）
-	//   meta       = {user_agent, accept_language, referer}
-	// 目前保持空实现以避免在未接入 store 时引入错误。
-	_ = action
-	_ = r
+	actorID, actor := "", "anonymous"
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actorID, actor = u.ID, u.Email
+	}
+	s.appendAuditLog(&auth.AdminAuditLog{
+		ActorID: actorID,
+		Actor:   actor,
+		Action:  "data_rights." + action,
+		Target:  "user_data",
+		Details: map[string]string{
+			"accept_language": r.Header.Get("Accept-Language"),
+			"referer":         r.Header.Get("Referer"),
+		},
+		IP:        clientIP(r),
+		UserAgent: r.UserAgent(),
+	})
 	return nil
 }
 

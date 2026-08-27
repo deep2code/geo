@@ -89,6 +89,7 @@ type Server struct {
 	externalStore exsubmit.Store            // 外部提交存储（未启用时为 nil）
 	externalWorker *exsubmit.Worker         // 外部提交定时分析 worker（未启用时为 nil）
 	aiBotMon    *aiBotMonitor               // AI 爬虫访问监控（进程内，零 schema）
+	rulesetStore *config.RuleSetStore         // 规则集版本管理（内存）
 	addr        string
 	mux         *http.ServeMux
 	httpServer  *http.Server // 用于 graceful shutdown
@@ -140,6 +141,7 @@ func New(engine *geo.Engine, addr string) *Server {
 		whitelabel:  loadWhitelabelFromEnv(),
 		promptStore: promptversion.NewMemoryStore(),
 		aiBotMon:    newAIBotMonitor(500),
+		rulesetStore: config.NewRuleSetStore(),
 		addr:        addr,
 		mux:         http.NewServeMux(),
 		authSvc:     authSvc,
@@ -568,10 +570,26 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("/api/v1/score", s.handleScore)
 	s.mux.HandleFunc("/api/v1/optimize", s.handleOptimize)
+	s.mux.HandleFunc("/api/v1/batch-optimize", s.handleBatchOptimize)
+	s.mux.HandleFunc("/api/v1/diff", s.handleDiff)
 	// 规则集外部化管理（替代原 CLI `geo rules`）
 	s.mux.HandleFunc("/api/v1/rules", s.handleRulesList)              // GET 列出可用规则集
 	s.mux.HandleFunc("/api/v1/rules/default", s.handleRulesDefault)   // GET 默认规则集 JSON
 	s.mux.HandleFunc("/api/v1/rules/validate", s.handleRulesValidate) // POST 校验规则集 JSON
+	// 规则集版本管理
+	s.mux.HandleFunc("/api/v1/rules/versions", s.handleRulesVersions)
+	s.mux.HandleFunc("/api/v1/rules/versions/save", s.handleRulesVersionsSave)
+	s.mux.HandleFunc("/api/v1/rules/versions/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/activate") {
+			s.handleRulesVersionsActivate(w, r)
+		} else if r.Method == http.MethodDelete {
+			s.handleRulesVersionsDelete(w, r)
+		} else {
+			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "不支持的方法"})
+		}
+	})
+	// 队列状态
+	s.mux.HandleFunc("/api/v1/queue/stats", s.handleQueueStats)
 	// GEO 评测集运行（替代原 CLI `geo evaluate`）
 	s.mux.HandleFunc("/api/v1/evaluate", s.handleEvaluate) // POST 运行评测集
 	s.mux.HandleFunc("/api/v1/brand/audit", s.handleBrandAudit)
@@ -584,6 +602,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/brand/report/html", s.handleBrandReport)
 	s.mux.HandleFunc("/api/v1/brand/report/download", s.handleBrandReport)
 	s.mux.HandleFunc("/api/v1/brand/report/pdf", s.handleBrandReportPDF)
+	s.mux.HandleFunc("/api/v1/brand/report/markdown", s.handleBrandReportMarkdown)
 	s.mux.HandleFunc("/api/v1/brand/report/email", s.handleBrandReportEmail)
 	// 邮件通用接口（测试发送 / 自定义发送）
 	s.mux.HandleFunc("/api/v1/mail/send", s.handleMailSend)

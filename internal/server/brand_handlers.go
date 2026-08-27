@@ -208,6 +208,47 @@ func (s *Server) handleBrandReportPDF(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(pdfBytes)
 }
 
+// handleBrandReportMarkdown 导出品牌可见度审计报告为 Markdown 格式。
+//
+// GET /api/v1/brand/report/markdown?brand=xxx
+//
+// 返回纯文本 Markdown，可直接粘贴到文档/Notion/飞书等平台。
+func (s *Server) handleBrandReportMarkdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+		return
+	}
+	brandName := strings.TrimSpace(r.URL.Query().Get("brand"))
+	if brandName == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand 参数"})
+		return
+	}
+	if s.brandEngine == nil || s.brandEngine.HistoryDB() == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "审计历史库未启用（无法导出报告）"})
+		return
+	}
+	rec, err := s.brandEngine.HistoryDB().Latest(r.Context(), brandName)
+	if err != nil {
+		writeInternalError(w, err, "")
+		return
+	}
+	if rec == nil || strings.TrimSpace(rec.ReportJSON) == "" {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "未找到该品牌的审计记录"})
+		return
+	}
+	var vr brand.VisibilityReport
+	if err := json.Unmarshal([]byte(rec.ReportJSON), &vr); err != nil {
+		writeInternalError(w, err, "解析审计报告")
+		return
+	}
+	mdOut := report.GenerateMarkdown(&vr)
+	filename := sanitizeFilename(brandName) + "_可见度报告.md"
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, mdOut)
+}
+
 // handleBrandReportEmail 把品牌可见度审计报告（HTML + PDF 附件）发送邮件。
 //
 // POST /api/v1/brand/report/email
