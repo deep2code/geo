@@ -138,7 +138,7 @@ func isQueryStatement(upper string) bool {
 
 // firstKeyword 提取语句首个有效关键字（跳过注释与括号）。
 func firstKeyword(upper string) string {
-	// 去掉行注释 / 块注释
+	// 去掉行注释 / 块注释（含 MySQL 条件注释 /*!...*/ 和版本注释 /*50000...*/）
 	for {
 		if i := strings.Index(upper, "/*"); i >= 0 {
 			if j := strings.Index(upper[i:], "*/"); j >= 0 {

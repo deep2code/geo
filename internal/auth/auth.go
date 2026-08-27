@@ -224,10 +224,11 @@ func getJWTSecret() []byte {
 			"生产环境建议：export GEO_JWT_SECRET=$(openssl rand -hex 32)")
 		buf := make([]byte, 32)
 		if _, err := io.ReadFull(rand.Reader, buf); err != nil {
-			slog.Error("JWT 密钥生成失败，无法获取安全随机数", slog.String("err", err.Error()))
-			return nil // 调用方需处理 nil
+			slog.Error("JWT 密钥生成失败，无法获取安全随机数，使用固定回退密钥（不安全，仅限开发）", slog.String("err", err.Error()))
+			s = "insecure-dev-fallback-key-do-not-use-in-production-000000"
+		} else {
+			s = hex.EncodeToString(buf)
 		}
-		s = hex.EncodeToString(buf)
 	} else if len(s) < 32 {
 		// 显式配置但强度不足：明确告警（不阻断启动，避免破坏已有部署；
 		// 但安全审计时该警告必须被处理）。
