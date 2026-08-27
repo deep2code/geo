@@ -854,3 +854,17 @@ export interface AIBotVisitsReport {
   visits: AIBotVisit[]
   uptime: string
 }
+
+// 管理后台 SQL 执行（admin_db）
+export interface DBExecResult {
+  kind: 'query' | 'exec'
+  columns?: string[]
+  rows?: any[][]
+  row_count?: number
+  truncated?: boolean
+  rows_affected?: number
+  duration_ms?: number
+  message?: string
+  need_confirm?: boolean
+  error?: string
+}

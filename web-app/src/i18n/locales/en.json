@@ -686,7 +686,8 @@
     "extSubDetail": "Detail",
     "extSubError": "Analysis Error",
     "extSubClose": "Close",
-    "tabAIBots": "AI Bot Visits"
+    "tabAIBots": "AI Bot Visits",
+    "tabDatabase": "Database"
   },
   "help": {
     "title": "Help Center",

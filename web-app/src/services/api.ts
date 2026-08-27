@@ -47,7 +47,8 @@ import type {
   ExternalSubmission,
   ExternalSubmissionsResponse,
   AuthLoginResponse,
-  AIBotVisitsReport
+  AIBotVisitsReport,
+  DBExecResult
 } from '@/types/api'
 
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
@@ -503,6 +504,12 @@ export const api = {
     aiBotVisits: (limit = 50) =>
       request<AIBotVisitsReport>(`/admin/aibots/visits?limit=${limit}`, {
         method: 'GET'
+      }),
+    // 管理后台 SQL 执行（管理员，写操作需二次确认）
+    dbExec: (sql: string, confirmWrite = false, limit = 200) =>
+      request<DBExecResult>('/admin/db/exec', {
+        method: 'POST',
+        body: JSON.stringify({ sql, confirm_write: confirmWrite, limit })
       }),
     // 系统设置列表（支持分类/关键字过滤）
     settings: (params?: { category?: string; q?: string }) => {

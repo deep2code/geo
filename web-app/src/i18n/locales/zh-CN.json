@@ -686,7 +686,8 @@
     "extSubDetail": "详情",
     "extSubError": "分析错误",
     "extSubClose": "关闭",
-    "tabAIBots": "AI 爬虫访问"
+    "tabAIBots": "AI 爬虫访问",
+    "tabDatabase": "数据库管理"
   },
   "help": {
     "title": "帮助中心",

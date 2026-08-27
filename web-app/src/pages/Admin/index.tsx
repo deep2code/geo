@@ -9,6 +9,7 @@ import { Tabs, TabPane } from '@/components/Tabs'
 import SettingsTab from './SettingsTab'
 import ExternalSubmissions from './ExternalSubmissions'
 import AIBotVisits from './AIBotVisits'
+import DatabaseTab from './DatabaseTab'
 import { useAppStore } from '@/store/useAppStore'
 import api, { getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
@@ -539,6 +540,11 @@ const Admin: React.FC = () => {
         {/* Tab 7: AI 爬虫访问监控（哪些大模型来爬过本站） */}
         <TabPane tabKey="aibots" tab={`🤖 ${t('admin.tabAIBots')}`}>
           <AIBotVisits />
+        </TabPane>
+
+        {/* Tab 8: 数据库管理（SQL 执行，管理员 + 写操作二次确认） */}
+        <TabPane tabKey="database" tab={`🗄️ ${t('admin.tabDatabase')}`}>
+          <DatabaseTab />
         </TabPane>
       </Tabs>
     </div>
