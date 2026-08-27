@@ -189,6 +189,8 @@ const Landing: React.FC = () => {
     engine_count: 13,
     user_count: 3500
   })
+  // 构建版本信息（编译时间 / git-hash，公开接口，用于核对部署版本）
+  const [meta, setMeta] = useState<{ build_version: string; build_commit: string; build_at: string } | null>(null)
 
   // 加载平台数据
   const loadStats = async () => {
@@ -200,8 +202,25 @@ const Landing: React.FC = () => {
     }
   }
 
+  // 加载构建版本信息
+  const loadMeta = async () => {
+    try {
+      const res = await api.metaSystem()
+      if (res?.build_at || res?.build_commit) {
+        setMeta({
+          build_version: res.build_version || '',
+          build_commit: res.build_commit || '',
+          build_at: res.build_at || ''
+        })
+      }
+    } catch {
+      // 接口不可用时静默（不展示版本行）
+    }
+  }
+
   useEffect(() => {
     loadStats()
+    loadMeta()
   }, [])
 
   // 跳转到控制台
@@ -511,6 +530,19 @@ const Landing: React.FC = () => {
             <a href="/landing">{t('landing.footerAbout')}</a>
           </div>
         </div>
+        {/* 构建版本信息：编译时间 + git-hash，便于核对部署版本是否最新 */}
+        {meta && (
+          <div className="landing-footer-version">
+            <span className="landing-footer-version-item">版本 {meta.build_version || '-'}</span>
+            <span className="landing-footer-version-item">编译 {meta.build_at || '-'}</span>
+            <span className="landing-footer-version-item">
+              commit{' '}
+              <code className="landing-footer-version-commit">
+                {meta.build_commit ? meta.build_commit.slice(0, 12) : '-'}
+              </code>
+            </span>
+          </div>
+        )}
       </footer>
     </div>
   )

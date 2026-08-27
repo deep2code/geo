@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { useAppStore, DEFAULT_WHITELABEL } from '@/store/useAppStore'
 import { api, setApiAuthToken } from '@/services/api'
+import './AdminLogin.scss'
 
 /**
  * 登录入口（账号体系，JWT）：
@@ -14,7 +14,6 @@ import { api, setApiAuthToken } from '@/services/api'
  * - 服务端未启用账号体系（GEO_AUTH_ENABLED=true）时登录接口返回 503，此处给出提示。
  */
 const AdminLogin: React.FC = () => {
-  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const [sp] = useSearchParams()
@@ -77,6 +76,7 @@ const AdminLogin: React.FC = () => {
 
   return (
     <div
+      className="admin-login-page"
       style={{
         minHeight: '100vh',
         width: '100%',
@@ -93,10 +93,7 @@ const AdminLogin: React.FC = () => {
       <div style={{ width: '100%', maxWidth: 440 }}>
         <div style={{ marginBottom: 16, textAlign: 'center' }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>
-            🔐 {brandName} · 登录
-          </div>
-          <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 13 }}>
-            {t('adminLogin.subtitle', '登录后访问控制台；管理后台功能需 Owner/Admin 角色。')}
+            {brandName}
           </div>
         </div>
 
@@ -191,13 +188,6 @@ const AdminLogin: React.FC = () => {
                 {showPwd ? '🙈' : '👁'}
               </button>
             </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-              管理员账号由部署时
-              <code style={{ margin: '0 4px', padding: '1px 6px', background: 'var(--bg-elevated)', borderRadius: 4 }}>
-                GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD
-              </code>
-              预置（首次启动自动创建）。
-            </div>
 
             {/* 错误提示 */}
             {errMsg && (
@@ -222,10 +212,10 @@ const AdminLogin: React.FC = () => {
                 type="button"
                 variant="secondary"
                 size="md"
-                onClick={() => navigate('/dashboard', { replace: true })}
+                onClick={() => navigate('/', { replace: true })}
                 disabled={submitting}
               >
-                返回控制台
+                返回首页
               </Button>
               <Button type="submit" size="md" loading={submitting} disabled={submitting}>
                 登录
@@ -233,10 +223,6 @@ const AdminLogin: React.FC = () => {
             </div>
           </form>
         </Card>
-
-        <div style={{ marginTop: 12, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
-          {t('adminLogin.securityTip', '⚠️ 生产部署请配合 HTTPS 使用；不要把账号密码提交到代码仓库。')}
-        </div>
       </div>
     </div>
   )

@@ -8,27 +8,30 @@ import './PublicShell.scss'
  * 公开页外壳：Landing 首页风格的导航 + 内容区 + 页脚。
  * 用于帮助中心 / 服务条款 / 隐私政策 / DPA / 工单等公开页面，
  * 避免它们落入管理后台（Layout 侧边栏）布局。
+ * showNav=false 时隐藏顶部导航（帮助中心等纯内容页使用）。
  */
-const PublicShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const PublicShell: React.FC<{ children: React.ReactNode; showNav?: boolean }> = ({ children, showNav = true }) => {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
   return (
     <div className="public-shell">
       {/* 顶部导航（同 Landing） */}
-      <nav className="public-nav">
-        <div className="public-nav-brand">
-          <div className="public-nav-logo">G</div>
-          <span>崛起GEO</span>
-        </div>
-        <div className="public-nav-links">
-          <a href="/#features">{t('landing.navFeatures')}</a>
-          <a href="/#how">{t('landing.navHow')}</a>
-          <a href="/#pricing">{t('landing.navPricing')}</a>
-          <a href="/help">{t('landing.navHelp')}</a>
-        </div>
-        <Button size="sm" onClick={() => navigate('/admin/login')}>{t('landing.navLogin')}</Button>
-      </nav>
+      {showNav && (
+        <nav className="public-nav">
+          <div className="public-nav-brand">
+            <div className="public-nav-logo">G</div>
+            <span>崛起GEO</span>
+          </div>
+          <div className="public-nav-links">
+            <a href="/#features">{t('landing.navFeatures')}</a>
+            <a href="/#how">{t('landing.navHow')}</a>
+            <a href="/#pricing">{t('landing.navPricing')}</a>
+            <a href="/help">{t('landing.navHelp')}</a>
+          </div>
+          <Button size="sm" onClick={() => navigate('/admin/login')}>{t('landing.navLogin')}</Button>
+        </nav>
+      )}
 
       {/* 内容区 */}
       <main className="public-content">{children}</main>

@@ -149,9 +149,9 @@ const ProtectedPage: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 )
 
 // 公开业务页（无需登录，如帮助/工单/法务）：用 Landing 首页风格外壳（PublicShell），
-// 不落入管理后台（Layout 侧边栏）布局。
-const PublicPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <PublicShell>{children}</PublicShell>
+// 不落入管理后台（Layout 侧边栏）布局。showNav=false 时隐藏顶部导航（帮助中心纯内容页）。
+const PublicPage: React.FC<{ children: React.ReactNode; showNav?: boolean }> = ({ children, showNav }) => (
+  <PublicShell showNav={showNav}>{children}</PublicShell>
 )
 
 export const AppRoutes: React.FC = () => {
@@ -225,7 +225,7 @@ export const AppRoutes: React.FC = () => {
 
         {/* 公开业务页（帮助/工单/法务） */}
         <Route path="/help" element={
-          <PublicPage><Suspense fallback={<PageFallback />}><Help /></Suspense></PublicPage>
+          <PublicPage showNav={false}><Suspense fallback={<PageFallback />}><Help /></Suspense></PublicPage>
         } />
         <Route path="/tickets" element={
           <PublicPage><Suspense fallback={<PageFallback />}><Tickets /></Suspense></PublicPage>

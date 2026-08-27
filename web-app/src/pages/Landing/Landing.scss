@@ -1229,3 +1229,32 @@
     }
   }
 }
+
+// ── 页脚构建版本信息 ──────────────────────────────
+.landing-footer-version {
+  max-width: 1000px;
+  margin: 16px auto 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-muted);
+
+  .landing-footer-version-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .landing-footer-version-commit {
+    font-family: var(--font-family-mono);
+    background: var(--surface-secondary);
+    border: 1px solid var(--border-tertiary);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--text-secondary);
+  }
+}

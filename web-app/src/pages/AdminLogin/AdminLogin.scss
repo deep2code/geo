@@ -1,0 +1,25 @@
+@use '@/styles/tokens' as *;
+
+// 登录页响应式
+.admin-login-page {
+  // 超窄屏（手机竖屏）：缩小内边距，让卡片更贴近屏幕边缘
+  @media (max-width: 480px) {
+    padding: 16px 12px !important;
+
+    // 标题字号微调
+    > div > div:first-child > div:first-child {
+      font-size: 24px !important;
+    }
+  }
+
+  // 极窄屏（≤360px）：按钮改为纵向排列，避免挤压
+  @media (max-width: 360px) {
+    > div > div:last-child {
+      flex-direction: column;
+
+      button {
+        width: 100%;
+      }
+    }
+  }
+}

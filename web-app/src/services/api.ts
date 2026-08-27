@@ -188,6 +188,13 @@ async function request<T>(
       signal: controller.signal
     })
 
+    // 滑动续期：后端在 token 剩余有效期不足一半时，通过 X-GEO-New-Token 下发新 access token。
+    // 前端检测到后自动替换存储（并刷新缓存的过期时间），实现「有效操作一次就自动延长」。
+    const newToken = res.headers.get('X-GEO-New-Token')
+    if (newToken && newToken.length > 20) {
+      setApiAuthToken(newToken)
+    }
+
     // 401/403 拦截：除非显式跳过，否则触发全局跳转（但仍抛错让业务 catch）。
     if ((res.status === 401 || res.status === 403) && !skipAuthRedirect) {
       emitAuthError(res.status, path)

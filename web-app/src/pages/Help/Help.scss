@@ -365,3 +365,49 @@
     }
   }
 }
+
+// ── 线性布局（无 Tabs / 无分类导航，从上到下依次展示）──
+.help-page--linear {
+  max-width: 860px;
+  margin: 0 auto;
+
+  .page-header {
+    margin-bottom: 32px;
+  }
+
+  // 每个内容区块
+  .help-block {
+    margin-bottom: 48px;
+
+    .help-block-title {
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--text-primary);
+      margin: 0 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-tertiary);
+    }
+  }
+
+  // 精通路线在窄屏下保持单列，验收框置顶
+  .help-journey-stage-body {
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+
+      .help-journey-acceptance {
+        order: -1;
+      }
+    }
+  }
+
+  // 文章列表在窄屏下保持可读
+  .help-article-list {
+    @media (max-width: 768px) {
+      gap: var(--spacing-sm);
+    }
+  }
+
+  .help-article-content {
+    padding: var(--spacing-md);
+  }
+}

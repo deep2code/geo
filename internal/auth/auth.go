@@ -199,8 +199,8 @@ type TokenPair struct {
 // ============================================================
 
 const (
-	accessTokenTTL  = 2 * time.Hour       // 访问令牌 2 小时
-	refreshTokenTTL = 14 * 24 * time.Hour // 刷新令牌 14 天
+	accessTokenTTL  = 24 * time.Hour      // 访问令牌 1 天（有效操作一次自动延长，见 WithAuthN 滑动续期）
+	refreshTokenTTL = 30 * 24 * time.Hour // 刷新令牌 30 天
 )
 
 type jwtClaims struct {
@@ -1330,6 +1330,20 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			if c.V != u.TokenVersion {
 				writeErr(w, http.StatusUnauthorized, "登录状态已失效，请重新登录", "AUTH_TOKEN_REVOKED")
 				return
+			}
+			// 滑动续期：有效操作自动延长。
+			// 剩余有效期 < 一半（12 小时）时签发新 access token，
+			// 通过 X-GEO-New-Token 响应头下发；前端拦截器检测到后自动替换存储。
+			// 这样只要用户持续使用，登录态就保持为「1 天滑动窗口」。
+			if rem := time.Until(time.Unix(c.Exp, 0)); rem < accessTokenTTL/2 {
+				if nt, err := signJWT(jwtClaims{
+					Sub: u.ID, Email: u.Email, WorkspaceID: c.WorkspaceID,
+					Role: c.Role, JTI: util.RandomHexID(12),
+					Iat: time.Now().Unix(), Exp: time.Now().Add(accessTokenTTL).Unix(),
+					Type: "access", V: u.TokenVersion,
+				}); err == nil {
+					w.Header().Set("X-GEO-New-Token", nt)
+				}
 			}
 			// 注入 context
 			ctx := context.WithValue(r.Context(), ctxKeyUser, u)
