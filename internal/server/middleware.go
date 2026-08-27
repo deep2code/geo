@@ -187,6 +187,11 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 			"/api/v1/help/articles":             true,
 			"/api/v1/help/onboarding":           true,
 			"/api/v1/help/onboarding/complete":  true,
+			// 外部系统提交大模型对话：走独立密钥鉴权（X-GEO-External-Key），
+			// 外部系统无平台 JWT，必须在此放行，否则被 WithAuthN 401 拦截（checkExternalKey 走不到）。
+			"/api/v1/external/submissions": true,
+			// 公开定价方案（Landing 定价区块/外部引用，无敏感数据）
+			"/api/v1/pricing/plans": true,
 		},
 	}
 	return s.recovery(

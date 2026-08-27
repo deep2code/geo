@@ -1359,6 +1359,15 @@ func isServerPublicPath(path string) bool {
 	if strings.HasPrefix(path, "/api/v1/help/") {
 		return true
 	}
+	// 公开定价方案详情（/api/v1/pricing/plans/{id}，无敏感数据）。
+	if strings.HasPrefix(path, "/api/v1/pricing/plans/") {
+		return true
+	}
+	// 外部系统提交大模型对话：走独立密钥鉴权（X-GEO-External-Key），
+	// 外部系统无平台 JWT，前缀放行覆盖尾斜杠变体，鉴权交由 checkExternalKey。
+	if strings.HasPrefix(path, "/api/v1/external/submissions") {
+		return true
+	}
 	return false
 }
 
