@@ -687,7 +687,8 @@
     "extSubError": "分析エラー",
     "extSubClose": "閉じる",
     "tabAIBots": "AIクローラー訪問",
-    "tabDatabase": "データベース管理"
+    "tabDatabase": "データベース管理",
+    "tabAudit": "監査ログ"
   },
   "help": {
     "title": "ヘルプセンター",

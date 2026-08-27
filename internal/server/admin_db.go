@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"my-geo/internal/auth"
 	"my-geo/internal/dbprovider"
 )
 
@@ -197,7 +198,7 @@ type DBQueryResult struct {
 // handleAdminDBExec 处理管理后台 SQL 执行请求。
 //
 // POST /api/v1/admin/db/exec  JSON {"sql":"...", "limit":200, "confirm_write":false}
-// 需 Owner/Admin 角色（PermManageData）。
+// 需 Owner/Admin 角色（PermManageData）。所有执行（含被拦截的写操作）写入审计日志。
 func (s *Server) handleAdminDBExec(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
@@ -215,15 +216,53 @@ func (s *Server) handleAdminDBExec(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
+	// 审计字段
+	actorID, actor := "", "unknown"
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actorID, actor = u.ID, u.Email
+	}
+	ip := clientIP(r)
+	ua := r.UserAgent()
+	sqlSnippet := body.SQL
+	if len(sqlSnippet) > 300 {
+		sqlSnippet = sqlSnippet[:300] + "..."
+	}
+	action := "admin.db.exec"
+	if body.ConfirmWrite {
+		action = "admin.db.exec.confirmed"
+	}
+	writeAudit := func(status string, detail string) {
+		s.appendAuditLog(&auth.AdminAuditLog{
+			ActorID: actorID, Actor: actor, Action: action, Target: "database",
+			Details: map[string]string{
+				"sql":    sqlSnippet,
+				"status": status,
+				"detail": detail,
+			},
+			IP: ip, UserAgent: ua,
+		})
+	}
+
 	result, err := execDBQuery(body.SQL, body.Limit, body.ConfirmWrite)
 	if err != nil {
-		// 写操作未确认 → 200 + 需确认标记（前端据此弹确认框）
+		// 写操作未确认 → 200 + 需确认标记（前端据此弹确认框），记审计（blocked）
 		if _, ok := err.(*dbWriteConfirmError); ok {
+			writeAudit("blocked", "写操作未二次确认被拦截")
 			writeJSON(w, http.StatusOK, map[string]any{"need_confirm": true, "error": err.Error()})
 			return
 		}
+		writeAudit("error", err.Error())
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
+	writeAudit("ok", "")
 	writeJSON(w, http.StatusOK, result)
+}
+
+// appendAuditLog 追加审计日志（authSvc 未启用时静默跳过）。
+func (s *Server) appendAuditLog(al *auth.AdminAuditLog) {
+	if s.authSvc == nil {
+		return
+	}
+	_ = s.authSvc.Store().AppendAuditLog(al)
 }

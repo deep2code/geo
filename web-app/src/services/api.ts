@@ -48,7 +48,8 @@ import type {
   ExternalSubmissionsResponse,
   AuthLoginResponse,
   AIBotVisitsReport,
-  DBExecResult
+  DBExecResult,
+  AdminAuditLogEntry
 } from '@/types/api'
 
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
@@ -458,6 +459,14 @@ export const api = {
 
   // 管理员后台
   admin: {
+    // 审计日志（管理员操作留痕：登录/登出/SQL 执行等）
+    auditLog: (params?: { action?: string; limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.action) qs.set('action', params.action)
+      if (params?.limit) qs.set('limit', String(params.limit))
+      if (params?.offset) qs.set('offset', String(params.offset))
+      return request<AdminAuditLogEntry[]>(`/auth/admin/audit?${qs.toString()}`, { method: 'GET' })
+    },
     // 租户列表（支持状态/套餐/分页过滤）
     tenants: (params?: { status?: string; plan?: string; page?: number; limit?: number }) => {
       const qs = new URLSearchParams()

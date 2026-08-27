@@ -10,6 +10,7 @@ import SettingsTab from './SettingsTab'
 import ExternalSubmissions from './ExternalSubmissions'
 import AIBotVisits from './AIBotVisits'
 import DatabaseTab from './DatabaseTab'
+import AuditLogTab from './AuditLogTab'
 import { useAppStore } from '@/store/useAppStore'
 import api, { getApiAuthToken } from '@/services/api'
 import '../Dashboard/Dashboard.scss'
@@ -545,6 +546,11 @@ const Admin: React.FC = () => {
         {/* Tab 8: 数据库管理（SQL 执行，管理员 + 写操作二次确认） */}
         <TabPane tabKey="database" tab={`🗄️ ${t('admin.tabDatabase')}`}>
           <DatabaseTab />
+        </TabPane>
+
+        {/* Tab 9: 审计日志（管理员操作留痕） */}
+        <TabPane tabKey="audit" tab={`📋 ${t('admin.tabAudit')}`}>
+          <AuditLogTab />
         </TabPane>
       </Tabs>
     </div>

@@ -687,7 +687,8 @@
     "extSubError": "分析错误",
     "extSubClose": "关闭",
     "tabAIBots": "AI 爬虫访问",
-    "tabDatabase": "数据库管理"
+    "tabDatabase": "数据库管理",
+    "tabAudit": "审计日志"
   },
   "help": {
     "title": "帮助中心",

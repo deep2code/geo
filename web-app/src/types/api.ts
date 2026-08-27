@@ -868,3 +868,16 @@ export interface DBExecResult {
   need_confirm?: boolean
   error?: string
 }
+
+// 管理员操作审计日志（admin_audit_log）
+export interface AdminAuditLogEntry {
+  id: string
+  timestamp: string
+  actor_id: string
+  actor: string
+  action: string
+  target: string
+  details?: Record<string, string>
+  ip: string
+  user_agent: string
+}
