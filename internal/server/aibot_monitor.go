@@ -116,6 +116,9 @@ func (m *aiBotMonitor) snapshot(limit int) aiBotSummary {
 // handleAIBotVisits GET /api/v1/admin/aibots/visits?limit=20
 // 返回 AI 爬虫访问监控数据（需 Owner/Admin 角色）。
 func (s *Server) handleAIBotVisits(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return

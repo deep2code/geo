@@ -87,6 +87,7 @@ type Client struct {
 	dfsBaseURL string       // DataForSEO 基址，默认 https://api.dataforseo.com/v3
 	ccBaseURL  string       // Common Crawl 索引 API 基址
 	httpClient *http.Client // 30s 超时
+	reportMu   sync.Mutex   // 串行化 FullReport：cost 是实例级累加器，并发调用会互相污染
 	costMu     sync.Mutex
 	cost       float64 // 本次报告累计费用（FullReport 内累加，costMu 保护）
 }
@@ -319,6 +320,10 @@ func (c *Client) FullReport(ctx context.Context, domain string, keywords []strin
 		return nil, fmt.Errorf("域名不能为空")
 	}
 
+	// 串行化：cost 是实例级累加器，两个并发 FullReport 会互相清零/污染费用统计
+	c.reportMu.Lock()
+	defer c.reportMu.Unlock()
+
 	// 重置费用累加器：FullReport 内各方法累加（costMu 保护，并发安全）
 	c.costMu.Lock()
 	c.cost = 0
@@ -428,14 +433,15 @@ func (c *Client) dfsPost(ctx context.Context, path string, payload interface{}) 
 	return t.Result, cost, nil
 }
 
-// backlinksDFS 调用 DataForSEO 反链摘要接口。
+// backlinksDFS 调用 DataForSEO 反链列表接口（/backlinks/backlinks/live，逐条反链；
+// /backlinks/summary/live 只返回聚合指标不含 items，勿混用）。
 func (c *Client) backlinksDFS(ctx context.Context, domain string, limit int) ([]BacklinkInfo, error) {
 	payload := []map[string]interface{}{{
 		"target":   domain,
 		"limit":    limit,
 		"order_by": []string{"domain_from_rank,desc"},
 	}}
-	raw, actualCost, err := c.dfsPost(ctx, "/backlinks/summary/live", payload)
+	raw, actualCost, err := c.dfsPost(ctx, "/backlinks/backlinks/live", payload)
 	if err != nil {
 		return nil, err
 	}

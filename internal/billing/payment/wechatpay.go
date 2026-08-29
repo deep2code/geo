@@ -165,17 +165,21 @@ func (p *WeChatPayProvider) VerifyWebhook(r *http.Request, body []byte) (*Webhoo
 		return nil, fmt.Errorf("wechatpay: 回调时间戳已过期")
 	}
 
-	// 可选：微信平台证书验签（提升安全性；未配置证书时跳过，但记录警告）。
+	// 微信平台证书验签：配置了证书则强制要求签名头并校验。
+	// 此前"Header 缺失即跳过"等于允许攻击者不发 Wechatpay-Signature 绕过验签，
+	// 配合 APIv3 对称密钥泄露即可伪造支付成功回调。
 	if p.platCert != nil {
-		if sig := r.Header.Get("Wechatpay-Signature"); sig != "" {
-			nonce := r.Header.Get("Wechatpay-Nonce")
-			msg := strings.Join([]string{ts, nonce, string(body)}, "\n") + "\n"
-			if !verifyWeChatSignature(msg, sig, p.platCert) {
-				return nil, fmt.Errorf("wechatpay: 平台证书签名校验失败")
-			}
+		sig := r.Header.Get("Wechatpay-Signature")
+		if sig == "" {
+			return nil, fmt.Errorf("wechatpay: 缺少 Wechatpay-Signature 头，拒绝回调")
+		}
+		nonce := r.Header.Get("Wechatpay-Nonce")
+		msg := strings.Join([]string{ts, nonce, string(body)}, "\n") + "\n"
+		if !verifyWeChatSignature(msg, sig, p.platCert) {
+			return nil, fmt.Errorf("wechatpay: 平台证书签名校验失败")
 		}
 	} else {
-		slog.Warn("wechatpay: 未配置平台证书，跳过平台签名校验（生产环境建议配置 GEO_WECHATPAY_PLAT_CERT 以提升安全性）")
+		slog.Warn("wechatpay: 未配置平台证书，跳过平台签名校验（生产环境必须配置 GEO_WXPAY_WECHAT_PUBLIC_CERT）")
 	}
 	var cb struct {
 		Resource struct {

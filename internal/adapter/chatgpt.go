@@ -117,6 +117,9 @@ func (a *ChatGPTAdapter) Query(ctx context.Context, query string) (*models.Engin
 			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
 		}
 		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, nil)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		data, err = a.doPost(ctx, requestURL, raw, nil)
 	}

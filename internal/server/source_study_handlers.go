@@ -34,6 +34,9 @@ func sourceStudyFromRequest(r *http.Request) sourcestudy.StudyFilter {
 //
 // GET /api/v1/admin/engine-sources/top?engine=chatgpt&brand=Acme&days=90&limit=10
 func (s *Server) handleEngineSourcesTop(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
@@ -58,6 +61,9 @@ func (s *Server) handleEngineSourcesTop(w http.ResponseWriter, r *http.Request) 
 //
 // GET /api/v1/admin/engine-sources/trend?engine=chatgpt&domain=zhihu.com&brand=Acme&days=90
 func (s *Server) handleEngineSourcesTrend(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
@@ -82,6 +88,9 @@ func (s *Server) handleEngineSourcesTrend(w http.ResponseWriter, r *http.Request
 //
 // GET /api/v1/admin/engine-sources/compare?brand=Acme&days=90&limit=5
 func (s *Server) handleEngineSourcesCompare(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return

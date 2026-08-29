@@ -26,8 +26,11 @@ import (
 
 // sharedHTTPClient 适配器共享的 HTTP 客户端，统一连接池与超时配置。
 // 替代 http.DefaultClient，避免连接池参数不可控。
+//
+// Timeout 仅为兜底防挂死；实际超时由 doRequest 按 Config.Timeout 叠加到
+// ctx 控制（默认 30s，可配置更长），故兜底值须大于合理配置上限。
 var sharedHTTPClient = &http.Client{
-	Timeout: 60 * time.Second,
+	Timeout: 5 * time.Minute,
 	Transport: &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 20,
@@ -175,7 +178,8 @@ func checkCitationDefault(a Adapter, ctx context.Context, query, targetURL strin
 }
 
 // urlRE 匹配回答文本中的 URL 引用。
-var urlRE = regexp.MustCompile(`https?://[^\s\)\]\"'<>，。；：、]+`)
+// 排除集含中文全角标点（！？）》等），避免中文句末标点被并入 URL 导致匹配失败。
+var urlRE = regexp.MustCompile(`https?://[^\s\)\]\"'<>，。；：、！？）》〉】』」「”“‘’]+`)
 
 // ExtractCitations 从回答文本中提取 URL 引用，返回去重后的引用列表。
 //
@@ -251,7 +255,7 @@ func splitHostPath(rawurl string) (host, path string) {
 // cleanURL 清理 URL 首尾的标点空白（正则可能带入句末标点）。
 func cleanURL(u string) string {
 	u = strings.TrimSpace(u)
-	u = strings.TrimRight(u, ".,;:!?)\"'】〉》」』")
+	u = strings.TrimRight(u, `.,;:!?)"'…，。；：、！？）》〉】』」「”“‘’`)
 	u = strings.TrimRight(u, "/")
 	return u
 }

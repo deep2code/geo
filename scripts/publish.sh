@@ -185,14 +185,21 @@ auto_commit_and_push() {
     info "已推送到 origin/${branch}"
 }
 
-# needs_web 判断前端是否需要重建：dist 缺失/为空，或 web 源码/配置比 dist 新 → 需要。
+# needs_web 判断前端是否需要重建：dist 缺失/为空，或 web 源码/配置/静态资源比 dist 新 → 需要。
 needs_web() {
     local dist="$PROJECT_DIR/internal/server/web/dist/index.html"
     if [[ ! -f "$dist" ]]; then
         return 0
     fi
-    find "$PROJECT_DIR/web-app/src" "$PROJECT_DIR/web-app/package.json" \
-         "$PROJECT_DIR/web-app/vite.config.ts" -newer "$dist" -print -quit 2>/dev/null | grep -q . && return 0
+    # 检查范围：src 源码 + 配置文件 + public 静态资源 + index.html 入口
+    find "$PROJECT_DIR/web-app/src" \
+         "$PROJECT_DIR/web-app/package.json" \
+         "$PROJECT_DIR/web-app/package-lock.json" \
+         "$PROJECT_DIR/web-app/vite.config.ts" \
+         "$PROJECT_DIR/web-app/tsconfig.json" \
+         "$PROJECT_DIR/web-app/index.html" \
+         "$PROJECT_DIR/web-app/public" \
+         -newer "$dist" -print -quit 2>/dev/null | grep -q . && return 0
     return 1
 }
 

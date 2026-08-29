@@ -46,13 +46,15 @@ func LoadDotEnv(path string) error {
 		if key == "" {
 			continue
 		}
-		// 去除行内注释（仅当 # 前有空格或值以引号结束时才安全；简单起见：
-		// 只在 # 前存在空白时截断，避免误伤含 # 的密码）。
-		if idx := strings.Index(value, " #"); idx >= 0 {
-			value = value[:idx]
-		}
 		// 去引号（成对单引号或双引号）
 		value = unquote(value)
+		// 去除行内注释：必须在 unquote 之后进行，且引号包裹的原值不截断，
+		// 否则 "ab #cd" 会被先截成 "ab（引号不成对），密码静默损坏
+		if !isQuoted(line[strings.IndexByte(line, '=')+1:]) {
+			if idx := strings.Index(value, " #"); idx >= 0 {
+				value = strings.TrimRight(value[:idx], " \t")
+			}
+		}
 
 		if os.Getenv(key) == "" {
 			if err := os.Setenv(key, value); err != nil {
@@ -75,6 +77,13 @@ func unquote(v string) string {
 		}
 	}
 	return v
+}
+
+// isQuoted 判断（= 右侧的）原始值是否被成对引号包裹（跳过前导空白）。
+func isQuoted(raw string) bool {
+	raw = strings.TrimLeft(raw, " \t")
+	return len(raw) >= 2 && ((raw[0] == '"' && raw[len(raw)-1] == '"') ||
+		(raw[0] == '\'' && raw[len(raw)-1] == '\''))
 }
 
 // Validate 启动关键配置 fail-fast 校验。

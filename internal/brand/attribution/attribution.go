@@ -13,6 +13,7 @@ package attribution
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -51,10 +52,21 @@ var AIReferrerDomains = []string{
 }
 
 // IsAIReferrer 判断 referrer 是否来自已知 AI 域名。
+//
+// 解析 referrer 的 host 后做等值/子域后缀匹配，避免子串匹配误判：
+// 如 "fishing.bing.com.evil.cn"（攻击域）或 "example.com/?ref=chatgpt.com"（查询串）。
 func IsAIReferrer(referrer string) bool {
 	r := strings.ToLower(strings.TrimSpace(referrer))
+	if r == "" {
+		return false
+	}
+	u, err := url.Parse(r)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	host := u.Hostname()
 	for _, d := range AIReferrerDomains {
-		if strings.Contains(r, d) {
+		if host == d || strings.HasSuffix(host, "."+d) {
 			return true
 		}
 	}
@@ -178,10 +190,12 @@ func (t *Tracker) Compute(ctx context.Context, brandID string, from, to time.Tim
 
 	for _, d := range days {
 		a := byDay[d]
-		vis := visibility[d]
-		// 可归因于 GEO 的增量 = AI 引荐 × 权重 × (可见度/100 弹性)
+		// 可归因于 GEO 的增量 = AI 引荐 × 权重 × (可见度/100 弹性)。
+		// 区分"无可见度数据"（用中性 0.5 兜底）与"实测可见度为 0"（弹性 0，不可归因），
+		// 否则零可见度日的归因反而高于低可见度日，排序完全颠倒。
+		vis, hasVis := visibility[d]
 		elastic := vis / 100
-		if elastic <= 0 {
+		if !hasVis {
 			elastic = 0.5
 		}
 		attributedSessions := int(float64(a.aiSessions) * t.AIAttributionWeight * elastic)

@@ -592,15 +592,18 @@ func matchSingle(part string, val, min, max int) bool {
 
 	// 处理范围 -
 	start, end := min, max
+	sawRange := false
 	for i := 0; i < len(rangePart); i++ {
 		if rangePart[i] == '-' {
 			fmt.Sscanf(rangePart[:i], "%d", &start)
 			fmt.Sscanf(rangePart[i+1:], "%d", &end)
+			sawRange = true
 			break
 		}
 	}
-	// 单个数字
-	if start == min && end == max {
+	// 单个数字（仅当无 '-' 时判断；不能靠 start==min&&end==max 区分，
+	// 否则显式满范围 "0-59" 会被 Sscanf 前缀解析成 0 而坍缩为单点）
+	if !sawRange {
 		var n int
 		if cnt, _ := fmt.Sscanf(rangePart, "%d", &n); cnt == 1 {
 			start, end = n, n

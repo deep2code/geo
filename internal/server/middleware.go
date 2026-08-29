@@ -194,10 +194,12 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 			"/api/v1/pricing/plans": true,
 		},
 	}
+	// withRequestID 必须在 requestLogger 外层：requestLogger 从 ctx 读 request_id，
+	// 若在其外层则持有的 r 不含注入值，日志永远丢失 request_id 字段。
 	return s.recovery(
 		s.withGzip(
-			s.requestLogger(
-				s.withRequestID(
+			s.withRequestID(
+				s.requestLogger(
 					s.rateLimitGlobal(
 						s.withWAF(
 							s.withCSRF(

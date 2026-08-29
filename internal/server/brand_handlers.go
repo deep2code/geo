@@ -23,7 +23,6 @@ import (
 	"my-geo/internal/mail"
 	"my-geo/internal/optimizer/autorewriter"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -193,11 +192,8 @@ func (s *Server) handleBrandReportPDF(w http.ResponseWriter, r *http.Request) {
 	}
 	pdfBytes, err := report.GeneratePDF(r.Context(), htmlOut)
 	if err != nil {
-		// 降级：返回错误 + HTML 报告备用链接
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error": "PDF 渲染失败，建议使用 HTML 报告后在浏览器打印为 PDF：" + err.Error(),
-			"html":  "/api/v1/brand/report/download?brand=" + url.QueryEscape(brandName),
-		})
+		// 降级：返回错误 + HTML 报告备用链接（内部错误细节只进日志，不外泄）
+		writeInternalError(w, err, "PDF 渲染")
 		return
 	}
 	filename := sanitizeFilename(brandName) + "_可见度报告.pdf"
@@ -716,11 +712,7 @@ func (s *Server) handleChinaCheckSearch(w http.ResponseWriter, r *http.Request) 
 	}
 	result, err := cc.Search(r.Context(), q, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"error":     fmt.Sprintf("China-Check 搜索失败: %v", err),
-			"total":     0,
-			"companies": []struct{}{},
-		})
+		writeInternalError(w, err, "China-Check 搜索")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -778,9 +770,7 @@ func (s *Server) handleChinaCheckSnapshot(w http.ResponseWriter, r *http.Request
 	}
 	snap, err := cc.GetSnapshot(r.Context(), companyID, query)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"error": fmt.Sprintf("China-Check snapshot 失败: %v", err),
-		})
+		writeInternalError(w, err, "China-Check snapshot")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -932,21 +922,21 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 解析 action
+	// 解析 action；POST 请求体只解析一次（body 已被消费，import 分支复用下方 postBody）
 	action := ""
+	var postBody struct {
+		Action  string   `json:"action"`
+		Queries []string `json:"queries,omitempty"`
+		Limit   int      `json:"limit,omitempty"`
+	}
 	if r.Method == http.MethodGet {
 		action = strings.ToLower(r.URL.Query().Get("action"))
 		if action == "" {
 			action = "stats"
 		}
 	} else if r.Method == http.MethodPost {
-		var body struct {
-			Action  string   `json:"action"`
-			Queries []string `json:"queries,omitempty"`
-			Limit   int      `json:"limit,omitempty"`
-		}
-		if err := readJSON(r, &body); err == nil {
-			action = strings.ToLower(body.Action)
+		if err := readJSON(r, &postBody); err == nil {
+			action = strings.ToLower(postBody.Action)
 		}
 	} else {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET / POST"})
@@ -983,29 +973,25 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 			"stats":   ca.Stats(),
 		})
 	case "import":
-		// 预热：读取请求中的 queries 列表
-		var body struct {
-			Queries []string `json:"queries"`
-			Limit   int      `json:"limit"`
+		// 预热：复用函数开头已解析的 postBody（body 只能读一次，二次 readJSON 必得空）
+		queries := postBody.Queries
+		limit := postBody.Limit
+		if limit <= 0 {
+			limit = 3
 		}
-		body.Limit = 3
-		if err := readJSON(r, &body); err != nil {
-			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "解析失败: " + err.Error()})
-			return
-		}
-		if len(body.Queries) == 0 {
+		if len(queries) == 0 {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "queries 不能为空"})
 			return
 		}
 		ctx := r.Context()
 		done := 0
 		errors := map[string]string{}
-		for _, q := range body.Queries {
+		for _, q := range queries {
 			q = strings.TrimSpace(q)
 			if q == "" {
 				continue
 			}
-			sr, err := cc.Search(ctx, q, body.Limit)
+			sr, err := cc.Search(ctx, q, limit)
 			if err != nil {
 				errors[q] = err.Error()
 				continue
@@ -1022,7 +1008,7 @@ func (s *Server) handleChinaCheckCache(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"ok":          true,
 			"imported":    done,
-			"total":       len(body.Queries),
+			"total":       len(queries),
 			"errors":      errors,
 			"stats_after": ca.Stats(),
 		})
@@ -1218,6 +1204,10 @@ func (s *Server) handleSchedulerStatus(w http.ResponseWriter, r *http.Request) {
 // handleSchedulerTrigger 手动触发一次指定品牌的定时审计。
 // POST /api/v1/brand/scheduler/trigger  body: {"brand_name": "...", "profile": {...}}
 func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
 	if s.brandEngine == nil {
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "品牌引擎未初始化"})
 		return
@@ -1237,6 +1227,13 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "缺少 brand_name 或 profile.prompts"})
 		return
 	}
+	// 配额校验：与 handleBrandAudit 同口径，防止经此端点绕过套餐限额
+	if !s.checkAuditQuota(r) {
+		writeJSON(w, http.StatusTooManyRequests, ErrorResponse{
+			Error: "本月审计次数已达套餐上限，请升级套餐或下月再试",
+		})
+		return
+	}
 	// 取上一次审计的引擎统计（用于模型分歧告警对比）
 	var prevStats []brand.EngineStats
 	if s.brandEngine.HistoryDB() != nil {
@@ -1253,6 +1250,8 @@ func (s *Server) handleSchedulerTrigger(w http.ResponseWriter, r *http.Request) 
 		writeInternalError(w, err, "")
 		return
 	}
+	// 审计成功，记录用量（与 handleBrandAudit 同口径）
+	s.recordAuditUsage(r)
 	resp := map[string]interface{}{
 		"ok":     true,
 		"report": report,

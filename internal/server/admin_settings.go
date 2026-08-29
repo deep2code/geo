@@ -18,6 +18,11 @@ import (
 
 // handleAdminSettingsList 列出配置项（支持分类过滤与关键字搜索）。
 func (s *Server) handleAdminSettingsList(w http.ResponseWriter, r *http.Request) {
+	// 鉴权：要求 PermManageData（Owner/Admin），与文件头注释及其它 admin 接口一致。
+	// 置于方法分发之前，覆盖 GET 列出与委托给 Update 的 PUT 分支。
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	// /api/v1/admin/settings 同时承载「GET 列出」与「PUT 更新」（文件头注释承诺）。
 	// PUT 委托给 handleAdminSettingsUpdate，避免重复实现；该处理函数此前漏接路由，
 	// 导致管理后台「保存设置」实际返回 405。此处补上接线，消除死代码并修复更新功能。
@@ -74,6 +79,9 @@ func (s *Server) handleAdminSettingsList(w http.ResponseWriter, r *http.Request)
 // secret 类配置传空串或 "********" 表示"保持不变"。
 // 返回是否需重启生效（requires_restart）。
 func (s *Server) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPut {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 PUT"})
 		return
@@ -112,6 +120,9 @@ func (s *Server) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Reques
 //
 // body: {"key":"GEO_LLM_BUDGET_USD"}
 func (s *Server) handleAdminSettingsReset(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return

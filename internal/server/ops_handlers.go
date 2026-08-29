@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"my-geo/internal/config"
 	"my-geo/internal/eval"
 	"my-geo/internal/importer"
+	"my-geo/internal/util"
 	"my-geo/pkg/geo"
 )
 
@@ -116,7 +118,13 @@ func (s *Server) handleRulesValidate(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch {
 	case body.Path != "":
-		rs, err = config.LoadRuleSet(body.Path)
+		// 路径仅允许 config/rules 目录内（防任意文件读取）
+		p, perr := safeRuleSetPath(body.Path)
+		if perr != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: perr.Error()})
+			return
+		}
+		rs, err = config.LoadRuleSet(p)
 	case body.Content != "":
 		rs = &config.RuleSet{}
 		err = json.Unmarshal([]byte(body.Content), rs)
@@ -231,7 +239,7 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 	if format == "json" {
 		b, jerr := eval.RenderJSON(report)
 		if jerr != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "报告渲染失败: " + jerr.Error()})
+			writeInternalError(w, jerr, "报告渲染")
 			return
 		}
 		rendered = string(b)
@@ -249,6 +257,9 @@ func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
 
 // handleOfflineDBImport POST /api/v1/brand/offlinedb/import 上传 JSON 文件导入。
 func (s *Server) handleOfflineDBImport(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
@@ -303,6 +314,9 @@ func (s *Server) handleOfflineDBImport(w http.ResponseWriter, r *http.Request) {
 
 // handleOfflineDBImportGitHub POST /api/v1/brand/offlinedb/import-github 直连下载并导入。
 func (s *Server) handleOfflineDBImportGitHub(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
@@ -313,7 +327,7 @@ func (s *Server) handleOfflineDBImportGitHub(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var body struct {
-		Years    string `json:"years"`    // 逗号分隔，如 2018,2019
+		Years    string `json:"years"`     // 逗号分隔，如 2018,2019
 		Provinces string `json:"provinces"` // 逗号分隔，如 广东,北京
 		BaseURL  string `json:"base_url"`
 		Timeout  int    `json:"timeout_seconds"`
@@ -321,6 +335,17 @@ func (s *Server) handleOfflineDBImportGitHub(w http.ResponseWriter, r *http.Requ
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "请求体解析失败: " + err.Error()})
 		return
+	}
+	// 自定义 base_url 需通过 SSRF 校验：仅 https 公网地址，防止服务端被导向内网
+	if body.BaseURL != "" {
+		if u, uerr := url.Parse(body.BaseURL); uerr != nil || u.Scheme != "https" {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "base_url 仅允许 https 地址"})
+			return
+		}
+		if verr := util.ValidateExternalURL(body.BaseURL); verr != nil {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "base_url 校验失败: " + verr.Error()})
+			return
+		}
 	}
 	years := splitCSV(body.Years)
 	provs := splitCSV(body.Provinces)
@@ -354,16 +379,43 @@ func (s *Server) brandEngineOfflineDB() offlinedb.DB {
 
 // ───────────────────────── 通用小工具 ─────────────────────────
 
-// loadRuleSetFlexible 先按文件路径加载，失败则当作内联 JSON 内容解析。
+// loadRuleSetFlexible 先按文件路径加载（仅限 config/rules 目录内），失败则当作内联 JSON 内容解析。
 func loadRuleSetFlexible(in string) (*config.RuleSet, error) {
-	if rs, err := config.LoadRuleSet(in); err == nil {
-		return rs, nil
+	if p, err := safeRuleSetPath(in); err == nil {
+		if rs, lerr := config.LoadRuleSet(p); lerr == nil {
+			return rs, nil
+		}
 	}
 	rs := &config.RuleSet{}
 	if err := json.Unmarshal([]byte(in), rs); err != nil {
 		return nil, fmt.Errorf("既非有效路径也非合法规则集 JSON: %w", err)
 	}
 	return rs, nil
+}
+
+// safeRuleSetPath 将用户提供的规则集路径约束到 config/rules/ 目录内（防任意文件读取）。
+//
+// 支持 "config/rules/x.json" 与裸文件名 "x.json" 两种写法；
+// 拒绝绝对路径、含 ".." 及指向其它目录的路径。
+func safeRuleSetPath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", fmt.Errorf("路径为空")
+	}
+	if filepath.IsAbs(p) {
+		return "", fmt.Errorf("仅允许 config/rules 目录内的相对路径")
+	}
+	clean := filepath.Clean(p)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("仅允许 config/rules 目录内的相对路径")
+	}
+	if !strings.Contains(clean, string(filepath.Separator)) {
+		return filepath.Join("config", "rules", clean), nil
+	}
+	if want := filepath.Join("config", "rules", filepath.Base(clean)); clean == want {
+		return clean, nil
+	}
+	return "", fmt.Errorf("仅允许 config/rules 目录内的路径")
 }
 
 func splitCSV(s string) []string {

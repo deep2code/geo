@@ -35,6 +35,7 @@ type WebhookEvent struct {
 	OrderID         string // 我方订单 ID
 	ProviderOrderID string
 	Status          string // paid / failed / refunded
+	AmountCents     int64  // 渠道侧实际支付金额（分）；0 表示渠道未提供（跳过金额校验）
 	RawBody         string
 }
 

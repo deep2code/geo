@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"sort"
@@ -130,13 +131,37 @@ func (s *Server) handleBrandAttribution(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "brand_id 不能为空"})
 		return
 	}
-	tracker := attribution.NewTracker(nil) // 流量由请求体提供，无需额外源
+	// 流量由请求体提供：包装成静态 Source 传入，否则 Compute 拉不到任何流量、报告恒为空
+	tracker := attribution.NewTracker(nil)
+	if len(req.Traffic) > 0 {
+		tracker.AddSource(&staticTrafficSource{points: req.Traffic})
+	}
 	rep, err := tracker.Compute(r.Context(), req.BrandID, from, to, req.Visibility)
 	if err != nil {
 		writeInternalError(w, err, "")
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// staticTrafficSource 把请求体内联的流量点包装成 attribution.Source。
+type staticTrafficSource struct {
+	points []attribution.TrafficPoint
+}
+
+func (s *staticTrafficSource) Name() string     { return "request" }
+func (s *staticTrafficSource) Configured() bool { return len(s.points) > 0 }
+
+func (s *staticTrafficSource) Fetch(_ context.Context, from, to time.Time) ([]attribution.TrafficPoint, error) {
+	// Date 为 YYYY-MM-DD 字符串，字典序即时间序；过滤到 [from, to] 区间
+	lo, hi := from.Format("2006-01-02"), to.Format("2006-01-02")
+	out := make([]attribution.TrafficPoint, 0, len(s.points))
+	for _, p := range s.points {
+		if p.Date >= lo && p.Date <= hi {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // ---------- P1-c：买家人设分群测量 ----------

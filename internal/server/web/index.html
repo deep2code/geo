@@ -1951,7 +1951,7 @@ async function detectVertical(profile) {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(profile)
     });
     const d = await r.json();
-    if (d.error) { panel.className = 'empty'; panel.innerHTML = '行业识别失败: ' + d.error; return; }
+    if (d.error) { panel.className = 'empty'; panel.innerHTML = '行业识别失败: ' + escapeHtml(d.error); return; }
     const weights = d.score_weights || {};
     const wRows = Object.entries(weights).map(([k,v]) =>
       `<span style="padding:2px 8px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--text-dim)">${escapeHtml(k)}: ${(v*100).toFixed(0)}%</span>`).join(' ');
@@ -1963,7 +1963,7 @@ async function detectVertical(profile) {
     <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${wRows}</div>`;
   } catch(e) {
     panel.className = 'empty';
-    panel.innerHTML = '行业识别失败: ' + e.message;
+    panel.innerHTML = '行业识别失败: ' + escapeHtml(e.message);
   }
 }
 
@@ -1982,7 +1982,7 @@ async function analyzeTopSource(brandName, results, brandDomain) {
       body:JSON.stringify({brand_name: brandName, results: results, brand_domain: brandDomain})
     });
     const d = await r.json();
-    if (d.error) { panel.className = 'empty'; panel.innerHTML = d.error; return; }
+    if (d.error) { panel.className = 'empty'; panel.innerHTML = escapeHtml(d.error); return; }
     const sources = d.top_sources || [];
     if (sources.length === 0) {
       panel.className = 'empty';
@@ -2003,7 +2003,7 @@ async function analyzeTopSource(brandName, results, brandDomain) {
     <div style="display:flex;flex-direction:column;gap:4px">${rows}</div>`;
   } catch(e) {
     panel.className = 'empty';
-    panel.innerHTML = 'Top Source 分析失败: ' + e.message;
+    panel.innerHTML = 'Top Source 分析失败: ' + escapeHtml(e.message);
   }
 }
 
@@ -2756,7 +2756,7 @@ async function doReadinessCIGate() {
       body:JSON.stringify({url, threshold})
     });
     const d = await r.json();
-    if (d.error) { panel.innerHTML = '<div class="empty">' + d.error + '</div>'; return; }
+    if (d.error) { panel.innerHTML = '<div class="empty">' + escapeHtml(d.error) + '</div>'; return; }
     const passed = d.passed;
     const score = d.score || d.total_score || 0;
     const col = passed ? 'var(--success)' : 'var(--danger)';
@@ -3702,7 +3702,7 @@ function renderBrandList() {
     const score = +b.score||0;
     const g = b.grade || scoreGrade(score);
     return `<tr>
-      <td><b>${escapeHtml(b.name)}</b>${b.aliases&&b.aliases.length?`<div style="color:var(--text-dim);font-size:11px;margin-top:2px">别名: ${b.aliases.slice(0,3).join('、')}</div>`:''}</td>
+      <td><b>${escapeHtml(b.name)}</b>${b.aliases&&b.aliases.length?`<div style="color:var(--text-dim);font-size:11px;margin-top:2px">别名: ${escapeHtml(b.aliases.slice(0,3).join('、'))}</div>`:''}</td>
       <td>${escapeHtml(b.category||'-')}</td>
       <td>${b.domain?`<a href="${escapeHtml(b.domain)}" target="_blank" style="color:var(--primary);font-size:12px">${escapeHtml(b.domain.replace(/^https?:\/\//,''))}</a>`:'-'}</td>
       <td style="font-weight:600;${score?'color:'+gradeColor(score):''}">${score?score.toFixed(1):'-'}</td>

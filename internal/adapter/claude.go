@@ -38,13 +38,27 @@ func (a *ClaudeAdapter) Engine() models.EngineType { return models.EngineClaude 
 // anthropicVersion Anthropic API 版本号。
 const anthropicVersion = "2023-06-01"
 
+// claudeSearchTool Anthropic 服务端联网搜索工具。
+//
+// GA 版要求带日期版本号的 type 与 name 字段：裸 {"type":"web_search"} 会被
+// Messages API 拒绝（400），触发降级导致联网空转。
+type claudeSearchTool struct {
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+// claudeWebSearchTool 返回 Anthropic web_search 工具声明。
+func claudeWebSearchTool() []claudeSearchTool {
+	return []claudeSearchTool{{Type: "web_search_20250305", Name: "web_search"}}
+}
+
 // claudeRequest Anthropic Messages 请求体。
 type claudeRequest struct {
 	Model     string        `json:"model"`
 	MaxTokens int           `json:"max_tokens"`
 	Messages  []chatMessage `json:"messages"`
 	// Tools 联网搜索工具（Anthropic 2025 支持 web_search tool）。
-	Tools []searchTool `json:"tools,omitempty"`
+	Tools []claudeSearchTool `json:"tools,omitempty"`
 }
 
 // claudeResponse Anthropic Messages 响应体。
@@ -102,12 +116,15 @@ func (a *ClaudeAdapter) Query(ctx context.Context, query string) (*models.Engine
 	if a.cfg.WebSearch {
 		// 联网搜索：注入 Anthropic web_search 工具（Claude App 联网行为）。
 		withTools := reqBody
-		withTools.Tools = webSearchTool()
+		withTools.Tools = claudeWebSearchTool()
 		rawTools, err := json.Marshal(withTools)
 		if err != nil {
 			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
 		}
 		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, headers)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		var err error
 		data, err = a.doPost(ctx, requestURL, raw, headers)
@@ -127,9 +144,13 @@ func (a *ClaudeAdapter) Query(ctx context.Context, query string) (*models.Engine
 		return nil, fmt.Errorf("Claude API 错误: %s", resp.Error.Message)
 	}
 
+	// content 为块数组（text / server_tool_use / web_search_tool_result 混排），
+	// 需拼接全部 text 块；只取 Content[0] 在工具块在前时返回空答案
 	answer := ""
-	if len(resp.Content) > 0 {
-		answer = resp.Content[0].Text
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			answer += block.Text
+		}
 	}
 
 	return &models.EngineResponse{

@@ -18,14 +18,25 @@ help: ## 显示帮助信息
 	@awk 'BEGIN {FS = ":.*##"; printf "用法:\n  make \033[36m<target>\033[0m\n\n目标:\n"} \
 	/^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
+.PHONY: web-build
+web-build: ## 构建前端 SPA 到 internal/server/web/dist（go:embed 读取）
+	@cd web-app && npm ci && npm run build
+	@echo "✓ 前端构建完成 → internal/server/web/dist"
+
 .PHONY: build
-build: ## 编译二进制到 bin/$(BINARY)
+build: ## 编译二进制到 bin/$(BINARY)（不含前端；如需含前端用 build-full）
 	@mkdir -p bin
 	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(MAIN_PKG)
 	@echo "✓ 已构建 bin/$(BINARY)"
 
+.PHONY: build-full
+build-full: web-build ## 一键构建前端 SPA + Go 二进制（产物含嵌入前端）
+	@mkdir -p bin
+	go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o bin/$(BINARY) $(MAIN_PKG)
+	@echo "✓ 全量构建完成（前端 + 后端）→ bin/$(BINARY)"
+
 .PHONY: build-all
-build-all: ## 交叉编译多平台二进制到 bin/
+build-all: web-build ## 交叉编译多平台二进制到 bin/（先构建前端，确保 embed 产物存在）
 	@mkdir -p bin
 	@for osarch in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
 		os=$${osarch%/*}; arch=$${osarch#*/}; \
@@ -61,9 +72,9 @@ tidy: ## 整理依赖
 	go mod tidy
 
 .PHONY: clean
-clean: ## 清理构建产物
-	rm -rf bin/ dist/
-	@echo "✓ 已清理"
+clean: ## 清理构建产物（bin/ dist/ build/）
+	rm -rf bin/ dist/ build/
+	@echo "✓ 已清理 bin/ dist/ build/"
 
 .PHONY: docker-build
 docker-build: ## 构建 Docker 镜像
@@ -87,7 +98,7 @@ install: ## 安装到 GOBIN
 	go install $(GOFLAGS) -ldflags "$(LDFLAGS)" $(MAIN_PKG)
 
 .PHONY: release
-release: build-all ## 打包发布产物到 dist/
+release: build-all ## 打包发布产物到 dist/（含前端构建 → 交叉编译 → tar.gz 归档）
 	@mkdir -p dist
 	@for f in bin/$(BINARY)-*; do \
 		osarch=$$(basename $$f | sed 's/$(BINARY)-//'); \

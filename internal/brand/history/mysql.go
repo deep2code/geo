@@ -42,10 +42,10 @@ func Open(path string) (Store, error) {
 		sqldb.Close()
 		return nil, fmt.Errorf("history: MySQL ping 失败: %w", err)
 	}
-	if _, err := sqldb.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"); err != nil {
-		sqldb.Close()
-		return nil, fmt.Errorf("history: MySQL 初始化会话失败: %w", err)
-	}
+	// 字符集/时区等由 NormalizeMySQLDSN 注入的 DSN 参数保证（charset=utf8mb4 作用于
+	// 连接池每个新连接）。此前这里的 SET NAMES/sql_mode 只作用于当时借到的单个连接，
+	// 其余连接用服务器默认值，属误导性初始化，已删除；sql_mode 由 deploy/initdb 的
+	// schema/服务器配置统一设定。
 	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 	return &mysqlStore{path: dsn, db: sqldb}, nil
 }
@@ -276,6 +276,11 @@ func (d *mysqlStore) GetByID(ctx context.Context, id int64) (*Record, error) {
 		&r.ContentGaps, &r.CompetitorCount, &r.NegativeCount, &r.ActionCount,
 		&reportJSON)
 	if err != nil {
+		// 与 Latest 一致：记录不存在返回 (nil, nil)，让上层走"审计记录不存在"分支
+		// 而非把 sql.ErrNoRows 当内部错误抛出（会导致 500 而非 404）
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("history/mysql: GetByID 失败: %w", err)
 	}
 	r.ReportJSON = reportJSON.String
@@ -407,19 +412,23 @@ func (d *mysqlStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, 
 	cutoffEnd := now.AddDate(0, 0, 1).Unix()
 
 	// 关键优化：把"每行一次网络往返 + Go 层按天 map 聚合"改为服务端 GROUP BY 聚合：
-	//   SELECT DATE(FROM_UNIXTIME(generated_at)) day, COUNT(*), AVG(score)
+	//   SELECT (generated_at + tz_offset) DIV 86400 dayidx, COUNT(*), AVG(score)
 	//   WHERE generated_at BETWEEN [start, end) AND workspace_id=?
-	//   GROUP BY day
+	//   GROUP BY dayidx
 	// 网络传输从 O(N 审计行) 降到 O(days)，典型 30 天查询只需扫描 <=30 行结果。
+	// 分桶用整数天序号（epoch+本地时区偏移 再除 86400），完全独立于 MySQL
+	// 会话时区，避免 DATE(FROM_UNIXTIME()) 按 MySQL time_zone 分桶与 Go 侧
+	// 本地时区桶错位、边界记录被静默丢弃。
+	_, tzOffset := now.Zone()
 	q := `
 		SELECT
-			DATE(FROM_UNIXTIME(generated_at)) AS day,
+			(generated_at + ?) DIV 86400 AS dayidx,
 			COUNT(*) AS cnt,
 			IFNULL(AVG(score), -1) AS avg_score
 		FROM audit_history
 		WHERE generated_at >= ? AND generated_at < ?` + wsClause + `
-		GROUP BY day`
-	args := []interface{}{cutoffStart, cutoffEnd}
+		GROUP BY dayidx`
+	args := []interface{}{int64(tzOffset), cutoffStart, cutoffEnd}
 	if wsArg != nil {
 		args = append(args, wsArg)
 	}
@@ -430,12 +439,14 @@ func (d *mysqlStore) DailyCounts(ctx context.Context, days int) ([]DailyBucket, 
 	defer rows.Close()
 
 	for rows.Next() {
-		var date string
+		var dayIdx int64
 		var count int64
 		var avgScore float64
-		if err := rows.Scan(&date, &count, &avgScore); err != nil {
+		if err := rows.Scan(&dayIdx, &count, &avgScore); err != nil {
 			return nil, fmt.Errorf("history/mysql: DailyCounts 扫描失败: %w", err)
 		}
+		// dayIdx*86400 - tzOffset = 本地当天 00:00 的 epoch；按 UTC 取墙上日期即本地日期
+		date := time.Unix(dayIdx*86400, 0).UTC().Format("2006-01-02")
 		if i, ok := keyMap[date]; ok {
 			out[i].Count = count
 			if count > 0 {

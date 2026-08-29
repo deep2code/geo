@@ -169,6 +169,7 @@ func Audit(ctx context.Context, rawURL string) (*AuditResult, error) {
 	// 并发执行 4 类检查
 	var wg sync.WaitGroup
 	var robotsTxt string
+	var robotsUnreachable bool
 	var botResults []BotCheckResult
 	var schemaChk SchemaCheck
 	var llmsChk LlmsTxtCheck
@@ -178,8 +179,8 @@ func Audit(ctx context.Context, rawURL string) (*AuditResult, error) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		robotsTxt = fetchRobotsTxt(ctx, baseURL)
-		botResults = checkBots(robotsTxt)
+		robotsTxt, robotsUnreachable = fetchRobotsTxt(ctx, baseURL)
+		botResults = checkBotsEx(robotsTxt, robotsUnreachable)
 	}()
 
 	// 2. 主页 schema 检查
@@ -223,10 +224,13 @@ func Audit(ctx context.Context, rawURL string) (*AuditResult, error) {
 }
 
 // fetchRobotsTxt 获取 robots.txt 内容。
-func fetchRobotsTxt(ctx context.Context, baseURL string) string {
+//
+// 三态：200 返回内容；404/410 返回 ""（无文件，按无规则处理）；
+// 5xx / 网络错误返回 unreachable=true（RFC 9309 保守语义：视为全禁而非全允许）。
+func fetchRobotsTxt(ctx context.Context, baseURL string) (content string, unreachable bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/robots.txt", nil)
 	if err != nil {
-		return ""
+		return "", true
 	}
 	req.Header.Set("User-Agent", util.MyGEOUserAgent)
 	u, _ := url.Parse(baseURL)
@@ -235,22 +239,42 @@ func fetchRobotsTxt(ctx context.Context, baseURL string) string {
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return ""
+		return "", true
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return ""
+	switch {
+	case resp.StatusCode == http.StatusOK:
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone:
+		return "", false
+	default:
+		// 403 / 5xx 等：服务器存在但拒绝提供，保守视为不可达
+		return "", true
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 	if err != nil {
-		return ""
+		return "", true
 	}
-	return string(data)
+	return string(data), false
 }
 
 // checkBots 解析 robots.txt，判断每个 AI 爬虫是否被允许。
 func checkBots(robotsTxt string) []BotCheckResult {
+	return checkBotsEx(robotsTxt, false)
+}
+
+// checkBotsEx 同 checkBots，额外处理 robots.txt 不可达（5xx/网络错误）场景：
+// RFC 9309 / Google 保守语义 —— 不可达时视为全禁，而非误判"全部允许"。
+func checkBotsEx(robotsTxt string, unreachable bool) []BotCheckResult {
 	results := make([]BotCheckResult, 0, len(AIBots))
+	if unreachable {
+		for _, bot := range AIBots {
+			results = append(results, BotCheckResult{
+				Bot: bot, Allowed: false, RuleType: "unreachable",
+				Evidence: "robots.txt 不可达（服务器错误或网络故障），按保守策略视为禁止",
+			})
+		}
+		return results
+	}
 	if robotsTxt == "" {
 		// 无 robots.txt：默认全部允许
 		for _, bot := range AIBots {
@@ -304,9 +328,13 @@ func checkBots(robotsTxt string) []BotCheckResult {
 }
 
 // parseRobots 解析 robots.txt 为 map[useragent-lower] -> []disallow-path。
+//
+// RFC 9309：连续多条 User-agent 行属于同一组，共享该组后续的 Disallow/Allow
+// （最常见写法 "User-agent: GPTBot\nUser-agent: OAI-SearchBot\nDisallow: /"）。
 func parseRobots(txt string) map[string][]string {
 	rules := map[string][]string{}
-	var currentAgent string
+	var group []string // 当前组内的所有 agent
+	sawRule := false   // 当前组内是否已出现规则行（出现后再遇 User-agent 即开新组）
 	for _, line := range strings.Split(txt, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -324,16 +352,23 @@ func parseRobots(txt string) map[string][]string {
 		val := strings.TrimSpace(parts[1])
 		switch key {
 		case "user-agent":
-			currentAgent = strings.ToLower(val)
-			if _, ok := rules[currentAgent]; !ok {
-				rules[currentAgent] = []string{}
+			if sawRule {
+				group = nil
+				sawRule = false
 			}
+			a := strings.ToLower(val)
+			if _, ok := rules[a]; !ok {
+				rules[a] = []string{}
+			}
+			group = append(group, a)
 		case "disallow":
-			if currentAgent != "" {
-				rules[currentAgent] = append(rules[currentAgent], val)
+			sawRule = true
+			for _, a := range group {
+				rules[a] = append(rules[a], val)
 			}
 		case "allow":
 			// Allow 规则记录但不影响判断（简化处理）
+			sawRule = true
 		}
 	}
 	return rules
@@ -430,24 +465,43 @@ func checkLlmsTxt(ctx context.Context, baseURL string) LlmsTxtCheck {
 
 // checkKnowledgeGraph 检查品牌在知识图谱中的存在性。
 // 用 HTTP 查询各知识库的搜索 API，brand 作为关键词。
+// 注意：这些 API 对"无结果"同样返回 200 + 空 JSON，必须解析响应体判断。
 func checkKnowledgeGraph(ctx context.Context, brand string) KnowledgeGraphCheck {
 	chk := KnowledgeGraphCheck{}
 	if brand == "" {
 		return chk
 	}
-	// Wikidata
-	chk.Wikidata = checkURL(ctx, "https://www.wikidata.org/w/api.php?action=wbsearchentities&search="+url.QueryEscape(brand)+"&language=en&format=json&limit=1")
-	// Wikipedia EN
-	chk.WikipediaEN = checkURL(ctx, "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="+url.QueryEscape(brand)+"&format=json&srlimit=1")
+	// Wikidata：wbsearchentities → {"search":[...]}
+	chk.Wikidata = checkSearchAPI(ctx,
+		"https://www.wikidata.org/w/api.php?action=wbsearchentities&search="+url.QueryEscape(brand)+"&language=en&format=json&limit=1",
+		func(r map[string]any) bool { return arrayNonEmpty(r, "search") })
+	// Wikipedia EN：list=search → {"query":{"search":[...]}}
+	chk.WikipediaEN = checkSearchAPI(ctx,
+		"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch="+url.QueryEscape(brand)+"&format=json&srlimit=1",
+		func(r map[string]any) bool { return arrayNonEmpty(r, "query", "search") })
 	// Wikipedia ZH
-	chk.WikipediaZH = checkURL(ctx, "https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch="+url.QueryEscape(brand)+"&format=json&srlimit=1")
-	// 百度百科
-	chk.BaiduBaike = checkURL(ctx, "https://baike.baidu.com/api/openapi/BaikeLemmaCardApi?scope=103&format=json&appid=379020&bk_key="+url.QueryEscape(brand)+"&bk_length=600")
+	chk.WikipediaZH = checkSearchAPI(ctx,
+		"https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch="+url.QueryEscape(brand)+"&format=json&srlimit=1",
+		func(r map[string]any) bool { return arrayNonEmpty(r, "query", "search") })
+	// 百度百科：无结果时返回空对象/ errorCode；有结果时含 title/key
+	chk.BaiduBaike = checkSearchAPI(ctx,
+		"https://baike.baidu.com/api/openapi/BaikeLemmaCardApi?scope=103&format=json&appid=379020&bk_key="+url.QueryEscape(brand)+"&bk_length=600",
+		func(r map[string]any) bool {
+			if _, bad := r["errorCode"]; bad {
+				return false
+			}
+			t, _ := r["title"].(string)
+			if strings.TrimSpace(t) != "" {
+				return true
+			}
+			k, _ := r["key"].(string)
+			return strings.TrimSpace(k) != ""
+		})
 	return chk
 }
 
-// checkURL 检查 URL 是否返回有效响应（存在对应词条）。
-func checkURL(ctx context.Context, rawURL string) bool {
+// checkSearchAPI 请求搜索 API 并按 hasResult 判断响应是否含有效结果。
+func checkSearchAPI(ctx context.Context, rawURL string, hasResult func(root map[string]any) bool) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return false
@@ -461,8 +515,31 @@ func checkURL(ctx context.Context, rawURL string) bool {
 		return false
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode == 200
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var root map[string]any
+	if err := json.Unmarshal(body, &root); err != nil {
+		return false
+	}
+	return hasResult(root)
+}
+
+// arrayNonEmpty 按 path 取嵌套数组并判断非空。
+func arrayNonEmpty(root map[string]any, path ...string) bool {
+	var cur any = root
+	for _, k := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return false
+		}
+		if cur, ok = m[k]; !ok {
+			return false
+		}
+	}
+	arr, ok := cur.([]any)
+	return ok && len(arr) > 0
 }
 
 // fetchPage 获取页面 HTML/文本内容。

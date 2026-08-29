@@ -206,18 +206,29 @@ func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
 	return k, nil
 }
 
-// parseRSAPublicKey 解析 PKIX PEM 公钥。
+// parseRSAPublicKey 解析 PKIX PEM 公钥或 X.509 证书（微信平台证书为
+// -----BEGIN CERTIFICATE----- 形式，需先解析证书再取其公钥）。
 func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
 	pemStr = normalizePEM(pemStr)
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("alipay: 公钥 PEM 解析失败")
 	}
-	keyIface, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("alipay: 公钥解析失败: %w", err)
+	var pubAny any
+	if block.Type == "CERTIFICATE" {
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("证书解析失败: %w", err)
+		}
+		pubAny = cert.PublicKey
+	} else {
+		var err error
+		pubAny, err = x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("alipay: 公钥解析失败: %w", err)
+		}
 	}
-	k, ok := keyIface.(*rsa.PublicKey)
+	k, ok := pubAny.(*rsa.PublicKey)
 	if !ok {
 		return nil, fmt.Errorf("alipay: 公钥非 RSA")
 	}

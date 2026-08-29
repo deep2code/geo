@@ -129,8 +129,11 @@ func (a *WebUIAdapter) LastComparisonReport() *ComparisonReport {
 
 // Query 查询引擎，根据当前模式选择 WebUI 捕获或 API 委托。
 func (a *WebUIAdapter) Query(ctx context.Context, query string) (*models.EngineResponse, error) {
-	// 对比模式：同时调用 API 与 WebUI 并比较
-	if a.compareMode {
+	// 对比模式：同时调用 API 与 WebUI 并比较（compareMode 有并发写，加锁读）
+	a.mu.Lock()
+	compareMode := a.compareMode
+	a.mu.Unlock()
+	if compareMode {
 		return a.queryWithComparison(ctx, query)
 	}
 
@@ -257,6 +260,14 @@ func webUIResultToResponse(engine models.EngineType, r *WebUIResult) *models.Eng
 // 任一阈值未达标记入 Differences，全部达标则 Consistent 为 true。
 func CompareResults(apiResp, webUIResp *models.EngineResponse) *ComparisonReport {
 	report := &ComparisonReport{}
+
+	// nil 归一化：对比模式下一侧失败时可能传入 nil，避免后续解引用 panic
+	if apiResp == nil {
+		apiResp = &models.EngineResponse{}
+	}
+	if webUIResp == nil {
+		webUIResp = &models.EngineResponse{}
+	}
 
 	apiScore := scoreResponse(apiResp)
 	uiScore := scoreResponse(webUIResp)

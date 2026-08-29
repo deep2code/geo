@@ -216,10 +216,14 @@ func (c *jsonlStore) set(key string, value json.RawMessage) error {
 	c.mu.Lock()
 	c.items[key] = entry
 	overLimit := len(c.items) - c.maxItems
+	// 持锁写文件：与 evictOldAndCompact（持锁写临时文件并 rename）互斥。
+	// 若在锁外 append，并发 compact 的 rename 会把本条写进的旧 inode 替换掉，
+	// 导致该条目重启后从磁盘丢失。
+	appendErr := c.appendEntry(entry)
 	c.mu.Unlock()
 
-	if err := c.appendEntry(entry); err != nil {
-		return fmt.Errorf("chinacheck/jsonl 落盘失败: %w", err)
+	if appendErr != nil {
+		return fmt.Errorf("chinacheck/jsonl 落盘失败: %w", appendErr)
 	}
 	if overLimit > 0 {
 		if err := c.evictOldAndCompact(overLimit); err != nil {

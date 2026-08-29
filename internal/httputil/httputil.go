@@ -169,10 +169,14 @@ func ClientIP(r *http.Request) string {
 
 // PageLimit 解析 page/limit 分页参数（page 1-based）。
 // 非法或缺失回落默认；limit 超过 maxLimit 截断（maxLimit<=0 不截断）。
+// page 设上限防止 (page-1)*limit 整型溢出为负导致切片越界 panic。
 func PageLimit(r *http.Request, defaultLimit, maxLimit int) (page, limit int) {
 	page = atoiDefault(r.URL.Query().Get("page"), 1)
 	if page < 1 {
 		page = 1
+	}
+	if page > 1_000_000 {
+		page = 1_000_000
 	}
 	limit = atoiDefault(r.URL.Query().Get("limit"), defaultLimit)
 	if limit < 1 {

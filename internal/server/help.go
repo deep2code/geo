@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"my-geo/internal/auth"
 )
 
 // HelpArticle 帮助文章。
@@ -32,9 +34,10 @@ type OnboardingStep struct {
 var helpArticles []HelpArticle
 
 // 新手引导完成状态（内存存储，进程重启清空）。
+// 按工作区隔离：全局共享会导致任一用户完成引导后所有用户都显示"已完成"。
 var (
 	onboardingMu   sync.Mutex
-	onboardingDone = map[int]bool{}
+	onboardingDone = map[string]map[int]bool{} // workspaceID -> step -> done
 )
 
 func init() {
@@ -280,10 +283,12 @@ func (s *Server) handleHelpOnboarding(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
+	ws := s.onboardingScope(r)
 	onboardingMu.Lock()
+	done := onboardingDone[ws]
 	steps := make([]OnboardingStep, len(onboardingSteps))
 	for i, st := range onboardingSteps {
-		st.Completed = onboardingDone[st.Step]
+		st.Completed = done[st.Step]
 		steps[i] = st
 	}
 	onboardingMu.Unlock()
@@ -321,11 +326,23 @@ func (s *Server) handleHelpOnboardingComplete(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
+	ws := s.onboardingScope(r)
 	onboardingMu.Lock()
-	onboardingDone[body.Step] = true
+	if onboardingDone[ws] == nil {
+		onboardingDone[ws] = map[int]bool{}
+	}
+	onboardingDone[ws][body.Step] = true
 	onboardingMu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,
 		"step": body.Step,
 	})
+}
+
+// onboardingScope 引导状态的隔离维度：启用账号体系时按工作区，匿名共享匿名桶。
+func (s *Server) onboardingScope(r *http.Request) string {
+	if s.authSvc != nil && s.authSvc.Enabled() {
+		return auth.WorkspaceIDFromContext(r.Context())
+	}
+	return ""
 }

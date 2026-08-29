@@ -33,6 +33,8 @@ type Candidate struct {
 	LegalRepresentative string `json:"legal_representative,omitempty"`
 	// 注册资本
 	Capital string `json:"capital,omitempty"`
+	// 成立日期（离线工商库 RegistrationDay）
+	EstablishedDate string `json:"established_date,omitempty"`
 	// 经营范围
 	BusinessScope string `json:"business_scope,omitempty"`
 	// 省份
@@ -115,6 +117,7 @@ func Discover(ctx context.Context, keyword string, offlineDB offlinedb.DB, kb *k
 					CreditCode:          c.Code,
 					LegalRepresentative: c.LegalRepresentative,
 					Capital:             c.Capital,
+					EstablishedDate:     c.RegistrationDay,
 					BusinessScope:       c.BusinessScope,
 					Province:            c.Province,
 					City:                c.City,
@@ -179,7 +182,7 @@ func BuildProfile(cand *Candidate, keyword string) brand.BrandProfile {
 			RegisteredCapital:   cand.Capital,
 			BusinessScope:       cand.BusinessScope,
 			Province:            cand.Province,
-			EstablishedDate:     cand.Capital, // 临时，实际应从注册日期字段取
+			EstablishedDate:     cand.EstablishedDate,
 		}
 	}
 
@@ -334,10 +337,12 @@ func generateSuggestions(report *GEOReport) []string {
 //
 // 例如："腾讯科技（深圳）有限公司" → "腾讯"
 func extractShortName(fullName string) string {
-	// 去除常见公司后缀
+	// 去除常见公司后缀。注意更长的后缀必须排在前面：
+	// "股份有限公司" 以 "有限公司" 结尾，若先裁短后缀会把长后缀裁成 "股份" 残留
 	suffixes := []string{
-		"有限公司", "股份有限公司", "有限责任公司",
-		"科技有限公司", "技术有限公司", "集团有限公司",
+		"股份有限公司", "有限责任公司", "集团有限公司",
+		"科技有限公司", "技术有限公司",
+		"有限公司",
 	}
 	name := fullName
 	for _, s := range suffixes {

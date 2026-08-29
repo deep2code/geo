@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"my-geo/internal/models"
 )
@@ -47,15 +48,19 @@ func (a *DeepSeekAdapter) Query(ctx context.Context, query string) (*models.Engi
 		if resp, err := a.queryResponses(ctx, query); err == nil {
 			return resp, nil
 		} else {
-			_ = err // 降级：Chat Completions 无网查询
+			// 降级：Chat Completions 无网查询。记录原因便于定位联网为何未生效（key 失效/模型不支持等）。
+			slog.Warn("DeepSeek Responses 联网查询失败，降级无网查询", "error", err)
 		}
 	}
 	return a.queryOpenAICompatible(ctx, query, "/v1/chat/completions")
 }
 
 // CheckCitation 查询 DeepSeek 并返回引用了 targetURL 的引用列表。
+//
+// 与 Query 同口径：联网开启时走 Responses API（checkCitationDefault 内部调用 Query），
+// 避免引用检测绕过联网路径造成漏报。
 func (a *DeepSeekAdapter) CheckCitation(ctx context.Context, query, targetURL string) ([]models.Citation, error) {
-	return a.checkCitationCompat(ctx, query, targetURL, "/v1/chat/completions")
+	return checkCitationDefault(a, ctx, query, targetURL)
 }
 
 // ---------- Responses API（2026：服务端 web_search）----------

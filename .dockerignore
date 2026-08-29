@@ -1,6 +1,7 @@
 # 构建产物
 bin/
 dist/
+build/
 
 # 本地环境与依赖
 .env
@@ -11,6 +12,8 @@ dist/
 web-app/node_modules/
 web-app/dist/
 web-app/.vite/
+web-app/dist-tsc-node/
+web-app/*.tsbuildinfo
 
 # Git
 .git

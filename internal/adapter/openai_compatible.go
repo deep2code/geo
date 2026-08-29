@@ -68,6 +68,9 @@ func (a *openAICompatibleAdapter) queryOpenAICompatible(ctx context.Context, que
 			return nil, fmt.Errorf("序列化带搜索工具请求体失败: %w", err)
 		}
 		data, err = a.doPostWithSearchFallback(ctx, requestURL, rawTools, raw, nil)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		data, err = a.doPost(ctx, requestURL, raw, nil)
 	}

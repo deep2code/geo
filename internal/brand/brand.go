@@ -773,7 +773,9 @@ func (e *Engine) Autocomplete(ctx context.Context, brandName string) (*Autocompl
 	var ccSource string
 	var ccSnap *chinacheck.Snapshot
 	if e.chinaCheck != nil {
-		if snap, err := enrichWithChinaCheck(ctx, e.chinaCheck, brandName, kbCandidate); err == nil && snap != nil {
+		// snap.Snapshot 可为 nil（查不到公司时的空快照也走 err==nil 返回并写负缓存），
+		// 需一并判空，否则下方 ccSnap 字段访问 panic
+		if snap, err := enrichWithChinaCheck(ctx, e.chinaCheck, brandName, kbCandidate); err == nil && snap != nil && snap.Snapshot != nil {
 			ccSnap = snap.Snapshot
 			ccSource = fmt.Sprintf("工商核验信息（国家企业信用信息公示系统 / SAMR，经由 China-Check MCP 查询）：%s（登记状态：%s），统一社会信用代码 %s，成立 %s，注册资本 %s，行业 %s，注册地址 %s",
 				firstNonEmpty(ccSnap.CompanyName, brandName),

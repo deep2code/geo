@@ -73,10 +73,11 @@ func (f *FallbackAdapter) Query(ctx context.Context, query string) (*models.Engi
 		if cached, ok := f.getCached(query); ok {
 			slog.Info("adapter fallback hit", slog.String("engine", string(f.Engine())),
 				slog.String("cached_at", cachedTime(cached).Format(time.RFC3339)))
-			// 在 Answer 前缀标注降级来源
+			// 在 Answer 前缀标注降级来源；Citations 深拷贝，避免调用方修改污染缓存
 			cachedCopy := *cached
 			cachedCopy.Answer = fmt.Sprintf("[降级缓存] 外部引擎暂时不可用，以下为缓存结果（%s）：\n\n%s",
 				f.Engine(), cached.Answer)
+			cachedCopy.Citations = append([]models.Citation(nil), cached.Citations...)
 			return &cachedCopy, nil
 		}
 		return nil, err
@@ -155,9 +156,20 @@ func (f *FallbackAdapter) setCached(query string, resp *models.EngineResponse) {
 	}
 
 	f.cache[key] = fallbackCacheEntry{
-		resp:      resp,
+		// 深拷贝后入缓存：调用方持有的原 resp 被修改（append/原地写）时缓存条目不受污染
+		resp: cloneEngineResponse(resp),
 		createdAt: time.Now(),
 	}
+}
+
+// cloneEngineResponse 深拷贝 EngineResponse（Citations 底层数组独立）。
+func cloneEngineResponse(resp *models.EngineResponse) *models.EngineResponse {
+	if resp == nil {
+		return nil
+	}
+	cp := *resp
+	cp.Citations = append([]models.Citation(nil), resp.Citations...)
+	return &cp
 }
 
 // CacheStats 缓存统计信息。

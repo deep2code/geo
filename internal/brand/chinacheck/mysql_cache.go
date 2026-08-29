@@ -63,10 +63,8 @@ func newMySQLCache(dsn string, opts ...CacheOption) (*mysqlCacheStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("chinacheck/mysql: ping failed: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, "SET NAMES utf8mb4, sql_mode='STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("chinacheck/mysql: set session failed: %w", err)
-	}
+	// 字符集由 NormalizeMySQLDSN 注入的 DSN 参数保证（作用于连接池每个新连接）。
+	// 此前的 SET NAMES/sql_mode 只作用于单个连接，其余连接用服务器默认值，已删除。
 	// 表结构由 deploy/initdb 初始化（02-schema.sql），应用内不再内嵌 migration。
 	return c, nil
 }
@@ -133,9 +131,6 @@ func (c *mysqlCacheStore) Stats() CacheStats {
 }
 
 func (c *mysqlCacheStore) get(key string) (json.RawMessage, bool) {
-	c.mu.RLock()
-	c.mu.RUnlock()
-
 	var value []byte
 	var expireAt sql.NullInt64
 	err := c.db.QueryRow("SELECT value, expire_at FROM chinacheck_cache WHERE cache_key=?", key).Scan(&value, &expireAt)
@@ -273,6 +268,12 @@ func (c *mysqlCacheStore) compactLocked() error {
 			return err
 		}
 		keys = append(keys, k)
+	}
+	// 迭代中途出错（连接中断等）时 Next() 提前 false 且 keys 不完整，
+	// 必须检查 rows.Err，否则 compact 被静默当作成功，表持续超限不被裁剪
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	if err := rows.Close(); err != nil {
 		return err

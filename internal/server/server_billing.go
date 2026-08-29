@@ -206,6 +206,14 @@ func (s *Server) handleAuditJob(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "任务不存在"})
 		return
 	}
+	// 工作区归属校验（IDOR 防护）：登录场景下仅允许查询本工作区的任务；
+	// 匿名/未启用账号体系时任务 wsID 也为空，放行一致。
+	if s.authSvc != nil && s.authSvc.Enabled() {
+		if ws := auth.WorkspaceIDFromContext(r.Context()); ws != job.WorkspaceID {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "任务不存在"})
+			return
+		}
+	}
 	resp := map[string]any{
 		"job_id":      job.ID,
 		"status":      job.Status,

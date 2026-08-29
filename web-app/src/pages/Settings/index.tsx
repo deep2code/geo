@@ -268,7 +268,7 @@ const Settings: React.FC = () => {
                   <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--text-secondary)', fontSize: 12 }}>
                     <li>独立模式 (standalone)</li>
                     <li>Theme-color 跟随系统深浅色（浅 #6366f1 / 深 #1e1b4b）</li>
-                    <li>多尺寸 PWA 图标（/icons/*）</li>
+                    <li>SVG 矢量图标（favicon.svg, sizes: any）</li>
                   </ul>
                 </div>
               </div>

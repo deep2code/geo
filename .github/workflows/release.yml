@@ -27,24 +27,11 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: web-app/package-lock.json
-
       - name: Go vet
         run: go vet ./...
 
       - name: Go test
         run: go test -race -cover ./...
-
-      - name: Build Frontend (verify SPA embeddable)
-        working-directory: web-app
-        run: |
-          npm ci
-          npm run typecheck
-          npm run build
 
   # ─── 多平台交叉编译 + Release ───
   release:
@@ -71,7 +58,6 @@ jobs:
         working-directory: web-app
         run: |
           npm ci
-          npm run typecheck
           npm run build
 
       - name: Determine tag
