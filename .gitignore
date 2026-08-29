@@ -36,3 +36,5 @@ docs/roadmap.md
 .workbuddy/
 
 .logo-preview/
+
+remote-deploy.sh
