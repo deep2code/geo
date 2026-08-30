@@ -10,9 +10,11 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"my-geo/internal/config"
 )
@@ -127,11 +129,17 @@ func (p *AlipayProvider) VerifyWebhook(r *http.Request, body []byte) (*WebhookEv
 		strings.EqualFold(params["trade_status"], "TRADE_FINISHED") {
 		status = "paid"
 	}
+	// total_amount 为元（两位小数字符串），换算为分做金额一致性校验
+	amountCents := int64(0)
+	if amt, aerr := strconv.ParseFloat(strings.TrimSpace(params["total_amount"]), 64); aerr == nil {
+		amountCents = int64(math.Round(amt * 100))
+	}
 	return &WebhookEvent{
 		Provider:        "alipay",
 		OrderID:         orderID,
 		ProviderOrderID: orderID,
 		Status:          status,
+		AmountCents:     amountCents,
 		RawBody:         string(body),
 	}, nil
 }

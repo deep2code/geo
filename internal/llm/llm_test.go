@@ -113,22 +113,34 @@ func TestRewriteCircuitBreakSkipsProvider(t *testing.T) {
 		t.Fatal("3 次连续失败后应进入熔断")
 	}
 
-	// 熔断期间：仍会尝试 1 次探测请求（探测语义），失败后返回错误
+	// 熔断期间：冷却期未到期，不发起任何上游调用（保护下游），返回错误
 	if _, err := m.Rewrite(context.Background(), "p", "c"); err == nil {
-		t.Fatal("熔断期间探测仍失败，应返回错误")
+		t.Fatal("熔断期间应返回错误")
 	}
-	// 探测调用也应被记录
-	if p.calls.Load() != 4 {
-		t.Fatalf("探测应触发第 4 次调用, got %d", p.calls.Load())
+	// 冷却期内不应有任何调用（第 4 次 Rewrite 不触发上游请求）
+	if p.calls.Load() != 3 {
+		t.Fatalf("冷却期内不应调用 provider, got %d", p.calls.Load())
 	}
 
 	// 熔断状态应保持
 	if !st.isOpen() {
-		t.Fatal("探测失败后熔断应继续")
+		t.Fatal("冷却期内熔断应保持")
 	}
 	// OpenUntil 已设置
 	if st.openUntil.Load() <= 0 {
 		t.Fatal("openUntil 应被设置")
+	}
+
+	// 冷却到期后：放行 1 次探测，探测仍失败则重新进入熔断
+	st.openUntil.Store(time.Now().Add(-time.Second).UnixNano())
+	if _, err := m.Rewrite(context.Background(), "p", "c"); err == nil {
+		t.Fatal("冷却到期后探测仍失败，应返回错误")
+	}
+	if p.calls.Load() != 4 {
+		t.Fatalf("冷却到期后探测应触发第 4 次调用, got %d", p.calls.Load())
+	}
+	if !st.isOpen() {
+		t.Fatal("探测失败后熔断应重新进入")
 	}
 }
 

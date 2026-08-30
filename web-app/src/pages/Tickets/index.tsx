@@ -106,12 +106,16 @@ const Tickets: React.FC = () => {
     setReplyContent('')
     try {
       const res = await api.tickets.detail(ticket.id)
+      // 竞态保护：快速连开两个工单时，慢的旧请求可能后返回，
+      // 只有响应仍属于当前展示的工单才写入
+      if (currentTicketRef.current?.id !== ticket.id) return
       if (res?.replies) {
         setReplies(res.replies)
         return
       }
     } catch {
       // 回退到模拟数据
+      if (currentTicketRef.current?.id !== ticket.id) return
     }
     setReplies(mockReplies[ticket.id] ?? [])
   }

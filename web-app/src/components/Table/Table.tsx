@@ -10,6 +10,8 @@ export interface TableColumn<T> {
   width?: string | number
   align?: 'left' | 'center' | 'right'
   sortable?: boolean
+  /** 排序实际取值的字段；缺省用 dataIndex，再退回 key。 */
+  sortDataIndex?: keyof T
 }
 
 export interface TableProps<T> {
@@ -48,9 +50,14 @@ export function Table<T extends Record<string, any>>({
 
   const sortedData = useMemo(() => {
     if (!sortKey) return dataSource
+    // 排序取值字段：sortDataIndex > dataIndex > key。部分列的 key 只是展示
+    // 标识（如 'sv'/'diff' 或品牌名），直接按 key 取记录字段得到 undefined，
+    // sort 恒返回 0，点击表头排序静默失效。
+    const col = columns.find(c => c.key === sortKey)
+    const field = (col?.sortDataIndex ?? col?.dataIndex ?? sortKey) as keyof T
     const sorted = [...dataSource].sort((a, b) => {
-      const aVal = a[sortKey]
-      const bVal = b[sortKey]
+      const aVal = a[field]
+      const bVal = b[field]
       if (aVal == null && bVal == null) return 0
       if (aVal == null) return 1
       if (bVal == null) return -1
@@ -62,15 +69,18 @@ export function Table<T extends Record<string, any>>({
       return sortOrder === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr)
     })
     return sorted
-  }, [dataSource, sortKey, sortOrder])
+  }, [dataSource, columns, sortKey, sortOrder])
+
+  // dataSource 缩减后当前页可能超出总页数，钳制到有效范围
+  // （否则停留在"第 3/1 页"的空页）
+  const totalPages = pagination ? Math.max(1, Math.ceil(dataSource.length / pageSize)) : 1
+  const effectivePage = Math.min(currentPage, totalPages)
 
   const pagedData = useMemo(() => {
     if (!pagination) return sortedData
-    const start = (currentPage - 1) * pageSize
+    const start = (effectivePage - 1) * pageSize
     return sortedData.slice(start, start + pageSize)
-  }, [sortedData, pagination, currentPage, pageSize])
-
-  const totalPages = pagination ? Math.ceil(dataSource.length / pageSize) : 1
+  }, [sortedData, pagination, effectivePage, pageSize])
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -155,13 +165,13 @@ export function Table<T extends Record<string, any>>({
       {pagination && dataSource.length > 0 && (
         <div className="table-pagination">
           <div className="table-pagination-info">
-            共 {dataSource.length} 条，第 {currentPage}/{totalPages || 1} 页
+            共 {dataSource.length} 条，第 {effectivePage}/{totalPages || 1} 页
           </div>
           <div className="table-pagination-controls">
             <Button
               size="sm"
               variant="secondary"
-              disabled={currentPage <= 1}
+              disabled={effectivePage <= 1}
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             >
               上一页
@@ -169,7 +179,7 @@ export function Table<T extends Record<string, any>>({
             <Button
               size="sm"
               variant="secondary"
-              disabled={currentPage >= totalPages}
+              disabled={effectivePage >= totalPages}
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             >
               下一页

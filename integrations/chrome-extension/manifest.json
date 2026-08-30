@@ -3,7 +3,6 @@
   "name": "GEO CMS Analyzer",
   "version": "1.0.0",
   "description": "GEO 内容质量分析扩展 - 分析页面正文和选中文本的 SEO 质量",
-  "default_locale": "zh_CN",
   "host_permissions": [
     "<all_urls>"
   ],

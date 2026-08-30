@@ -43,16 +43,15 @@ const PageFallback: React.FC = () => (
  * 未登录时重定向到 /admin/login，保留原始路径用于登录后跳回。
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const navigate = useNavigate()
   const location = useLocation()
 
   const token = getApiAuthToken()
   if (!token) {
-    // 未登录：保存当前路径，登录后跳回
+    // 未登录：声明式重定向（渲染期调 navigate() 属于 render 副作用，
+    // 会触发 "Cannot update a component while rendering a different component"）
     const qs = new URLSearchParams()
     qs.set('redirect', `${location.pathname}${location.search}`)
-    navigate(`/admin/login?${qs.toString()}`, { replace: true })
-    return null
+    return <Navigate to={`/admin/login?${qs.toString()}`} replace />
   }
 
   return <>{children}</>

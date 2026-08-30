@@ -357,6 +357,9 @@ func (m *Manager) Rewrite(ctx context.Context, prompt, content string) (string, 
 	}
 	var order []try
 	var fallbackOrder []try // 熔断条目也放在这里，仅当所有正常条目失败后才探测一次
+	// 冷却期内（isOpen）的条目完全不参与本次尝试——否则全故障时每个请求
+	// 仍对每个 open provider 打满 RetryMax+1 次上游调用并阻塞退避时长，
+	// 冷却期既不保护下游也不缩短用户等待。冷却到期后才放行 1 次探测。
 	for _, p := range providers {
 		if !p.Available() {
 			continue
@@ -377,8 +380,15 @@ func (m *Manager) Rewrite(ctx context.Context, prompt, content string) (string, 
 			order = append(order, try{p, st})
 		}
 	}
-	// 先用正常条目；正常条目全部失败，再从熔断条目里逐个"探测"1 次（帮助快速复位）
-	order = append(order, fallbackOrder...)
+	// 先用正常条目；冷却已到期的原熔断条目在尾部按序探测 1 次（帮助快速复位）
+	openSkipped := 0
+	for _, t := range fallbackOrder {
+		if !t.state.isOpen() {
+			order = append(order, t)
+		} else {
+			openSkipped++
+		}
+	}
 
 	opts := m.opts
 	var lastErr error
@@ -412,6 +422,11 @@ func (m *Manager) Rewrite(ctx context.Context, prompt, content string) (string, 
 	}
 	if lastErr != nil {
 		return content, fmt.Errorf("所有 LLM 提供者均失败（已尝试 %d 个），最后错误: %w", tried, lastErr)
+	}
+	// 全部 provider 均处熔断冷却期：明确报错，而非走"无可用 provider 返回原文"
+	// 的静默降级（调用方需要知道失败以便提示/重试）
+	if openSkipped > 0 && tried == 0 {
+		return content, fmt.Errorf("所有 LLM 提供者均处于熔断冷却期（%d 个），请稍后重试", openSkipped)
 	}
 	// 无可用 Provider，返回原文（兼容旧行为）
 	return content, nil

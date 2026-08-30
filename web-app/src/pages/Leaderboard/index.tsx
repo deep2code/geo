@@ -33,6 +33,9 @@ const Leaderboard: React.FC = () => {
       const res = await api.leaderboard(category || undefined, limit)
       setData(res)
     } catch (e: any) {
+      // 请求失败时退回演示数据兜底（此前是每次切换筛选就用随机 mock
+      // 覆盖展示，真实榜单只存活到下一次筛选）
+      setData(generateMockData())
       showToast(e?.message || t('common.operationFailed'), 'error')
     } finally {
       setLoading(false)
@@ -91,8 +94,10 @@ const Leaderboard: React.FC = () => {
     }
   }
 
+  // 切换分类/条数自动拉取真实数据（此前直接用随机 mock 覆盖展示）
   useEffect(() => {
-    setData(generateMockData())
+    fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, limit])
 
   const categoryOptions = data?.categories ?? []

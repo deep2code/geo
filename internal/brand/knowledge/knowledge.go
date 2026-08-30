@@ -281,10 +281,12 @@ func (kb *Knowledge) addIndex(i int, e Entry) {
 			return
 		}
 		kb.index[tok] = append(kb.index[tok], i)
-		// 前缀也加入（支持 prefix 搜索），但限制长度避免爆炸
-		if len(tok) >= 3 {
-			for pl := 3; pl <= len(tok); pl++ {
-				p := tok[:pl]
+		// 前缀也加入（支持 prefix 搜索），但限制长度避免爆炸。
+		// 按 rune 迭代：中文 token 每字 3 字节，按字节切片（tok[:4] 等）会切出
+		// 非法 UTF-8 键——查询侧永远产不出这种键，等于白白膨胀索引。
+		if runes := []rune(tok); len(runes) >= 3 {
+			for pl := 3; pl <= len(runes); pl++ {
+				p := string(runes[:pl])
 				if !containsId(kb.index[p], i) {
 					kb.index[p] = append(kb.index[p], i)
 				}

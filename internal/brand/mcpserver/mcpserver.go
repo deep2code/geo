@@ -257,9 +257,20 @@ func newSessionID() string {
 }
 
 // addSession 记录新 session 并返回 ID。
+//
+// 顺带惰性清扫过期 session：MCP 客户端每次连接都重新 initialize、断开后
+// 不再携带旧 id，若只增不删，长驻进程的 sessions map 会无限增长。
 func (s *Server) addSession() string {
 	id := newSessionID()
 	s.mu.Lock()
+	if len(s.sessions) > 1024 {
+		now := time.Now()
+		for k, last := range s.sessions {
+			if now.Sub(last) > sessionTTL {
+				delete(s.sessions, k)
+			}
+		}
+	}
 	s.sessions[id] = time.Now()
 	s.mu.Unlock()
 	return id

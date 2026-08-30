@@ -297,8 +297,13 @@ func (h HandlerSet) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ev.Status == "paid" {
-		if err := h.Svc.MarkOrderPaidAndActivate(r.Context(), ev.OrderID, ev.ProviderOrderID, ""); err != nil {
-			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		if err := h.Svc.MarkOrderPaidAndActivate(r.Context(), ev.OrderID, ev.ProviderOrderID, "", ev.AmountCents); err != nil {
+			slog.Error("billing: 支付回调激活失败",
+				slog.String("provider", provider),
+				slog.String("order_id", ev.OrderID),
+				slog.Int64("amount_cents", ev.AmountCents),
+				slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "订单激活失败"})
 			return
 		}
 	}

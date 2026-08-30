@@ -156,7 +156,10 @@ func NewLocalTFIDFStore() *LocalTFIDFStore {
 	}
 }
 
-// Add 添加文档到向量存储
+// Add 添加文档到向量存储。
+//
+// 同 ID 已存在时先移除旧条目再写入（覆盖语义）——否则同 ID 重复 Add 会在
+// docs 中追加两份，TF-IDF 检索可能返回旧文本且旧内容永远删不掉。
 func (s *LocalTFIDFStore) Add(id string, text string, metadata map[string]string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,6 +168,21 @@ func (s *LocalTFIDFStore) Add(id string, text string, metadata map[string]string
 	termFreq := make(map[string]int, len(tokens))
 	for _, t := range tokens {
 		termFreq[t]++
+	}
+	// 覆盖语义：先移除同 ID 旧文档（回退其文档频率贡献）
+	for i := range s.docs {
+		if s.docs[i].id != id {
+			continue
+		}
+		for term := range s.docs[i].termFreq {
+			s.docFreq[term]--
+			if s.docFreq[term] <= 0 {
+				delete(s.docFreq, term)
+			}
+		}
+		s.totalDocs--
+		s.docs = append(s.docs[:i], s.docs[i+1:]...)
+		break
 	}
 	// 更新文档频率（每个词在本文档中出现则 +1）
 	for term := range termFreq {

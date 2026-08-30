@@ -198,6 +198,9 @@ func (p *WeChatPayProvider) VerifyWebhook(r *http.Request, body []byte) (*Webhoo
 	var tx struct {
 		OutTradeNo string `json:"out_trade_no"`
 		TradeState string `json:"trade_state"`
+		Amount     struct {
+			Total int64 `json:"total"` // 订单金额（分）
+		} `json:"amount"`
 	}
 	if err := json.Unmarshal(plain, &tx); err != nil {
 		return nil, fmt.Errorf("wechatpay: 解析明文失败: %w", err)
@@ -211,6 +214,7 @@ func (p *WeChatPayProvider) VerifyWebhook(r *http.Request, body []byte) (*Webhoo
 		OrderID:         tx.OutTradeNo,
 		ProviderOrderID: tx.OutTradeNo,
 		Status:          status,
+		AmountCents:     tx.Amount.Total,
 		RawBody:         string(plain),
 	}, nil
 }

@@ -293,17 +293,40 @@ func fallbackAccuracy(brandName string, answer string, facts []Fact) []AccuracyF
 	lower := strings.ToLower(answer)
 	var flags []AccuracyFlag
 	for _, f := range facts {
-		// 极简比对：事实核心名词出现在回答中视为"一致"，否则无法判定（跳过）
-		// 这里仅做最弱的信号：若事实陈述里的品牌名未出现且事实含数字，标 unsupported
-		if strings.Contains(lower, strings.ToLower(brandName)) {
+		// 按注释意图实现弱信号判定：
+		//   - 事实陈述中的数字出现在回答中 → consistent（弱）
+		//   - 事实含数字但回答中找不到该数字 → unsupported（弱）
+		//   - 事实不含数字 → 无法判定，跳过
+		// 此前实现只看品牌名出现与否就给所有事实标 consistent，幻觉回答只要
+		// 提到品牌名就会全部误报"一致"。
+		nums := numberRE.FindAllString(f.Statement, -1)
+		if len(nums) == 0 {
+			continue
+		}
+		allFound := true
+		for _, n := range nums {
+			if !strings.Contains(lower, n) {
+				allFound = false
+				break
+			}
+		}
+		if allFound {
 			flags = append(flags, AccuracyFlag{
 				Type: "consistent", Statement: f.Statement,
-				Detail: "品牌名出现在回答中（弱信号，未做语义比对）", Severity: "low",
+				Detail: "事实数字出现在回答中（弱信号，未做语义比对）", Severity: "low",
+			})
+		} else {
+			flags = append(flags, AccuracyFlag{
+				Type: "unsupported", Statement: f.Statement,
+				Detail: "事实中的数字未出现在回答中（弱信号，未做语义比对）", Severity: "medium",
 			})
 		}
 	}
 	return flags
 }
+
+// numberRE 提取事实陈述中的数字（用于降级路径的弱比对）。
+var numberRE = regexp.MustCompile(`\d+(?:\.\d+)?`)
 
 // ---------- 工具 ----------
 

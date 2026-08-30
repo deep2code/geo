@@ -800,19 +800,27 @@ func parseRobotsBlocked(body string, bots []string) map[string]bool {
 	for _, b := range bots {
 		blocked[b] = false
 	}
+	// RFC 9309：`*` 组仅适用于没有专属组的爬虫——站点写
+	// "User-agent: GPTBot\nDisallow:\n\nUser-agent: *\nDisallow: /" 时
+	// GPTBot 只用自己组（放行），不能被 * 组覆盖成屏蔽。
+	explicit := map[string]bool{}
+	hasWildcardBlock := false
 	applyBlock := func(agents []string) {
+		wildcard := false
 		for _, a := range agents {
 			if a == "*" {
-				for _, b := range bots {
-					blocked[b] = true
-				}
+				wildcard = true
 				continue
 			}
 			for _, b := range bots {
 				if strings.EqualFold(a, b) {
 					blocked[b] = true
+					explicit[b] = true
 				}
 			}
+		}
+		if wildcard {
+			hasWildcardBlock = true
 		}
 	}
 	lines := strings.Split(body, "\n")
@@ -856,6 +864,14 @@ func parseRobotsBlocked(body string, bots []string) map[string]bool {
 		}
 	}
 	flush()
+	// `*` 组的屏蔽只落到没有专属组的爬虫上
+	if hasWildcardBlock {
+		for _, b := range bots {
+			if !explicit[b] {
+				blocked[b] = true
+			}
+		}
+	}
 	return blocked
 }
 

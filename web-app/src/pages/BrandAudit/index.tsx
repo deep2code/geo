@@ -88,24 +88,29 @@ const BrandAudit: React.FC = () => {
   const applyCorrection = async () => {
     if (!report || !corrTarget) return
     if (!corrReason.trim()) return showToast(t('brandAudit.correctionReasonRequired'), 'error')
+    // 与打开弹窗时预填的原值逐项比对。此前用 !== undefined 判断"是否有变更"，
+    // 但 openCorrection 已预填全部字段，四项恒非 undefined，校验永远失效——
+    // 未做任何修改也能提交，向审计留痕叠加与原值相同的"修正"记录。
+    const orig = corrTarget.row
     const changed =
-      corrMentioned !== undefined ||
-      corrCited !== undefined ||
-      corrSentiment !== undefined ||
-      corrPosition !== undefined
+      corrMentioned !== orig.brand_mentioned ||
+      corrCited !== orig.brand_cited ||
+      corrSentiment !== orig.sentiment ||
+      corrPosition !== orig.brand_position
     if (!changed) return showToast(t('brandAudit.correctionNoChange'), 'error')
     setSubmitting(true)
     try {
+      // 只发送实际变化的字段（与后端可选字段语义一致）
       const body: any = {
         record_id: report.record_id,
         brand_name: report.brand_name,
         index: corrTarget.index,
         reason: corrReason.trim()
       }
-      if (corrMentioned !== undefined) body.mentioned = corrMentioned
-      if (corrCited !== undefined) body.cited = corrCited
-      if (corrSentiment !== undefined) body.sentiment = corrSentiment
-      if (corrPosition !== undefined) body.position = corrPosition
+      if (corrMentioned !== orig.brand_mentioned) body.mentioned = corrMentioned
+      if (corrCited !== orig.brand_cited) body.cited = corrCited
+      if (corrSentiment !== orig.sentiment) body.sentiment = corrSentiment
+      if (corrPosition !== orig.brand_position) body.position = corrPosition
       const r = await api.auditCorrection(body)
       setReport(r)
       setLastReport(r)

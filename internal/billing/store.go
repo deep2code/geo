@@ -178,6 +178,49 @@ func (s *Store) IncrementMeter(ctx context.Context, wsID string, m Meter, month 
 	return used, nil
 }
 
+// TryIncrementMeter 带上限的原子条件累加：仅当累加后 used <= limit（limit<0 不限）时
+// 才写入，检查与累加在同一条 UPDATE 内原子完成，消除 CanRun 与 IncrementMeter
+// 两步之间并发请求双双通过的 TOCTOU 竞争。返回是否成功与最新 used。
+func (s *Store) TryIncrementMeter(ctx context.Context, wsID string, m Meter, month string, n, limit int64) (bool, int64, error) {
+	if n <= 0 {
+		n = 1
+	}
+	now := time.Now().Unix()
+	// 幂等建行（首次使用，used 起始 0）
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT IGNORE INTO usage_meters (workspace_id, meter, period_month, used, `+"`limit`"+`, updated_at)
+		 VALUES (?, ?, ?, 0, -1, ?)`,
+		wsID, string(m), month, now); err != nil {
+		return false, 0, err
+	}
+	var (
+		res sql.Result
+		err error
+	)
+	if limit < 0 {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE usage_meters SET used = used + ?, updated_at = ?
+			 WHERE workspace_id=? AND meter=? AND period_month=?`,
+			n, now, wsID, string(m), month)
+	} else {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE usage_meters SET used = used + ?, updated_at = ?
+			 WHERE workspace_id=? AND meter=? AND period_month=? AND used + ? <= ?`,
+			n, now, wsID, string(m), month, n, limit)
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	affected, _ := res.RowsAffected()
+	var used int64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT used FROM usage_meters WHERE workspace_id=? AND meter=? AND period_month=?`,
+		wsID, string(m), month).Scan(&used); err != nil {
+		return false, 0, err
+	}
+	return affected == 1, used, nil
+}
+
 // MeterStateOf 取某工作区某月某计量的状态。
 func (s *Store) MeterStateOf(ctx context.Context, wsID string, m Meter, month string) (*MeterState, error) {
 	var used, lim int64

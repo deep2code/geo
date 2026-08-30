@@ -102,11 +102,20 @@ func (s *Service) CanRun(ctx context.Context, wsID string, m Meter) (bool, *Mete
 }
 
 // RecordUsage 累加工作区某计量用量（审计/导出后调用）。
+//
+// 采用带套餐上限的原子条件累加（TryIncrementMeter）：并发请求即便都先通过了
+// CanRun，累计用量也不会突破套餐上限，避免"剩 1 次、并发双通过、双双扣次"。
 func (s *Service) RecordUsage(ctx context.Context, wsID string, m Meter) error {
 	if wsID == "" {
 		return nil
 	}
-	_, err := s.store.IncrementMeter(ctx, wsID, m, MonthKey(time.Now()), 1)
+	limit := Unlimited
+	if sub, err := s.store.GetSubscription(ctx, wsID); err == nil && sub != nil {
+		if l, ok := s.PlanOf(sub).Limits[m]; ok {
+			limit = l
+		}
+	}
+	_, _, err := s.store.TryIncrementMeter(ctx, wsID, m, MonthKey(time.Now()), 1, limit)
 	return err
 }
 
@@ -207,15 +216,29 @@ func (s *Service) CreateOrder(ctx context.Context, wsID string, plan PlanID, pro
 }
 
 // MarkOrderPaidAndActivate 标记订单已支付并激活对应套餐（webhook / 管理员均可调用）。
-func (s *Service) MarkOrderPaidAndActivate(ctx context.Context, orderID, providerOrderID, adminID string) error {
+//
+// expectedAmountCents 为渠道回调实际支付金额（分）；>0 时与订单金额比对，
+// 不一致拒绝激活（防"付小钱开大套餐"的纵深防御）。管理员手动激活传 0 跳过。
+func (s *Service) MarkOrderPaidAndActivate(ctx context.Context, orderID, providerOrderID, adminID string, expectedAmountCents int64) error {
 	o, err := s.store.GetOrder(ctx, orderID)
 	if err != nil {
 		return err
 	}
-	// 幂等：订单已支付则直接返回（webhook 重试安全，避免支付宝/Stripe 重试风暴）。
-	// SetPlan 会重置 current_period_start/end，因此已支付订单不能再走一遍激活逻辑。
+	// 金额一致性校验：渠道实付金额必须与订单金额一致（渠道未提供金额时跳过）
+	if expectedAmountCents > 0 && expectedAmountCents != o.AmountCents {
+		return fmt.Errorf("billing: 支付金额与订单不一致（订单 %d 分，实付 %d 分），拒绝激活",
+			o.AmountCents, expectedAmountCents)
+	}
+	// 幂等：订单已支付"且订阅已生效"才直接返回。只看 status=paid 会把
+	// "MarkOrderPaid 成功但 SetPlan 失败"的订单也挡掉——webhook 重试命中早退
+	// 返回成功，渠道停止重试，用户已付款但套餐永远不激活。
 	if o.Status == "paid" {
-		return nil
+		sub, serr := s.store.GetSubscription(ctx, o.WorkspaceID)
+		if serr == nil && sub != nil && sub.Status == "active" && sub.Plan == o.Plan &&
+			sub.CurrentPeriodEnd > time.Now().Unix() {
+			return nil
+		}
+		// 订阅未生效：继续走下方 SetPlan 补激活（MarkOrderPaid 幂等，重入安全）
 	}
 	if err := s.store.MarkOrderPaid(ctx, orderID, providerOrderID); err != nil {
 		if !errors.Is(err, ErrOrderAlreadyPaid) {

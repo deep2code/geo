@@ -178,84 +178,12 @@ const Compare: React.FC = () => {
     }
   }
 
-  const mockCompare = (): BrandCompareResponse => {
-    const radarAxes = [
-      { key: 'mention_rate', label: t('leaderboard.columns.mentionRate'), max: 100 },
-      { key: 'citation_rate', label: t('leaderboard.columns.citationRate'), max: 100 },
-      { key: 'content_quality', label: t('brandAudit.contentQuality'), max: 100 },
-      { key: 'technical_seo', label: t('brandAudit.technicalSeo'), max: 100 },
-      { key: 'on_page_seo', label: t('brandAudit.onPageSeo'), max: 100 },
-      { key: 'ai_readiness', label: t('brandAudit.aiReadiness'), max: 100 },
-      { key: 'schema', label: t('brandAudit.schema'), max: 100 }
-    ]
-    const radarValues = selectedBrands.map((brand, bi) => {
-      const base = 50 + bi * 10
-      const values: Record<string, number> = {}
-      radarAxes.forEach((a, ai) => {
-        values[a.key] = Math.max(10, Math.min(100, base + Math.round(Math.sin(bi + ai) * 20 + Math.random() * 15)))
-      })
-      return { brand, values }
-    })
 
-    const dimensions = radarAxes.map(a => ({
-      key: a.key,
-      label: a.label,
-      weight: 1 / radarAxes.length,
-      values: Object.fromEntries(selectedBrands.map(b => [b, radarValues.find(rv => rv.brand === b)?.values[a.key] ?? 0]))
-    }))
-
-    const categories = [t('compare.category') + ' 1', t('compare.category') + ' 2', t('compare.category') + ' 3']
-    const diffTable = radarAxes.map((a, ai) => {
-      const values: Record<string, number> = {}
-      selectedBrands.forEach((b) => {
-        values[b] = radarValues.find(rv => rv.brand === b)?.values[a.key] ?? 0
-      })
-      const entries = Object.entries(values)
-      const winner = entries.length ? entries.reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null
-      const maxVal = Math.max(...Object.values(values))
-      const delta: Record<string, number> = {}
-      entries.forEach(([b, v]) => { delta[b] = Math.round((v - maxVal) * 10) / 10 })
-      return {
-        key: a.key,
-        label: a.label,
-        category: categories[ai % categories.length],
-        values,
-        winner,
-        delta
-      }
-    })
-
-    const overallScores = selectedBrands.map(b => {
-      const sum = radarAxes.reduce((acc, a) => acc + (radarValues.find(rv => rv.brand === b)?.values[a.key] ?? 0), 0)
-      return { brand: b, score: Math.round(sum / radarAxes.length) }
-    })
-    const overallWinner = overallScores.length ? overallScores.reduce((a, b) => (b.score > a.score ? b : a)).brand : null
-
-    const strengths: Record<string, string[]> = {}
-    const weaknesses: Record<string, string[]> = {}
-    selectedBrands.forEach(b => {
-      strengths[b] = diffTable.filter(r => r.winner === b).map(r => r.label).slice(0, 3)
-      weaknesses[b] = diffTable
-        .filter(r => r.winner !== b)
-        .sort((a, b2) => (a.delta[b] ?? 0) - (b2.delta[b] ?? 0))
-        .map(r => r.label).slice(0, 3)
-    })
-
-    return {
-      brands: selectedBrands,
-      generated_at: new Date().toISOString(),
-      dimensions,
-      radar_axes: radarAxes,
-      radar_values: radarValues,
-      diff_table: diffTable,
-      summary: { overall_winner: overallWinner, strengths, weaknesses }
-    }
-  }
-
+  // 品牌选择变化时只清空旧结果，等用户点「开始对比」拉取真实数据。
+  // 此前这里会用 Math.random() mock 数据覆盖展示——用户拿到真实对比结果后
+  // 增删任一品牌，雷达图/总分立即变成随机假数据且无任何演示标注。
   useEffect(() => {
-    if (selectedBrands.length >= 2 && selectedBrands.length <= 4) {
-      setResult(mockCompare())
-    }
+    setResult(null)
   }, [selectedBrands])
 
   const overallScores = useMemo(() => {
@@ -276,7 +204,8 @@ const Compare: React.FC = () => {
       cols.push({
         key: b,
         title: b,
-        sortable: true,
+        // 按品牌列排序无对应记录字段（值在每行 values map 内），列本身
+        // 不可排序，避免表头点击后"看起来在排序实际无效"
         render: (r) => {
           const val = r.values?.[b]
           const isWinner = r.winner === b

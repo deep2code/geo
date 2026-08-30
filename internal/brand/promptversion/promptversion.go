@@ -9,6 +9,7 @@ package promptversion
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -73,9 +74,12 @@ type Store interface {
 }
 
 // MemoryStore 内存实现。
+//
+// 被 HTTP handler 并发调用，所有方法需持锁（裸 map 并发写会直接 panic 崩进程）。
 type MemoryStore struct {
-	prompts    map[string]*TrackedPrompt
-	versions   map[string][]*PromptVersion
+	mu          sync.RWMutex
+	prompts     map[string]*TrackedPrompt
+	versions    map[string][]*PromptVersion
 	experiments map[string][]*Experiment
 }
 
@@ -96,7 +100,9 @@ func (m *MemoryStore) CreatePrompt(_ context.Context, p *TrackedPrompt) error {
 	if p.CurrentVersion == 0 {
 		p.CurrentVersion = 1
 	}
+	m.mu.Lock()
 	m.prompts[p.ID] = p
+	m.mu.Unlock()
 	return nil
 }
 
@@ -105,17 +111,21 @@ func (m *MemoryStore) AddVersion(_ context.Context, v *PromptVersion) error {
 	if v.CreatedAt.IsZero() {
 		v.CreatedAt = time.Now()
 	}
+	m.mu.Lock()
 	m.versions[v.PromptID] = append(m.versions[v.PromptID], v)
 	// 更新当前版本
 	if p, ok := m.prompts[v.PromptID]; ok && v.Version > p.CurrentVersion {
 		p.CurrentVersion = v.Version
 	}
+	m.mu.Unlock()
 	return nil
 }
 
 // ListVersions 列版本（按版本号升序）。
 func (m *MemoryStore) ListVersions(_ context.Context, promptID string) ([]PromptVersion, error) {
+	m.mu.RLock()
 	vs := append([]*PromptVersion{}, m.versions[promptID]...)
+	m.mu.RUnlock()
 	sort.Slice(vs, func(i, j int) bool { return vs[i].Version < vs[j].Version })
 	out := make([]PromptVersion, len(vs))
 	for i, v := range vs {
@@ -127,13 +137,17 @@ func (m *MemoryStore) ListVersions(_ context.Context, promptID string) ([]Prompt
 // SaveExperiment 保存实验。
 func (m *MemoryStore) SaveExperiment(_ context.Context, e *Experiment) error {
 	e.ComputeLift()
+	m.mu.Lock()
 	m.experiments[e.PromptID] = append(m.experiments[e.PromptID], e)
+	m.mu.Unlock()
 	return nil
 }
 
 // ListExperiments 列实验。
 func (m *MemoryStore) ListExperiments(_ context.Context, promptID string) ([]Experiment, error) {
+	m.mu.RLock()
 	es := append([]*Experiment{}, m.experiments[promptID]...)
+	m.mu.RUnlock()
 	out := make([]Experiment, len(es))
 	for i, e := range es {
 		out[i] = *e

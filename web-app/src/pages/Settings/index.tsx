@@ -212,14 +212,10 @@ const Settings: React.FC = () => {
                       >
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', fontWeight: 500 }}>{row.e}</td>
                         <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', fontFamily: 'var(--font-family-mono)', fontSize: 11 }}>{row.env}</td>
-                        <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', textAlign: 'center' }}>
-                          <span style={{
-                            padding: '2px 8px', borderRadius: 999, fontSize: 11,
-                            background: i % 3 === 0 ? 'var(--status-success-bg)' : 'var(--bg-tertiary)',
-                            color: i % 3 === 0 ? 'var(--status-success)' : 'var(--text-tertiary)'
-                          }}>
-                            {i % 3 === 0 ? '✓ 已配置' : '未配置'}
-                          </span>
+                        <td style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-primary)', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                          {/* 前端无法感知服务端环境变量，此处不展示配置状态
+                              （此前用行号 i%3 伪造"已配置/未配置"徽章，与真实配置无关） */}
+                          见后端配置
                         </td>
                       </tr>
                     ))}

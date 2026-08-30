@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Input, Button, Modal } from '@/components'
 import { useAppStore } from '@/store/useAppStore'
-import api from '@/services/api'
+import api, { getApiAuthToken } from '@/services/api'
 import type { MailStatus, ReportEmailResponse } from '@/types/api'
 import '../Dashboard/Dashboard.scss'
 
@@ -25,7 +25,7 @@ const ReportExport: React.FC = () => {
     api.mailStatus().then(setMailStatus).catch(() => {})
   }, [])
 
-  const doExport = (fmt: Format) => {
+  const doExport = async (fmt: Format) => {
     if (!brand) return showToast('请选择品牌', 'error')
     const encodedBrand = encodeURIComponent(brand)
     const map: Record<Format, string> = {
@@ -34,15 +34,35 @@ const ReportExport: React.FC = () => {
       pdf: `/api/v1/brand/report/pdf?brand=${encodedBrand}`
     }
     const url = map[fmt]
-    if (fmt === 'html') {
-      window.open(url, '_blank')
-    } else {
+    // 走带 Authorization 的 fetch 再下载/打开：window.open 与 <a> 标签
+    // 无法携带 Bearer 头，开启账号体系后这三种导出会全部 401
+    const headers: Record<string, string> = {}
+    const tok = getApiAuthToken()
+    if (tok) headers['Authorization'] = `Bearer ${tok}`
+    try {
+      const res = await fetch(url, { headers })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (fmt === 'html') {
+        const html = await res.text()
+        const w = window.open('', '_blank')
+        if (w) {
+          w.document.write(html)
+          w.document.close()
+        }
+        showToast('导出成功', 'success')
+        return
+      }
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
-      a.download = ''
+      a.href = objectUrl
+      a.download = fmt === 'pdf' ? `${brand}_可见度报告.pdf` : `${brand}_报告.html`
       a.click()
+      URL.revokeObjectURL(objectUrl)
+      showToast('导出成功', 'success')
+    } catch (e: any) {
+      showToast(e?.message || '导出失败', 'error')
     }
-    showToast('导出成功', 'success')
   }
 
   const sendEmail = async () => {

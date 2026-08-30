@@ -1053,6 +1053,16 @@ func (svc *Service) Login(email, password, workspaceID string, ip, ua string) (*
 	}
 	if !ok || u == nil {
 		svc.loginMu.Lock()
+		// 惰性清扫：写入时顺带删除早已超出计数窗口的条目，
+		// 防止攻击者用海量随机邮箱失败尝试把内存 map 无界撑大
+		// （锁定中的条目 until 在未来，不会被误删）
+		if len(svc.loginFails) > 1024 {
+			for k, v := range svc.loginFails {
+				if now-v.until > loginFailWindow {
+					delete(svc.loginFails, k)
+				}
+			}
+		}
 		cur := svc.loginFails[key]
 		// 计数窗口内才累计；超窗重置
 		if cur.count > 0 && now-cur.until > loginFailWindow {
@@ -1196,10 +1206,14 @@ func (svc *Service) Refresh(rawRefresh string, ip, ua string) (*TokenPair, *User
 		}()))
 		return nil, nil, errors.New("刷新失败，请稍后重试")
 	}
-	role := c.Role
-	if role == "" && c.WorkspaceID != "" {
-		r, _ := svc.store.GetUserRoleInWorkspace(u.ID, c.WorkspaceID)
-		role = r
+	// 无条件回查数据库角色：令牌中的角色可能已过期（被降级/移出工作区后
+	// 旧 refresh 仍带原角色）。回查为空说明成员已被移除，拒绝刷新。
+	var role Role
+	if c.WorkspaceID != "" {
+		role, _ = svc.store.GetUserRoleInWorkspace(u.ID, c.WorkspaceID)
+	}
+	if role == "" {
+		return nil, nil, errors.New("当前账号已无该工作区访问权限，请重新登录")
 	}
 	pair, err := svc.issueTokenPair(u, c.WorkspaceID, role)
 	if err != nil {
@@ -1331,6 +1345,17 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 				writeErr(w, http.StatusUnauthorized, "登录状态已失效，请重新登录", "AUTH_TOKEN_REVOKED")
 				return
 			}
+			// 回查数据库角色：令牌内角色可能已过期（被降级/移出工作区后旧角色
+			// 仍在 access token 有效期内），以库中实时角色为准，变更即时生效。
+			role := c.Role
+			if c.WorkspaceID != "" {
+				dbRole, rerr := cfg.Svc.Store().GetUserRoleInWorkspace(u.ID, c.WorkspaceID)
+				if rerr != nil || dbRole == "" {
+					writeErr(w, http.StatusUnauthorized, "当前账号已无该工作区访问权限", "AUTH_NOT_MEMBER")
+					return
+				}
+				role = dbRole
+			}
 			// 滑动续期：有效操作自动延长。
 			// 剩余有效期 < 一半（12 小时）时签发新 access token，
 			// 通过 X-GEO-New-Token 响应头下发；前端拦截器检测到后自动替换存储。
@@ -1338,7 +1363,7 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			if rem := time.Until(time.Unix(c.Exp, 0)); rem < accessTokenTTL/2 {
 				if nt, err := signJWT(jwtClaims{
 					Sub: u.ID, Email: u.Email, WorkspaceID: c.WorkspaceID,
-					Role: c.Role, JTI: util.RandomHexID(12),
+					Role: role, JTI: util.RandomHexID(12),
 					Iat: time.Now().Unix(), Exp: time.Now().Add(accessTokenTTL).Unix(),
 					Type: "access", V: u.TokenVersion,
 				}); err == nil {
@@ -1348,7 +1373,7 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			// 注入 context
 			ctx := context.WithValue(r.Context(), ctxKeyUser, u)
 			ctx = context.WithValue(ctx, ctxKeyWorkspace, c.WorkspaceID)
-			ctx = context.WithValue(ctx, ctxKeyRole, c.Role)
+			ctx = context.WithValue(ctx, ctxKeyRole, role)
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -92,10 +92,19 @@ var markets = []Market{
 	},
 }
 
-// SupportedMarkets 返回所有支持的市场列表（副本，调用方可安全修改）。
+// SupportedMarkets 返回所有支持的市场列表（深拷贝，调用方可安全修改——
+// 浅拷贝的 slice 字段仍共享底层数组，调用方改 Engines 会污染包级全局配置）。
 func SupportedMarkets() []Market {
 	out := make([]Market, len(markets))
-	copy(out, markets)
+	for i, m := range markets {
+		out[i] = m
+		if m.Languages != nil {
+			out[i].Languages = append([]string(nil), m.Languages...)
+		}
+		if m.Engines != nil {
+			out[i].Engines = append([]string(nil), m.Engines...)
+		}
+	}
 	return out
 }
 
@@ -343,9 +352,13 @@ func matchWildcard(pattern, s string) (string, bool) {
 	if !strings.HasSuffix(s, suffix) {
 		return "", false
 	}
-	middle := s[len(prefix) : len(s)-len(suffix)]
-	if len(s) < len(prefix)+len(suffix) {
+	// 边界检查必须在切片之前：prefix/suffix 在 s 中字节级重叠时（如
+	// pattern="a*b"、s="ab"）先切片会直接 slice bounds panic。
+	// 且要求中间部分非空（严格大于），空匹配（"最好的软件" 命中 "最好的*软件"）
+	// 不视为命中——否则产出双空格且品牌名丢失的残缺查询词。
+	if len(s) <= len(prefix)+len(suffix) {
 		return "", false
 	}
+	middle := s[len(prefix) : len(s)-len(suffix)]
 	return middle, true
 }

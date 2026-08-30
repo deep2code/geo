@@ -9,9 +9,11 @@ package offlinedb
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,7 +26,7 @@ import (
 
 	"my-geo/internal/dbprovider"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 const defaultMySQLDSN = "geo:docker2026ID@@tcp(127.0.0.1:3306)/geo?parseTime=true&charset=utf8mb4&loc=Local&collation=utf8mb4_unicode_ci"
@@ -488,6 +490,13 @@ func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
 	case '[':
 		return "json_array", head, nil
 	case '{':
+		// JSONL 优先判定：首行对象若含 "xxx": [...] 数组字段，旧逻辑会把
+		// 整个文件误判为对象包裹数组格式（json_object），importJSONObject
+		// 处理完第一个 value 就返回，其余行静默丢失。JSONL 的特征是
+		// 第二行及以后仍有以 { 开头的独立对象行。
+		if isJSONLBuffer(head[idx:]) {
+			return "jsonl", head, nil
+		}
 		prefix := string(head[idx:])
 		if len(prefix) > 100 {
 			prefix = prefix[:100]
@@ -500,6 +509,31 @@ func detectJSONFormat(r io.Reader) (format string, head []byte, err error) {
 	default:
 		return "", head, fmt.Errorf("文件首字符=%q，不是 JSON", head[idx])
 	}
+}
+
+// isJSONLBuffer 判断缓冲是否呈现 JSONL 特征（存在第二行以 { 开头的非空行）。
+func isJSONLBuffer(b []byte) bool {
+	lines := 0
+	for len(b) > 0 {
+		var line []byte
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			line, b = b[:i], b[i+1:]
+		} else {
+			line, b = b, nil
+		}
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		if line[0] != '{' {
+			return false
+		}
+		lines++
+		if lines >= 2 {
+			return true
+		}
+	}
+	return false
 }
 
 // importJSONL 按行 JSONL 导入（流式，内存安全）。
@@ -573,8 +607,10 @@ func (d *mysqlStore) importJSONArray(ctx context.Context, r io.Reader, batchSize
 	for dec.More() {
 		var m map[string]any
 		if err := dec.Decode(&m); err != nil {
-			atomic.AddInt64(&res.Failed, 1)
-			continue
+			// json.Decoder 的错误是 sticky 的：出错后后续 Decode 立即返回同一错误
+			// 且不消费字节，More() 恒为 true——continue 会无限自旋（CPU 100%）。
+			// 单条坏元素必须终止导入并上报。
+			return fmt.Errorf("解析数组元素失败（已导入 %d 条）: %w", res.Inserted, err)
 		}
 		rec := mapRec(m)
 		if rec.Name == "" {
@@ -630,8 +666,8 @@ func (d *mysqlStore) importJSONObject(ctx context.Context, r io.Reader, batchSiz
 			for dec.More() {
 				var m map[string]any
 				if err := dec.Decode(&m); err != nil {
-					atomic.AddInt64(&res.Failed, 1)
-					continue
+					// 同 importJSONArray：Decoder 错误 sticky，continue 会死循环，必须终止
+					return fmt.Errorf("解析对象内数组元素失败（已导入 %d 条）: %w", res.Inserted, err)
 				}
 				rec := mapRec(m)
 				if rec.Name == "" {
@@ -680,8 +716,11 @@ func (d *mysqlStore) insertBatch(ctx context.Context, batch []rawRecord, importe
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// 普通INSERT（非 INSERT IGNORE）：IGNORE 会把字段超长/编码非法等数据错误
+	// 降级为 warning，RowsAffected=0 与"重复跳过"混入同一计数，数据质量问题被掩盖。
+	// 重复键由错误码 1062 精确区分。
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT IGNORE INTO companies
+INSERT INTO companies
  (name, code, established_date, industry, legal_rep, registered_capital, business_scope, province, city, district, address, status, created_at, updated_at)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
@@ -707,7 +746,13 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 			importedAt,
 		)
 		if e != nil {
-			failed++
+			if isDuplicateEntryError(e) {
+				skipped++ // 唯一键重复：幂等跳过，属预期
+			} else {
+				failed++
+				slog.Warn("离线库导入单条失败（数据错误，非重复）",
+					slog.String("name", r.Name), slog.Any("error", e))
+			}
 			continue
 		}
 		n, _ := res.RowsAffected()
@@ -729,6 +774,12 @@ func emptyToNull(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// isDuplicateEntryError 判断是否为 MySQL 唯一键重复错误（错误码 1062）。
+func isDuplicateEntryError(err error) bool {
+	var myErr *mysql.MySQLError
+	return errors.As(err, &myErr) && myErr.Number == 1062
 }
 
 // ---------- 清空 ----------
