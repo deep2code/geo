@@ -22,8 +22,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       await chrome.sidePanel.open({ windowId: tab.windowId });
       setTimeout(async () => {
         try {
-          const { userOptions = {} } = await chrome.storage.local.get('userOptions');
-          const response = await chrome.runtime.sendMessage({
+          await chrome.runtime.sendMessage({
             type: 'ANALYZE_PAGE',
             tabId: tab.id,
             url: tab.url,
@@ -47,7 +46,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  if (message.type === 'ANALYZE_SELECTION') {
+    handleAnalyzeSelection(message)
+      .then(result => sendResponse({ success: true, data: result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
 });
+
+// 选中文本分析：由 content script 委托发请求。content script 的 fetch 遵循
+// 宿主页面的 CSP（connect-src），在配置了严格 CSP 的站点上会被拦截；
+// service worker 的 fetch 走扩展 host_permissions，不受页面 CSP 约束。
+async function handleAnalyzeSelection(message) {
+  const { url, title, html, plainText } = message;
+  const { userOptions = {} } = await chrome.storage.local.get('userOptions');
+  const { geoEndpoint, token } = userOptions;
+
+  if (!geoEndpoint) {
+    throw new Error('请先在扩展选项中配置 GEO Endpoint');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const apiUrl = geoEndpoint.replace(/\/+$/, '') + '/api/v1/cms/check';
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      url,
+      title,
+      html,
+      plainText,
+      mode: 'selection'
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`API 错误 ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
 
 async function handleExtractAndAnalyze(message, sender) {
   const { tabId, url, title } = message;

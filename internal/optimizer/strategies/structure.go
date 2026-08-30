@@ -23,8 +23,11 @@ func (s *StructureStrategy) Validate(req *models.OptimizationRequest) bool {
 }
 
 var (
-	headingRe  = regexp.MustCompile(`^#{1,6}\s`)
-	listItemRe = regexp.MustCompile(`^[-*]\s`)
+	headingRe     = regexp.MustCompile(`^#{1,6}\s`)
+	listItemRe    = regexp.MustCompile(`^[-*]\s`)
+	orderedItemRe = regexp.MustCompile(`^\d+[.、]\s`)
+	tableRowRe    = regexp.MustCompile(`^\|`)
+	codeFenceRe   = regexp.MustCompile("^```")
 )
 
 // Preprocess 为无标题的长文本添加基础 Markdown 标题分段；将连续短行转为列表。
@@ -93,14 +96,20 @@ func convertShortLinesToList(lines []string) []string {
 	var result []string
 	i := 0
 	for i < len(lines) {
-		// 收集连续短行
+		// 收集连续短行。排除已具结构标记的行：无序/有序列表、标题、
+		// Markdown 表格行（|...|）与代码围栏——此前不排除后两者，会把
+		// 表格行改成 "- |模型|得分|"、有序列表嵌套成 "- 1. xxx"，
+		// 默认优化即破坏原文结构。
 		if strings.TrimSpace(lines[i]) != "" && !headingRe.MatchString(lines[i]) &&
-			!listItemRe.MatchString(lines[i]) && lineRuneLen(lines[i]) <= 20 {
+			!listItemRe.MatchString(lines[i]) && !orderedItemRe.MatchString(lines[i]) &&
+			!tableRowRe.MatchString(lines[i]) && !codeFenceRe.MatchString(lines[i]) &&
+			lineRuneLen(lines[i]) <= 20 {
 			j := i
 			var group []string
 			for j < len(lines) {
 				l := lines[j]
-				if strings.TrimSpace(l) == "" || headingRe.MatchString(l) || listItemRe.MatchString(l) {
+				if strings.TrimSpace(l) == "" || headingRe.MatchString(l) || listItemRe.MatchString(l) ||
+					orderedItemRe.MatchString(l) || tableRowRe.MatchString(l) || codeFenceRe.MatchString(l) {
 					break
 				}
 				if lineRuneLen(l) > 20 {

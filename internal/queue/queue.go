@@ -111,9 +111,12 @@ func (c *Client) Enqueue(ctx context.Context, j *Job) (string, error) {
 	}
 	if j.ProfileJSON != "" {
 		var p brand.BrandProfile
-		if err := json.Unmarshal([]byte(j.ProfileJSON), &p); err == nil {
-			payload.Profile = p
+		if err := json.Unmarshal([]byte(j.ProfileJSON), &p); err != nil {
+			// 损坏的 ProfileJSON 不能静默入队：worker 会对零值 Profile
+			// 跑完审计并写回"成功"结果，错误无人知晓
+			return "", fmt.Errorf("queue: ProfileJSON 解析失败: %w", err)
 		}
+		payload.Profile = p
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

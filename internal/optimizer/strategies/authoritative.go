@@ -21,19 +21,23 @@ func (s *AuthoritativeStrategy) Validate(req *models.OptimizationRequest) bool {
 	return req != nil && strings.TrimSpace(req.Content) != ""
 }
 
-// 弱化词 -> 权威表述 的替换表。
+// 弱化词 -> 权威表述 的替换表。注意：
+//   - 更长的词条排在前面（"我觉得吧" 必须先于 "我觉得"，否则长词永不生效）；
+//   - 不含裸 "可能"：它是"不可能/尽可能/可能性"等大量正常中文词的子串，
+//     无上下文的 ReplaceAll 会把"不可能"毁成"不数据显示"、"尽可能"毁成
+//     "尽数据显示"，整段语义被破坏。
 var weakWordReplacements = []struct{ from, to string }{
+	{"我觉得吧", "研究表明"},
 	{"我觉得", "研究表明"},
 	{"我认为", "研究证实"},
-	{"可能", "数据显示"},
 	{"也许", "据观测"},
-	{"大概", "统计表明"},
 	{"应该是", "已有证据表明"},
 	{"好像是", "已有证据表明"},
 	{"说不定", "据观测"},
-	{"估计", "测算显示"},
-	{"我觉得吧", "研究表明"},
+	{"大概是", "统计表明是"},
+	{"大概", "统计表明"},
 	{"我猜", "据测算"},
+	{"估计", "测算显示"},
 	{"I think", "Research shows"},
 	{"I believe", "Studies confirm"},
 	{"maybe", "data indicates"},

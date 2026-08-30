@@ -132,6 +132,11 @@ func robotsAllows(robotsTxt, bot, path string) bool {
 	)
 	flushStar := func() { inStarGroup = false }
 	flushMy := func() { inMyGroup = false }
+	// RFC 9309：连续多条 User-agent 行属于同一组。只有当前一组已出现
+	// 规则行（Disallow/Allow）后，新 UA 行才开启新组——否则
+	// "User-agent: MyGEOBot\nUser-agent: *\nDisallow: /private/" 这种
+	// 同组等价写法会把规则漏记到错误的组，导致抓取被禁路径。
+	sawRule := false
 	for _, raw := range lines {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -139,23 +144,23 @@ func robotsAllows(robotsTxt, bot, path string) bool {
 		}
 		low := strings.ToLower(line)
 		if strings.HasPrefix(low, "user-agent:") {
-			// 切换分组：遇到新 UA 结束旧 UA 组
+			if sawRule {
+				flushStar()
+				flushMy()
+				sawRule = false
+			}
 			val := strings.TrimSpace(line[len("user-agent:"):])
 			val = strings.SplitN(val, "#", 2)[0]
 			val = strings.TrimSpace(val)
 			if val == "*" {
-				flushMy()
 				inStarGroup = true
 			} else if strings.EqualFold(val, bot) {
-				flushStar()
 				inMyGroup = true
-			} else {
-				flushStar()
-				flushMy()
 			}
 			continue
 		}
 		if strings.HasPrefix(low, "disallow:") {
+			sawRule = true
 			val := strings.TrimSpace(line[len("disallow:"):])
 			val = strings.SplitN(val, "#", 2)[0]
 			val = strings.TrimSpace(val)

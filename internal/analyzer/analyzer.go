@@ -38,8 +38,8 @@ var (
 	reList = regexp.MustCompile(`(?m)^[\-\*\+]\s|^\d+\.\s`)
 	// 表格（Markdown）
 	reTable = regexp.MustCompile(`(?m)^\|.+\|$`)
-	// 关键词堆砌（同词高频重复）
-	reKeywordStuffing = regexp.MustCompile(`(?i)(\b\w+\b[\s,，。]*){5,}`)
+	// 英文单词（keyword_stuffing 检测用）
+	reWord = regexp.MustCompile(`[A-Za-z]+`)
 	// CTA 过载
 	reCTA = regexp.MustCompile(`(?i)(立即购买|点击这里|马上注册|限时优惠|免费下载|subscribe now|buy now|click here|sign up)`)
 	// URL
@@ -190,8 +190,8 @@ func detectNegativeSignals(content string) []string {
 	if countWords(content) < 100 {
 		negs = append(negs, "thin_content")
 	}
-	// 关键词堆砌
-	if m := reKeywordStuffing.FindString(content); len(m) > 50 {
+	// 关键词堆砌：同一单词连续重复（Go RE2 不支持反向引用，用代码统计）
+	if detectKeywordStuffing(content) {
 		negs = append(negs, "keyword_stuffing")
 	}
 	// URL 过多（spam 信号）
@@ -204,6 +204,27 @@ func detectNegativeSignals(content string) []string {
 		negs = append(negs, "no_structure")
 	}
 	return negs
+}
+
+// detectKeywordStuffing 检测关键词堆砌：同一英文单词连续重复出现 5 次及以上。
+//
+// 此前的正则 (\w+[\s,，。]*){5,} 匹配的是"任意 5 个连续单词"而非"同词重复"，
+// 任何正常英文正文都命中，导致英文内容评分系统性偏低（负向信号 +
+// EvergreenScore 扣分 + 高优先级建议误触发）。
+func detectKeywordStuffing(content string) bool {
+	words := reWord.FindAllString(strings.ToLower(content), -1)
+	run, maxRun := 1, 1
+	for i := 1; i < len(words); i++ {
+		if words[i] == words[i-1] {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 1
+		}
+	}
+	return maxRun >= 5
 }
 
 // calcEvergreenScore 常青度评分（0-100）。

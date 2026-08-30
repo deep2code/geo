@@ -44,8 +44,10 @@ func (s *SchemaStrategy) Postprocess(content string, req *models.OptimizationReq
 	}
 	var blocks []string
 
-	// 主体 Article schema（有标题或 URL 时生成）
-	if strings.TrimSpace(req.Title) != "" || strings.TrimSpace(req.URL) != "" {
+	// 主体 schema：有标题生成 Article；无标题但仅 URL 走下方 WebSite 分支。
+	// 此前外层条件是 `Title != "" || URL != ""`，导致 else 分支内的
+	// `URL != ""` 恒假——"仅 URL 生成 WebSite"是死代码，永不执行。
+	if strings.TrimSpace(req.Title) != "" {
 		article := map[string]any{
 			"@context": "https://schema.org",
 			"@type":    "Article",

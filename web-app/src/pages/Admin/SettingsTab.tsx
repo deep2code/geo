@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -60,18 +60,24 @@ const SettingsTab: React.FC = () => {
   const [editing, setEditing] = useState<SettingItem | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState(false)
+  // 请求序号：丢弃过期响应，防搜索输入快照竞态
+  const loadSeq = useRef(0)
 
   const load = useCallback(async () => {
+    // 竞态保护：快速输入时多个请求并发，慢的旧响应可能后返回并覆盖新结果
+    const reqId = ++loadSeq.current
     setLoading(true)
     try {
       const res = await api.admin.settings({ category: category || undefined, q: q || undefined })
+      if (loadSeq.current !== reqId) return
       setSettings(res?.settings ?? [])
       setCategories(res?.categories ?? [])
     } catch {
+      if (loadSeq.current !== reqId) return
       setSettings([])
       setCategories([])
     } finally {
-      setLoading(false)
+      if (loadSeq.current === reqId) setLoading(false)
     }
   }, [category, q])
 

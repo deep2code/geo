@@ -152,9 +152,11 @@ func buildCombinedPrompt(prompts []string, req *models.OptimizationRequest) stri
 	b.WriteString("约束：\n")
 	b.WriteString("- 保持原文核心语义不变，不得编造事实\n")
 	b.WriteString("- 自然融入优化，避免生硬堆砌\n")
-	b.WriteString("- 输出纯文本/Markdown，不要解释优化过程\n\n")
-	b.WriteString("待优化内容：\n")
-	b.WriteString(req.Content)
+	b.WriteString("- 输出纯文本/Markdown，不要解释优化过程\n")
+	// 不再内嵌原文：LLM Provider（internal/llm）会在本提示词之后统一追加
+	// "待优化内容：<预处理后的内容>"。此前这里再嵌一份原始 req.Content，
+	// 模型会同时看到 N+1 份原文与 1 份预处理稿，常改写无标记的原文，
+	// 预处理标记丢失且 token 成本随策略数线性放大。
 	return b.String()
 }
 
@@ -162,11 +164,14 @@ func buildCombinedPrompt(prompts []string, req *models.OptimizationRequest) stri
 func (o *Optimizer) generateAssets(req *models.OptimizationRequest, content string) *models.GeneratedAssets {
 	assets := &models.GeneratedAssets{}
 
-	// 从内容中提取 JSON-LD（schema 策略生成）
+	// 从内容中提取 JSON-LD（schema 策略生成）。
+	// 起点 idx 是 ```json-ld 开栏自身，闭合 ``` 必须从开栏之后搜起——
+	// 此前 content[idx:] 开头就是 "```json-ld"，Index 恒命中开栏返回 0，
+	// end > 0 永假，JSONLD 恒为空。
 	if idx := strings.Index(content, "```json-ld"); idx >= 0 {
-		end := strings.Index(content[idx:], "```")
-		if end > 0 {
-			assets.JSONLD = strings.TrimSpace(content[idx+len("```json-ld") : idx+end])
+		bodyStart := idx + len("```json-ld")
+		if end := strings.Index(content[bodyStart:], "```"); end >= 0 {
+			assets.JSONLD = strings.TrimSpace(content[bodyStart : bodyStart+end])
 		}
 	}
 

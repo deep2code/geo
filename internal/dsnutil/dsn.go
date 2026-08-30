@@ -49,11 +49,39 @@ func NormalizeMySQLDSN(raw string) string {
 	if cfg.Params == nil {
 		cfg.Params = make(map[string]string)
 	}
-	for k, v := range required {
-		if _, ok := cfg.Params[k]; !ok {
-			cfg.Params[k] = v
-		}
+	// 逐项检查 struct 字段：go-sql-driver 会把这些键解析进 Config 字段而
+	// 不留在 cfg.Params，按 cfg.Params 判断"用户已设置"恒为假——注入参数
+	// 经 FormatDSN 追加在尾部后生效，会静默覆盖用户的显式配置
+	// （如生产 tls=true 被降级为 preferred、readTimeout=60s 被改 30s）。
+	if !cfg.ParseTime {
+		cfg.Params["parseTime"] = "true"
 	}
+	if !cfg.InterpolateParams {
+		cfg.Params["interpolateParams"] = "true"
+	}
+	if cfg.MaxAllowedPacket == 0 {
+		cfg.Params["maxAllowedPacket"] = "67108864"
+	}
+	if cfg.Timeout == 0 {
+		cfg.Params["timeout"] = "10s"
+	}
+	if cfg.ReadTimeout == 0 {
+		cfg.Params["readTimeout"] = "30s"
+	}
+	if cfg.WriteTimeout == 0 {
+		cfg.Params["writeTimeout"] = "30s"
+	}
+	if cfg.TLSConfig == "" {
+		cfg.Params["tls"] = "preferred"
+	}
+	// loc：仅在未显式设置（nil/UTC）时补 Local；显式其它时区（如
+	// Asia/Shanghai）保留用户值
+	if cfg.Loc == nil || cfg.Loc.String() == "UTC" {
+		cfg.Params["loc"] = "Local"
+	}
+	// charset：驱动无公开的"是否显式设置"信号（未写也会填默认排序规则），
+	// 项目库表统一 utf8mb4，维持强制注入
+	cfg.Params["charset"] = "utf8mb4"
 	return cfg.FormatDSN()
 }
 

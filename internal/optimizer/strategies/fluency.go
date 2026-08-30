@@ -3,6 +3,7 @@ package strategies
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"my-geo/internal/models"
 	"my-geo/internal/util"
@@ -43,27 +44,30 @@ func (s *FluencyStrategy) Preprocess(content string, req *models.OptimizationReq
 // balanceLine 对单行做长短句平衡：合并过短句、拆分过长句。
 func balanceLine(line string) string {
 	sentences := util.SplitSentences(line)
-	// 合并过短句（去空格后字符数 <= 8 视为过短）
+	// 合并过短句（去空白后 rune 数 <= 8 视为过短；此前按字节数判断，
+	// 中文 8 字节仅约 2 个字）。合并时把前一句句号换成逗号真正连成一句
+	// ——此前直接拼接与原串等价，是恒等变换。
 	merged := make([]string, 0, len(sentences))
 	for _, sen := range sentences {
-		if len(strings.TrimSpace(sen)) <= 8 && len(merged) > 0 {
-			merged[len(merged)-1] += sen
+		if utf8.RuneCountInString(strings.TrimSpace(sen)) <= 8 && len(merged) > 0 {
+			last := merged[len(merged)-1]
+			if strings.HasSuffix(last, "。") {
+				last = last[:len(last)-len("。")] + "，"
+			}
+			merged[len(merged)-1] = last + sen
 		} else {
 			merged = append(merged, sen)
 		}
 	}
-	// 拆分过长句（> 80 字符且含逗号，按首个逗号拆为两句）
+	// 拆分过长句（> 80 rune 且含逗号，按首个逗号拆为两句）。
+	// 拆分点逗号替换为句号——此前保留原逗号再拼回，两句等于原句，恒等。
 	final := make([]string, 0, len(merged))
 	for _, sen := range merged {
-		if len([]rune(sen)) > 80 && shortSentRe.MatchString(sen) {
+		if utf8.RuneCountInString(sen) > 80 && shortSentRe.MatchString(sen) {
 			parts := shortSentRe.Split(sen, 2)
 			if len(parts) == 2 {
-				idx := shortSentRe.FindStringIndex(sen)
-				if idx != nil {
-					mid := sen[idx[0]:idx[1]]
-					final = append(final, parts[0]+mid, parts[1])
-					continue
-				}
+				final = append(final, parts[0]+"。", strings.TrimSpace(parts[1]))
+				continue
 			}
 		}
 		final = append(final, sen)

@@ -75,7 +75,9 @@ func GitHubImport(ctx context.Context, store offlinedb.DB, years, provinces []st
 			default:
 			}
 			u := strings.TrimRight(baseURL, "/") + "/" + y + "/" + url.PathEscape(p+".json")
-			dst := filepath.Join(tmpdir, y+"_"+sanitizeFileName(p)+".json")
+			// dst 侧 year 同样必须清洗：province 走了 sanitizeFileName 而 year 没有，
+			// 传 years=../../evil 可把下载文件写到临时目录之外（路径穿越）
+			dst := filepath.Join(tmpdir, sanitizeFileName(y)+"_"+sanitizeFileName(p)+".json")
 			if _, err := download(ctx, hc, u, dst); err != nil {
 				return total, fmt.Errorf("下载 %s/%s 失败: %w", y, p, err)
 			}

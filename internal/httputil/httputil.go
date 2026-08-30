@@ -206,6 +206,11 @@ func OffsetLimit(r *http.Request, defaultLimit, maxLimit int) (offset, limit int
 	}
 	if p := r.URL.Query().Get("page"); p != "" {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			// page 设上限：超大 page 换算 (n-1)*limit 会整型溢出为负，
+			// 负 OFFSET 直接打挂 SQL（与 PageLimit 同款防护）
+			if n > 1_000_000 {
+				n = 1_000_000
+			}
 			return (n - 1) * limit, limit
 		}
 	}

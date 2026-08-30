@@ -215,10 +215,14 @@ func parseMySQLDSN(dsn string) (host, port string, err error) {
 
 // maskDSN 脱敏 DSN 中的密码，用于日志/详情展示。
 func maskDSN(dsn string) string {
-	if i := strings.Index(dsn, ":"); i > 0 {
-		if at := strings.Index(dsn, "@"); at > i {
-			return dsn[:i] + ":***" + dsn[at:]
-		}
+	// 先定位 @ 再向前找用户名/密码分隔符：":secret@tcp(...)"（空用户名 DSN）
+	// 的首个 ':' 在位置 0，旧判断 i > 0 会跳过脱敏把密码原样带进日志
+	at := strings.Index(dsn, "@")
+	if at < 0 {
+		return dsn
+	}
+	if i := strings.LastIndex(dsn[:at], ":"); i >= 0 {
+		return dsn[:i] + ":***" + dsn[at:]
 	}
 	return dsn
 }

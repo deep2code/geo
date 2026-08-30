@@ -67,8 +67,9 @@ func (s *QuotationStrategy) BuildPrompt(req *models.OptimizationRequest) string 
 }
 
 var (
-	// 将中文引号""统一为「」以保持一致
-	dquotePairRe = regexp.MustCompile(`"([^"]*)"`)
+	// 将中文弯引号 “” 统一为「」（此前两个正则都是 ASCII 直引号 "…"，
+	// 第二条纯冗余，中文弯引号统一逻辑从未生效）
+	dquotePairRe = regexp.MustCompile(`“([^”]*)”`)
 	// 英文直引号统一
 	equotePairRe = regexp.MustCompile(`"([^"]*)"`)
 )

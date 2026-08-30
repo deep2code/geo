@@ -32,7 +32,28 @@ analyzeBtn.addEventListener('click', () => {
   analyzeCurrentPage();
 });
 
+// 右键菜单「GEO 分析此页」：service worker 打开侧边栏后发来 ANALYZE_PAGE，
+// 此前侧边栏无监听者，右键入口是死功能（消息被静默丢弃）。
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'ANALYZE_PAGE' && message.tabId != null) {
+    analyzeTab(message.tabId, message.url, message.title);
+  }
+});
+
 async function analyzeCurrentPage() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      renderError('无法获取当前标签页');
+      return;
+    }
+    await analyzeTab(tab.id, tab.url, tab.title);
+  } catch (error) {
+    renderError(error.message || '发生未知错误');
+  }
+}
+
+async function analyzeTab(tabId, url, title) {
   if (!userOptions.geoEndpoint) {
     renderError('请先在设置中配置 GEO Endpoint');
     return;
@@ -41,17 +62,11 @@ async function analyzeCurrentPage() {
   renderLoading();
 
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) {
-      renderError('无法获取当前标签页');
-      return;
-    }
-
     const response = await chrome.runtime.sendMessage({
       type: 'EXTRACT_AND_ANALYZE',
-      tabId: tab.id,
-      url: tab.url,
-      title: tab.title
+      tabId,
+      url,
+      title
     });
 
     if (!response.success) {
@@ -59,7 +74,7 @@ async function analyzeCurrentPage() {
       return;
     }
 
-    renderResult(tab, response.data);
+    renderResult({ title, url }, response.data);
   } catch (error) {
     renderError(error.message || '发生未知错误');
   }

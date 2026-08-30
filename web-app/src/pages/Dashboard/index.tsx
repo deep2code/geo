@@ -92,13 +92,23 @@ const Dashboard: React.FC = () => {
           ? Math.round(historyDaily.summary.avg_score_daily)
           : null
 
-  const trend7d: number[] | null = history?.records && history.records.length >= 2
-    ? history.records
+  // 7 日趋势按天取值：优先用每日统计的末 7 天；此前直接用"最近 5 条审计
+  // 记录"的分数序列，同一天多次审计会被误读成一周走势。每日数据缺失时
+  // 才退回记录序列（并只作最近几次参考）。
+  const trend7d: number[] | null = useMemo(() => {
+    const recs = historyDaily?.records
+    if (recs && recs.length >= 2) {
+      return recs.slice(-7).map(r => (r.avg_score != null && r.avg_score >= 0 ? Math.round(r.avg_score) : 0))
+    }
+    if (history?.records && history.records.length >= 2) {
+      return history.records
         .slice()
         .sort((a, b) => +new Date(a.generated_at) - +new Date(b.generated_at))
         .map(r => Math.round(r.score ?? 0))
         .slice(-7)
-    : null
+    }
+    return null
+  }, [historyDaily, history])
 
   // 系统就绪分级：fail > warn > ok > unknown
   // 后端 /ready 的 ready=true 仅代表"无 fail"（warn 不阻塞服务），但前端必须诚实反映 warn 状态，

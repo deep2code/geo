@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -60,7 +60,13 @@ const Tickets: React.FC = () => {
 
   // 工单详情 Modal 状态
   const [detailVisible, setDetailVisible] = useState(false)
-  const [currentTicket, setCurrentTicket] = useState<TicketRow | null>(null)
+  const [currentTicket, setCurrentTicketState] = useState<TicketRow | null>(null)
+  // 当前展示工单的最新引用：异步响应返回后校验是否仍是当前工单（竞态保护）
+  const currentTicketRef = useRef<TicketRow | null>(null)
+  const setCurrentTicket = (t: TicketRow | null) => {
+    currentTicketRef.current = t
+    setCurrentTicketState(t)
+  }
   const [replies, setReplies] = useState<ReplyItem[]>([])
   const [replyContent, setReplyContent] = useState('')
   const [replying, setReplying] = useState(false)
@@ -155,7 +161,7 @@ const Tickets: React.FC = () => {
       showToast(t('tickets.statusUpdatedLocal'), 'info')
     }
     setTickets(prev => prev.map(t => t.id === currentTicket.id ? { ...t, status } : t))
-    setCurrentTicket(prev => prev ? { ...prev, status } : prev)
+    setCurrentTicket(currentTicket ? { ...currentTicket, status } : null)
   }
 
   // 提交工单

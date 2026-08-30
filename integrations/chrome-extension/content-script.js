@@ -154,44 +154,21 @@
     showLoadingPopup();
 
     try {
-      const stored = await chrome.storage.local.get('userOptions');
-      const { userOptions = {} } = stored;
-      const { geoEndpoint, token } = userOptions;
-
-      if (!geoEndpoint) {
-        showErrorPopup('请先在扩展选项中配置 GEO Endpoint');
-        return;
-      }
-
-      const apiUrl = geoEndpoint.replace(/\/+$/, '') + '/api/v1/cms/check';
-
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const body = JSON.stringify({
+      // 委托 service worker 发请求：content script 的 fetch 遵循宿主页面
+      // CSP（connect-src），在严格 CSP 站点会被 "Refused to connect" 拦截
+      const response = await chrome.runtime.sendMessage({
+        type: 'ANALYZE_SELECTION',
         url: location.href,
         title: document.title,
         html: currentSelection.html,
-        plainText: currentSelection.text,
-        mode: 'selection'
+        plainText: currentSelection.text
       });
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body
-      });
-
-      if (!response.ok) {
-        throw new Error(`API 错误 ${response.status}: ${response.statusText}`);
+      if (!response || !response.success) {
+        throw new Error((response && response.error) || '请求失败');
       }
 
-      const data = await response.json();
-      showResultPopup(data, currentSelection.text);
+      showResultPopup(response.data, currentSelection.text);
     } catch (err) {
       showErrorPopup(err.message || '请求失败');
     }
