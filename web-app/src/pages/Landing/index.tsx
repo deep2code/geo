@@ -460,18 +460,6 @@ const Landing: React.FC = () => {
             <a href="#contact" onClick={(e) => { e.preventDefault(); handleScrollTo('contact') }}>{t('landing.footerContact')}</a>
           </div>
         </div>
-        {meta && (
-          <div className="landing-footer-version">
-            <span className="landing-footer-version-item">版本 {meta.build_version || '-'}</span>
-            <span className="landing-footer-version-item">编译 {meta.build_at || '-'}</span>
-            <span className="landing-footer-version-item">
-              commit{' '}
-              <code className="landing-footer-version-commit">
-                {meta.build_commit ? meta.build_commit.slice(0, 12) : '-'}
-              </code>
-            </span>
-          </div>
-        )}
       </footer>
     </div>
   )
