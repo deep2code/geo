@@ -127,7 +127,7 @@ const Leaderboard: React.FC = () => {
     navigate('/brand-audit')
   }
 
-  const top3 = useMemo(() => data?.rows.slice(0, 3) ?? [], [data])
+  const top3 = useMemo(() => data?.rows?.slice(0, 3) ?? [], [data])
 
   const columns: TableColumn<LeaderboardRow>[] = [
     {

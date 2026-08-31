@@ -5,25 +5,11 @@ import { Button } from '@/components/Button'
 import api from '@/services/api'
 import './Landing.scss'
 
-// 首页分页：将内容分为多个 section，支持分页浏览
-const PAGES = [
-  'hero',      // Hero 区域
-  'stats',     // 平台数据统计
-  'how',       // GEO 运作流程
-  'features',  // 功能亮点
-  'beforeafter', // 优化前后对比
-  'report',    // 报告示例
-  'facts',     // AI 引用友好数据
-  'pricing',   // 定价方案
-  'contact'    // 联系我们（新增）
-] as const
-type PageKey = typeof PAGES[number]
-
 // 自定义 CSS 变量注入（TS 安全）
 const cssVars = (vars: Record<string, string | number>): React.CSSProperties =>
   vars as unknown as React.CSSProperties
 
-// 滚动入场动画包裹：进入视口后添加 reveal-in，触发内部 CSS 动画
+// 滚动入场动画包裹
 const Reveal: React.FC<{ children: React.ReactNode; className?: string; id?: string }> = ({
   children,
   className,
@@ -53,25 +39,7 @@ const Reveal: React.FC<{ children: React.ReactNode; className?: string; id?: str
   )
 }
 
-// 功能亮点定义
-interface Feature {
-  icon: string
-  titleKey: string
-  descKey: string
-}
-
-const features: Feature[] = [
-  { icon: '🎯', titleKey: 'landing.featureBvsTitle', descKey: 'landing.featureBvsDesc' },
-  { icon: '🔍', titleKey: 'landing.featureAuditTitle', descKey: 'landing.featureAuditDesc' },
-  { icon: '✍️', titleKey: 'landing.featureOptimizeTitle', descKey: 'landing.featureOptimizeDesc' },
-  { icon: '🔑', titleKey: 'landing.featureKeywordTitle', descKey: 'landing.featureKeywordDesc' },
-  { icon: '📊', titleKey: 'landing.featureCompareTitle', descKey: 'landing.featureCompareDesc' },
-  { icon: '🏆', titleKey: 'landing.featureLeaderboardTitle', descKey: 'landing.featureLeaderboardDesc' },
-  { icon: '📧', titleKey: 'landing.featureAlertTitle', descKey: 'landing.featureAlertDesc' },
-  { icon: '📄', titleKey: 'landing.featureReportTitle', descKey: 'landing.featureReportDesc' }
-]
-
-// 定价方案定义
+// 定价方案
 interface PricingPlan {
   id: string
   nameKey: string
@@ -117,41 +85,21 @@ const plans: PricingPlan[] = [
 ]
 
 // GEO 动作流程步骤
-interface GeoStep {
-  key: string
-  titleKey: string
-  descKey: string
-}
-
-const geoSteps: GeoStep[] = [
-  { key: 'crawl', titleKey: 'landing.stepCrawlTitle', descKey: 'landing.stepCrawlDesc' },
-  { key: 'analyze', titleKey: 'landing.stepAnalyzeTitle', descKey: 'landing.stepAnalyzeDesc' },
-  { key: 'optimize', titleKey: 'landing.stepOptimizeTitle', descKey: 'landing.stepOptimizeDesc' },
-  { key: 'monitor', titleKey: 'landing.stepMonitorTitle', descKey: 'landing.stepMonitorDesc' }
+const geoSteps = [
+  { key: 'crawl', titleKey: 'landing.stepCrawlTitle', descKey: 'landing.stepCrawlDesc', icon: '📡' },
+  { key: 'analyze', titleKey: 'landing.stepAnalyzeTitle', descKey: 'landing.stepAnalyzeDesc', icon: '🔬' },
+  { key: 'optimize', titleKey: 'landing.stepOptimizeTitle', descKey: 'landing.stepOptimizeDesc', icon: '⚡' },
+  { key: 'monitor', titleKey: 'landing.stepMonitorTitle', descKey: 'landing.stepMonitorDesc', icon: '📊' }
 ]
 
-// 报告示例引擎覆盖样例
-const sampleEngines = [
-  { name: 'ChatGPT', mention: 92, citation: 78 },
-  { name: 'Perplexity', mention: 88, citation: 81 },
-  { name: 'Gemini', mention: 85, citation: 73 },
-  { name: 'Claude', mention: 80, citation: 69 },
-  { name: 'DeepSeek', mention: 90, citation: 84 },
-  { name: '豆包', mention: 76, citation: 65 }
-]
-
-// 报告示例查询命中
-const samplePrompts = [
-  { prompt: '最好的 CRM 软件推荐', cited: true },
-  { prompt: '中小企业客户管理系统对比', cited: true },
-  { prompt: '国内 SaaS CRM 排行榜', cited: false }
-]
-
-// 报告示例行动建议
-const sampleActions = [
-  '为「客户案例」页补充结构化数据（JSON-LD），提升实体识别',
-  '在「价格」页增加对比维度，增强 AI 引用说服力',
-  '发布《中小企业 CRM 选型指南》长文，覆盖高频查询'
+// 功能亮点
+const features = [
+  { icon: '🔍', titleKey: 'landing.featureAuditTitle', descKey: 'landing.featureAuditDesc' },
+  { icon: '📝', titleKey: 'landing.featureOptimizerTitle', descKey: 'landing.featureOptimizerDesc' },
+  { icon: '📊', titleKey: 'landing.featureReportTitle', descKey: 'landing.featureReportDesc' },
+  { icon: '🔔', titleKey: 'landing.featureAlertTitle', descKey: 'landing.featureAlertDesc' },
+  { icon: '🏆', titleKey: 'landing.featureLeaderboardTitle', descKey: 'landing.featureLeaderboardDesc' },
+  { icon: '🔗', titleKey: 'landing.featureIntegrationsTitle', descKey: 'landing.featureIntegrationsDesc' }
 ]
 
 // GEO 步骤动画图标
@@ -177,15 +125,16 @@ const GeoStepGlyph: React.FC<{ kind: string }> = ({ kind }) => {
     case 'optimize':
       return (
         <svg viewBox="0 0 64 64" className="geo-glyph">
-          <path d="M32 12 l4 14 14 4 -14 4 -4 14 -4 -14 -14 -4 14 -4z" className="geo-spark geo-spark--1" />
-          <path d="M48 38 l2 7 7 2 -7 2 -2 7 -2 -7 -7 -2 7 -2z" className="geo-spark geo-spark--2" />
+          <path d="M32 8 L56 32 L32 56 L8 32 Z" className="geo-diamond" />
+          <path d="M20 32 L28 40 L44 24" className="geo-check" />
         </svg>
       )
     case 'monitor':
       return (
         <svg viewBox="0 0 64 64" className="geo-glyph">
-          <path d="M32 10 L52 18 V34 C52 46 42 54 32 58 C22 54 12 46 12 34 V18 Z" className="geo-shield" />
-          <circle cx="32" cy="32" r="5" className="geo-pulse" />
+          <circle cx="32" cy="32" r="24" className="geo-ring" />
+          <circle cx="32" cy="32" r="4" className="geo-dot" />
+          <path d="M32 8 A24 24 0 0 1 56 32" className="geo-arc" />
         </svg>
       )
     default:
@@ -197,28 +146,21 @@ const Landing: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
 
-  // 分页状态
-  const [currentPage, setCurrentPage] = useState<PageKey>('hero')
   const [stats, setStats] = useState({
     brand_count: 12000,
     audit_count: 580000,
     engine_count: 13,
     user_count: 3500
   })
-  // 构建版本信息（编译时间 / git-hash，公开接口，用于核对部署版本）
   const [meta, setMeta] = useState<{ build_version: string; build_commit: string; build_at: string } | null>(null)
 
-  // 加载平台数据
   const loadStats = async () => {
     try {
       const res = await api.landing.stats()
       if (res?.stats) setStats(res.stats)
-    } catch {
-      // 保留默认数据
-    }
+    } catch {}
   }
 
-  // 加载构建版本信息
   const loadMeta = async () => {
     try {
       const res = await api.metaSystem()
@@ -229,9 +171,7 @@ const Landing: React.FC = () => {
           build_at: res.build_at || ''
         })
       }
-    } catch {
-      // 接口不可用时静默（不展示版本行）
-    }
+    } catch {}
   }
 
   useEffect(() => {
@@ -239,37 +179,9 @@ const Landing: React.FC = () => {
     loadMeta()
   }, [])
 
-  // 跳转到控制台
-  const handleStartFree = () => {
-    navigate('/dashboard')
-  }
-
-  // 锚点滚动到定价区
-  const handleScrollToPricing = () => {
-    setCurrentPage('pricing')
-  }
-
-  // 分页导航
-  const pageTitles: Record<PageKey, string> = {
-    hero: t('landing.navHome'),
-    stats: t('landing.statBrands'),
-    how: t('landing.navHow'),
-    features: t('landing.navFeatures'),
-    beforeafter: t('landing.baTitle'),
-    report: t('landing.reportTitle'),
-    facts: t('landing.factsTitle'),
-    pricing: t('landing.navPricing'),
-    contact: t('landing.contactTitle')
-  }
-
-  const handlePrevPage = () => {
-    const idx = PAGES.indexOf(currentPage)
-    if (idx > 0) setCurrentPage(PAGES[idx - 1])
-  }
-
-  const handleNextPage = () => {
-    const idx = PAGES.indexOf(currentPage)
-    if (idx < PAGES.length - 1) setCurrentPage(PAGES[idx + 1])
+  const handleStartFree = () => navigate('/dashboard')
+  const handleScrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
@@ -281,364 +193,255 @@ const Landing: React.FC = () => {
           <span>崛起GEO</span>
         </div>
         <div className="landing-nav-links">
-          {(['hero', 'features', 'how', 'pricing', 'contact'] as PageKey[]).map(page => (
-            <a
-              key={page}
-              href={`#${page}`}
-              onClick={(e) => { e.preventDefault(); setCurrentPage(page) }}
-              className={currentPage === page ? 'is-active' : ''}
-            >
-              {pageTitles[page]}
-            </a>
-          ))}
+          <a href="#features" onClick={(e) => { e.preventDefault(); handleScrollTo('features') }}>{t('landing.navFeatures')}</a>
+          <a href="#how" onClick={(e) => { e.preventDefault(); handleScrollTo('how') }}>{t('landing.navHow')}</a>
+          <a href="#pricing" onClick={(e) => { e.preventDefault(); handleScrollTo('pricing') }}>{t('landing.navPricing')}</a>
+          <a href="#contact" onClick={(e) => { e.preventDefault(); handleScrollTo('contact') }}>{t('landing.navContact')}</a>
+          <a href="/help">{t('landing.navHelp')}</a>
         </div>
         <Button size="sm" onClick={handleStartFree}>{t('landing.navLogin')}</Button>
       </nav>
 
-      {/* 分页指示器 */}
-      <div className="landing-pagination">
-        <button
-          className="landing-pagination-btn"
-          onClick={handlePrevPage}
-          disabled={PAGES.indexOf(currentPage) === 0}
-        >
-          ←
-        </button>
-        <div className="landing-pagination-dots">
-          {PAGES.map(page => (
-            <button
-              key={page}
-              className={`landing-pagination-dot ${currentPage === page ? 'is-active' : ''}`}
-              onClick={() => setCurrentPage(page)}
-              title={pageTitles[page]}
-            />
+      {/* Hero 区域 */}
+      <section className="landing-hero">
+        <div className="landing-hero-bg" />
+        <div className="landing-hero-content">
+          <div className="landing-hero-badge">🚀 {t('landing.heroBadge')}</div>
+          <h1 className="landing-hero-title">{t('landing.heroTitle')}</h1>
+          <p className="landing-hero-subtitle">{t('landing.heroSubtitle')}</p>
+          <div className="landing-hero-cta">
+            <Button size="lg" onClick={handleStartFree}>✨ {t('landing.heroCtaStart')}</Button>
+            <Button size="lg" variant="outline" onClick={() => handleScrollTo('pricing')}>💰 {t('landing.heroCtaPricing')}</Button>
+          </div>
+        </div>
+      </section>
+
+      {/* 平台数据统计 */}
+      <section className="landing-stats">
+        <div className="landing-stats-inner">
+          <div className="landing-stat-item">
+            <div className="landing-stat-value">{(stats.brand_count / 1000).toFixed(1)}K+</div>
+            <div className="landing-stat-label">{t('landing.statBrands')}</div>
+          </div>
+          <div className="landing-stat-divider" />
+          <div className="landing-stat-item">
+            <div className="landing-stat-value">{(stats.audit_count / 10000).toFixed(1)}万+</div>
+            <div className="landing-stat-label">{t('landing.statAudits')}</div>
+          </div>
+          <div className="landing-stat-divider" />
+          <div className="landing-stat-item">
+            <div className="landing-stat-value">{stats.engine_count}+</div>
+            <div className="landing-stat-label">{t('landing.statEngines')}</div>
+          </div>
+          <div className="landing-stat-divider" />
+          <div className="landing-stat-item">
+            <div className="landing-stat-value">{(stats.user_count / 1000).toFixed(1)}K+</div>
+            <div className="landing-stat-label">{t('landing.statUsers')}</div>
+          </div>
+        </div>
+      </section>
+
+      {/* 功能亮点 */}
+      <Reveal id="features" className="landing-features">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.featuresTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.featuresSubtitle')}</p>
+        </div>
+        <div className="landing-features-grid">
+          {features.map((f, i) => (
+            <div key={i} className="landing-feature-card">
+              <div className="landing-feature-icon">{f.icon}</div>
+              <div className="landing-feature-title">{t(f.titleKey)}</div>
+              <div className="landing-feature-desc">{t(f.descKey)}</div>
+            </div>
           ))}
         </div>
-        <button
-          className="landing-pagination-btn"
-          onClick={handleNextPage}
-          disabled={PAGES.indexOf(currentPage) === PAGES.length - 1}
-        >
-          →
-        </button>
-      </div>
+      </Reveal>
 
-      {/* 页面内容区域 */}
-      <div className="landing-content">
-        {/* Hero 区域 */}
-        {(currentPage === 'hero' || currentPage === 'stats') && (
-          <>
-            <section className="landing-hero">
-              <div className="landing-hero-badge">
-                🚀 {t('landing.heroBadge')}
+      {/* GEO 运作流程 */}
+      <Reveal id="how" className="landing-how">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.howTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.howSubtitle')}</p>
+        </div>
+        <div className="landing-how-flow">
+          {geoSteps.map((s, i) => (
+            <React.Fragment key={s.key}>
+              <div className="landing-how-step">
+                <div className="landing-how-step-num">{i + 1}</div>
+                <div className="landing-how-step-icon">{s.icon}</div>
+                <div className="landing-how-step-title">{t(s.titleKey)}</div>
+                <div className="landing-how-step-desc">{t(s.descKey)}</div>
               </div>
-              <h1 className="landing-hero-title">{t('landing.heroTitle')}</h1>
-              <p className="landing-hero-subtitle">{t('landing.heroSubtitle')}</p>
-              <div className="landing-hero-cta">
-                <Button size="lg" onClick={handleStartFree}>✨ {t('landing.heroCtaStart')}</Button>
-                <Button size="lg" variant="outline" onClick={handleScrollToPricing}>💰 {t('landing.heroCtaPricing')}</Button>
-              </div>
-            </section>
+              {i < geoSteps.length - 1 && (
+                <div className="landing-how-arrow" aria-hidden>→</div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+        <div className="landing-how-visual">
+          <div className="landing-how-query">
+            <span className="landing-how-query-label">{t('landing.howQueryLabel')}</span>
+            <span className="landing-how-query-text">{t('landing.howQueryText')}</span>
+          </div>
+          <div className="landing-how-pulse" aria-hidden>
+            <span className="landing-how-pulse-dot" />
+            <span className="landing-how-pulse-ring" />
+            <span className="landing-how-pulse-ring landing-how-pulse-ring--2" />
+          </div>
+          <div className="landing-how-result">
+            <span className="landing-how-result-brand">崛起GEO</span>
+            <span className="landing-how-result-text">{t('landing.howResultText')}</span>
+          </div>
+        </div>
+      </Reveal>
 
-            {/* 平台数据统计 */}
-            {currentPage === 'stats' && (
-              <section className="landing-stats">
-                <div className="landing-stat-item">
-                  <div className="landing-stat-value">{(stats.brand_count / 1000).toFixed(1)}K+</div>
-                  <div className="landing-stat-label">{t('landing.statBrands')}</div>
-                </div>
-                <div className="landing-stat-item">
-                  <div className="landing-stat-value">{(stats.audit_count / 10000).toFixed(1)}万+</div>
-                  <div className="landing-stat-label">{t('landing.statAudits')}</div>
-                </div>
-                <div className="landing-stat-item">
-                  <div className="landing-stat-value">{stats.engine_count}+</div>
-                  <div className="landing-stat-label">{t('landing.statEngines')}</div>
-                </div>
-                <div className="landing-stat-item">
-                  <div className="landing-stat-value">{(stats.user_count / 1000).toFixed(1)}K+</div>
-                  <div className="landing-stat-label">{t('landing.statUsers')}</div>
-                </div>
-              </section>
-            )}
-          </>
-        )}
-
-        {/* GEO 运作流程 */}
-        {currentPage === 'how' && (
-          <Reveal id="how" className="landing-how">
-            <h2 className="landing-section-title">{t('landing.howTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.howSubtitle')}</p>
-            <div className="landing-how-flow">
-              {geoSteps.map((s, i) => (
-                <React.Fragment key={s.key}>
-                  <div className="landing-how-step">
-                    <div className="landing-how-icon">
-                      <GeoStepGlyph kind={s.key} />
-                    </div>
-                    <div className="landing-how-step-title">{t(s.titleKey)}</div>
-                    <div className="landing-how-step-desc">{t(s.descKey)}</div>
-                  </div>
-                  {i < geoSteps.length - 1 && (
-                    <div className="landing-how-arrow" aria-hidden>→</div>
-                  )}
-                </React.Fragment>
-              ))}
-            </div>
-            <div className="landing-how-visual">
-              <div className="landing-how-query">
-                <span className="landing-how-query-label">{t('landing.howQueryLabel')}</span>
-                <span className="landing-how-query-text">{t('landing.howQueryText')}</span>
+      {/* 优化前后对比 */}
+      <Reveal className="landing-beforeafter">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.baTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.baSubtitle')}</p>
+        </div>
+        <div className="landing-ba-grid">
+          <div className="landing-ba-card landing-ba-card--before">
+            <div className="landing-ba-tag">{t('landing.beforeLabel')}</div>
+            <div className="landing-ba-query">{t('landing.baQuery')}</div>
+            <div className="landing-ba-answer">{t('landing.baAnswerBefore')}</div>
+            <div className="landing-ba-metric">
+              <div className="landing-ba-metric-head">
+                <span>{t('landing.baMention')}</span>
+                <span className="landing-ba-metric-value">18%</span>
               </div>
-              <div className="landing-how-pulse" aria-hidden>
-                <span className="landing-how-pulse-dot" />
-                <span className="landing-how-pulse-ring" />
-                <span className="landing-how-pulse-ring landing-how-pulse-ring--2" />
-              </div>
-              <div className="landing-how-result">
-                <span className="landing-how-result-brand">崛起GEO</span>
-                <span className="landing-how-result-text">{t('landing.howResultText')}</span>
+              <div className="landing-ba-bar">
+                <span className="landing-ba-bar-fill landing-ba-bar-fill--before" style={cssVars({ '--target': '18%' })} />
               </div>
             </div>
-          </Reveal>
-        )}
-
-        {/* 功能亮点 */}
-        {currentPage === 'features' && (
-          <section id="features" className="landing-features">
-            <h2 className="landing-section-title">{t('landing.featuresTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.featuresSubtitle')}</p>
-            <div className="landing-features-grid">
-              {features.map((f, i) => (
-                <div key={i} className="landing-feature-card">
-                  <div className="landing-feature-icon">{f.icon}</div>
-                  <div className="landing-feature-title">{t(f.titleKey)}</div>
-                  <div className="landing-feature-desc">{t(f.descKey)}</div>
-                </div>
-              ))}
+          </div>
+          <div className="landing-ba-card landing-ba-card--after">
+            <div className="landing-ba-tag">{t('landing.afterLabel')}</div>
+            <div className="landing-ba-query">{t('landing.baQuery')}</div>
+            <div className="landing-ba-answer">
+              {t('landing.baAnswerAfterPrefix')}
+              <mark className="geo-cite">示例科技</mark>
+              {t('landing.baAnswerAfterSuffix')}
             </div>
-          </section>
-        )}
-
-        {/* 优化前后对比 */}
-        {currentPage === 'beforeafter' && (
-          <Reveal className="landing-beforeafter">
-            <h2 className="landing-section-title">{t('landing.baTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.baSubtitle')}</p>
-            <div className="landing-ba-grid">
-              <div className="landing-ba-card landing-ba-card--before">
-                <div className="landing-ba-tag">{t('landing.beforeLabel')}</div>
-                <div className="landing-ba-query">{t('landing.baQuery')}</div>
-                <div className="landing-ba-answer">{t('landing.baAnswerBefore')}</div>
-                <div className="landing-ba-metric">
-                  <div className="landing-ba-metric-head">
-                    <span>{t('landing.baMention')}</span>
-                    <span className="landing-ba-metric-value">18%</span>
-                  </div>
-                  <div className="landing-ba-bar">
-                    <span className="landing-ba-bar-fill landing-ba-bar-fill--before" style={cssVars({ '--target': '18%' })} />
-                  </div>
-                </div>
+            <div className="landing-ba-metric">
+              <div className="landing-ba-metric-head">
+                <span>{t('landing.baMention')}</span>
+                <span className="landing-ba-metric-value">92%</span>
               </div>
-              <div className="landing-ba-card landing-ba-card--after">
-                <div className="landing-ba-tag">{t('landing.afterLabel')}</div>
-                <div className="landing-ba-query">{t('landing.baQuery')}</div>
-                <div className="landing-ba-answer">
-                  {t('landing.baAnswerAfterPrefix')}
-                  <mark className="geo-cite">示例科技</mark>
-                  {t('landing.baAnswerAfterSuffix')}
-                </div>
-                <div className="landing-ba-metric">
-                  <div className="landing-ba-metric-head">
-                    <span>{t('landing.baMention')}</span>
-                    <span className="landing-ba-metric-value">92%</span>
-                  </div>
-                  <div className="landing-ba-bar">
-                    <span className="landing-ba-bar-fill landing-ba-bar-fill--after" style={cssVars({ '--target': '92%' })} />
-                  </div>
-                </div>
+              <div className="landing-ba-bar">
+                <span className="landing-ba-bar-fill landing-ba-bar-fill--after" style={cssVars({ '--target': '92%' })} />
               </div>
             </div>
-            <div className="landing-ba-uplift">{t('landing.baUplift')}</div>
-          </Reveal>
-        )}
+          </div>
+        </div>
+        <div className="landing-ba-uplift">{t('landing.baUplift')}</div>
+      </Reveal>
 
-        {/* 报告示例 */}
-        {currentPage === 'report' && (
-          <Reveal className="landing-report">
-            <h2 className="landing-section-title">{t('landing.reportTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.reportSubtitle')}</p>
-            <div className="landing-report-card">
-              <div className="landing-report-head">
-                <div className="landing-report-brand">
-                  <div className="landing-report-brand-name">{t('landing.reportBrandDemo')}</div>
-                  <div className="landing-report-brand-sub">{t('landing.reportSubDemo')}</div>
-                </div>
-                <div className="landing-report-gauge">
-                  <svg viewBox="0 0 120 120" className="gauge-svg">
-                    <circle cx="60" cy="60" r="52" className="gauge-bg" />
-                    <circle cx="60" cy="60" r="52" className="gauge-fg" transform="rotate(-90 60 60)" style={cssVars({ '--c': 326.7, '--pct': 82 })} />
-                  </svg>
-                  <div className="gauge-center">
-                    <div className="gauge-num">82</div>
-                    <div className="gauge-grade">{t('landing.reportGrade')}</div>
-                  </div>
-                </div>
+      {/* AI 引用友好数据 */}
+      <Reveal className="landing-facts">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.factsTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.factsSubtitle')}</p>
+        </div>
+        <blockquote className="landing-facts-quote">
+          "{t('landing.factsQuote')}"
+        </blockquote>
+        <div className="landing-facts-table-wrap">
+          <table className="landing-facts-table">
+            <thead>
+              <tr>
+                <th>{t('landing.factsTactic')}</th>
+                <th>{t('landing.factsGain')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>{t('landing.factsT1')}</td><td><strong>{t('landing.factsG41')}</strong></td></tr>
+              <tr><td>{t('landing.factsT2')}</td><td><strong>{t('landing.factsG33')}</strong></td></tr>
+              <tr><td>{t('landing.factsT3')}</td><td><strong>{t('landing.factsG29')}</strong></td></tr>
+              <tr><td>{t('landing.factsT4')}</td><td><strong>{t('landing.factsG27')}</strong></td></tr>
+              <tr><td>{t('landing.factsT5')}</td><td><strong>{t('landing.factsG25')}</strong></td></tr>
+              <tr><td>{t('landing.factsT6')}</td><td><strong>{t('landing.factsG24')}</strong></td></tr>
+              <tr><td>{t('landing.factsT7')}</td><td><strong>{t('landing.factsG22')}</strong></td></tr>
+              <tr><td>{t('landing.factsT8')}</td><td><strong>{t('landing.factsG20')}</strong></td></tr>
+              <tr><td>{t('landing.factsT9')}</td><td><strong>{t('landing.factsG18')}</strong></td></tr>
+            </tbody>
+          </table>
+          <div className="landing-facts-bvs">
+            <div className="landing-facts-bvs-title">{t('landing.factsBvsTitle')}</div>
+            <p className="landing-facts-bvs-text">{t('landing.factsBvsText')}</p>
+          </div>
+        </div>
+      </Reveal>
+
+      {/* 定价方案 */}
+      <section id="pricing" className="landing-pricing">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.pricingTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.pricingSubtitle')}</p>
+        </div>
+        <div className="landing-pricing-grid">
+          {plans.map(plan => (
+            <div key={plan.id} className={`landing-pricing-card ${plan.featured ? 'is-featured' : ''}`}>
+              {plan.featured && (
+                <div className="landing-pricing-badge">{t('landing.planRecommended')}</div>
+              )}
+              <div className="landing-pricing-name">{t(plan.nameKey)}</div>
+              <div className="landing-pricing-price">
+                {plan.price}<span className="landing-pricing-price-unit"> / {t(plan.unitKey)}</span>
               </div>
-
-              <div className="landing-report-section">
-                <div className="landing-report-section-title">{t('landing.reportEngineTitle')}</div>
-                <div className="landing-report-engines">
-                  {sampleEngines.map((e) => (
-                    <div className="landing-report-engine" key={e.name}>
-                      <div className="landing-report-engine-name">{e.name}</div>
-                      <div className="landing-report-engine-bars">
-                        <div className="landing-report-bar landing-report-bar--mention">
-                          <span style={cssVars({ '--target': `${e.mention}%` })} />
-                          <i>{t('landing.reportMention')} {e.mention}%</i>
-                        </div>
-                        <div className="landing-report-bar landing-report-bar--citation">
-                          <span style={cssVars({ '--target': `${e.citation}%` })} />
-                          <i>{t('landing.reportCitation')} {e.citation}%</i>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="landing-report-section">
-                <div className="landing-report-section-title">{t('landing.reportPromptTitle')}</div>
-                <div className="landing-report-prompts">
-                  {samplePrompts.map((p) => (
-                    <div className="landing-report-prompt" key={p.prompt}>
-                      <span className="landing-report-prompt-text">{p.prompt}</span>
-                      <span className={`landing-report-badge ${p.cited ? 'is-cited' : 'is-miss'}`}>
-                        {p.cited ? t('landing.reportCited') : t('landing.reportMiss')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="landing-report-section">
-                <div className="landing-report-section-title">{t('landing.reportActionsTitle')}</div>
-                <ul className="landing-report-actions">
-                  {sampleActions.map((a) => (
-                    <li key={a}>{a}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <Button variant="outline" onClick={handleStartFree}>{t('landing.reportCta')}</Button>
+              <div className="landing-pricing-desc">{t(plan.descKey)}</div>
+              <ul className="landing-pricing-features">
+                {plan.features.map((feat, i) => (
+                  <li key={i}>{feat}</li>
+                ))}
+              </ul>
+              <Button
+                variant={plan.featured ? 'primary' : 'outline'}
+                onClick={plan.id === 'enterprise' ? () => navigate('/tickets') : handleStartFree}
+                style={{ width: '100%' }}
+              >
+                {t(plan.ctaKey)}
+              </Button>
             </div>
-          </Reveal>
-        )}
+          ))}
+        </div>
+      </section>
 
-        {/* AI 引用友好数据 */}
-        {currentPage === 'facts' && (
-          <Reveal id="facts" className="landing-facts">
-            <h2 className="landing-section-title">{t('landing.factsTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.factsSubtitle')}</p>
-            <blockquote className="landing-facts-quote">
-              "{t('landing.factsQuote')}"
-            </blockquote>
-            <div className="landing-facts-table-wrap">
-              <table className="landing-facts-table">
-                <thead>
-                  <tr>
-                    <th>{t('landing.factsTactic')}</th>
-                    <th>{t('landing.factsGain')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>{t('landing.factsT1')}</td><td><strong>{t('landing.factsG41')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT2')}</td><td><strong>{t('landing.factsG33')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT3')}</td><td><strong>{t('landing.factsG29')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT4')}</td><td><strong>{t('landing.factsG27')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT5')}</td><td><strong>{t('landing.factsG25')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT6')}</td><td><strong>{t('landing.factsG24')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT7')}</td><td><strong>{t('landing.factsG22')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT8')}</td><td><strong>{t('landing.factsG20')}</strong></td></tr>
-                  <tr><td>{t('landing.factsT9')}</td><td><strong>{t('landing.factsG18')}</strong></td></tr>
-                </tbody>
-              </table>
-              <div className="landing-facts-bvs">
-                <div className="landing-facts-bvs-title">{t('landing.factsBvsTitle')}</div>
-                <p className="landing-facts-bvs-text">{t('landing.factsBvsText')}</p>
-              </div>
+      {/* 联系我们 */}
+      <section id="contact" className="landing-contact">
+        <div className="landing-section-header">
+          <h2 className="landing-section-title">{t('landing.contactTitle')}</h2>
+          <p className="landing-section-subtitle">{t('landing.contactSubtitle')}</p>
+        </div>
+        <div className="landing-contact-card">
+          <div className="landing-contact-item">
+            <div className="landing-contact-icon">📧</div>
+            <div className="landing-contact-label">{t('landing.contactEmail')}</div>
+            <a href="mailto:deep2code@aliyun.com" className="landing-contact-value">deep2code@aliyun.com</a>
+          </div>
+          <div className="landing-contact-item">
+            <div className="landing-contact-icon">🔧</div>
+            <div className="landing-contact-label">{t('landing.contactCustom')}</div>
+            <div className="landing-contact-value">{t('landing.contactCustomDesc')}</div>
+          </div>
+          <div className="landing-contact-item">
+            <div className="landing-contact-icon">📋</div>
+            <div className="landing-contact-label">{t('landing.contactVersion')}</div>
+            <div className="landing-contact-value">
+              {meta ? (
+                <>版本 {meta.build_version} · 编译 {meta.build_at}</>
+              ) : (
+                '加载中...'
+              )}
             </div>
-          </Reveal>
-        )}
-
-        {/* 定价方案 */}
-        {currentPage === 'pricing' && (
-          <section id="pricing" className="landing-pricing">
-            <h2 className="landing-section-title">{t('landing.pricingTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.pricingSubtitle')}</p>
-            <div className="landing-pricing-grid">
-              {plans.map(plan => (
-                <div key={plan.id} className={`landing-pricing-card ${plan.featured ? 'is-featured' : ''}`}>
-                  {plan.featured && (
-                    <div className="landing-pricing-badge">{t('landing.planRecommended')}</div>
-                  )}
-                  <div className="landing-pricing-name">{t(plan.nameKey)}</div>
-                  <div className="landing-pricing-price">
-                    {plan.price}<span className="landing-pricing-price-unit"> / {t(plan.unitKey)}</span>
-                  </div>
-                  <div className="landing-pricing-desc">{t(plan.descKey)}</div>
-                  <ul className="landing-pricing-features">
-                    {plan.features.map((feat, i) => (
-                      <li key={i}>{feat}</li>
-                    ))}
-                  </ul>
-                  <Button
-                    variant={plan.featured ? 'primary' : 'outline'}
-                    onClick={plan.id === 'enterprise' ? () => navigate('/tickets') : handleStartFree}
-                    style={{ width: '100%' }}
-                  >
-                    {t(plan.ctaKey)}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 联系我们 */}
-        {currentPage === 'contact' && (
-          <section className="landing-contact">
-            <h2 className="landing-section-title">{t('landing.contactTitle')}</h2>
-            <p className="landing-section-subtitle">{t('landing.contactSubtitle')}</p>
-            <div className="landing-contact-card">
-              <div className="landing-contact-item">
-                <div className="landing-contact-icon">📧</div>
-                <div className="landing-contact-label">{t('landing.contactEmail')}</div>
-                <a href="mailto:deep2code@aliyun.com" className="landing-contact-value">deep2code@aliyun.com</a>
-              </div>
-              <div className="landing-contact-item">
-                <div className="landing-contact-icon">🔧</div>
-                <div className="landing-contact-label">{t('landing.contactCustom')}</div>
-                <div className="landing-contact-value">{t('landing.contactCustomDesc')}</div>
-              </div>
-              <div className="landing-contact-item">
-                <div className="landing-contact-icon">📋</div>
-                <div className="landing-contact-label">{t('landing.contactVersion')}</div>
-                <div className="landing-contact-value">
-                  {meta ? (
-                    <>版本 {meta.build_version} · 编译 {meta.build_at}</>
-                  ) : (
-                    '加载中...'
-                  )}
-                </div>
-              </div>
-            </div>
-            <Button size="lg" onClick={() => window.location.href = 'mailto:deep2code@aliyun.com'}>
-              ✉️ {t('landing.contactCta')}
-            </Button>
-          </section>
-        )}
-      </div>
+          </div>
+        </div>
+        <Button size="lg" onClick={() => window.location.href = 'mailto:deep2code@aliyun.com'}>
+          ✉️ {t('landing.contactCta')}
+        </Button>
+      </section>
 
       {/* Footer */}
       <footer className="landing-footer">
@@ -647,18 +450,16 @@ const Landing: React.FC = () => {
             © 2026 崛起GEO. {t('landing.footerRights')}
           </div>
           <div className="landing-footer-links">
-            <a href="#features" onClick={(e) => { e.preventDefault(); setCurrentPage('features') }}>{t('landing.navFeatures')}</a>
-            <a href="#how" onClick={(e) => { e.preventDefault(); setCurrentPage('how') }}>{t('landing.navHow')}</a>
-            <a href="#pricing" onClick={(e) => { e.preventDefault(); setCurrentPage('pricing') }}>{t('landing.navPricing')}</a>
+            <a href="#features" onClick={(e) => { e.preventDefault(); handleScrollTo('features') }}>{t('landing.navFeatures')}</a>
+            <a href="#how" onClick={(e) => { e.preventDefault(); handleScrollTo('how') }}>{t('landing.navHow')}</a>
+            <a href="#pricing" onClick={(e) => { e.preventDefault(); handleScrollTo('pricing') }}>{t('landing.navPricing')}</a>
             <a href="/help">{t('landing.navHelp')}</a>
             <a href="/support">{t('landing.footerSupport')}</a>
             <a href="/terms">服务条款</a>
             <a href="/privacy">隐私政策</a>
-            <a href="/dpa">DPA</a>
-            <a href="#contact" onClick={(e) => { e.preventDefault(); setCurrentPage('contact') }}>{t('landing.footerContact')}</a>
+            <a href="#contact" onClick={(e) => { e.preventDefault(); handleScrollTo('contact') }}>{t('landing.footerContact')}</a>
           </div>
         </div>
-        {/* 构建版本信息 */}
         {meta && (
           <div className="landing-footer-version">
             <span className="landing-footer-version-item">版本 {meta.build_version || '-'}</span>

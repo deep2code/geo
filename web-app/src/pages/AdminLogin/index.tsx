@@ -1,18 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/Button'
-import { Card } from '@/components/Card'
 import { useAppStore, DEFAULT_WHITELABEL } from '@/store/useAppStore'
 import { api, setApiAuthToken } from '@/services/api'
 import './AdminLogin.scss'
 
-/**
- * 登录入口（账号体系，JWT）：
- * - 401/403 触发后，全局拦截器会跳转到这里，带上 redirect（原页面路径）。
- * - 凭据为邮箱 + 密码（POST /api/v1/auth/login）；登录成功后保存 access_token。
- * - 管理后台/数据管理接口按角色（Owner/Admin）放行，普通接口任意登录用户可访问。
- * - 服务端未启用账号体系（GEO_AUTH_ENABLED=true）时登录接口返回 503，此处给出提示。
- */
 const AdminLogin: React.FC = () => {
   const navigate = useNavigate()
   const location = useLocation()
@@ -20,7 +12,6 @@ const AdminLogin: React.FC = () => {
   const showToast = useAppStore(s => s.showToast)
   const brandName = useAppStore(s => s.whitelabel?.brand_name) || DEFAULT_WHITELABEL.brand_name
 
-  // redirect 优先级：URL ?redirect= → location.state.from → /dashboard
   const redirect = (() => {
     const raw = sp.get('redirect')
     if (raw && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
@@ -34,6 +25,7 @@ const AdminLogin: React.FC = () => {
   const [submitting, setSubmitting] = useState(false)
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [showPwd, setShowPwd] = useState(false)
+  const [focused, setFocused] = useState<string | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -75,154 +67,144 @@ const AdminLogin: React.FC = () => {
   }, [email, password, navigate, redirect, showToast])
 
   return (
-    <div
-      className="admin-login-page"
-      style={{
-        minHeight: '100vh',
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px 16px',
-        background:
-          'radial-gradient(1200px 600px at 10% -10%, rgba(64,158,255,0.12), transparent 60%), ' +
-          'radial-gradient(900px 500px at 110% 10%, rgba(139,92,246,0.12), transparent 60%), ' +
-          'var(--bg-page)'
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 440 }}>
-        <div style={{ marginBottom: 16, textAlign: 'center' }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>
-            {brandName}
+    <div className="login-page">
+      {/* 动画背景 */}
+      <div className="login-bg">
+        <div className="login-bg-gradient" />
+        <div className="login-bg-grid" />
+        <div className="login-bg-orbs">
+          <div className="login-bg-orb login-bg-orb--1" />
+          <div className="login-bg-orb login-bg-orb--2" />
+          <div className="login-bg-orb login-bg-orb--3" />
+        </div>
+        <div className="login-bg-particles" aria-hidden>
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div key={i} className="login-particle" style={{
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 8}s`,
+              animationDuration: `${6 + Math.random() * 6}s`
+            }} />
+          ))}
+        </div>
+      </div>
+
+      {/* 主内容 */}
+      <div className="login-container">
+        {/* 左侧品牌区 */}
+        <div className="login-brand">
+          <div className="login-brand-content">
+            <div className="login-brand-logo">
+              <span className="login-brand-logo-text">G</span>
+              <div className="login-brand-logo-ring" />
+            </div>
+            <h1 className="login-brand-name">{brandName}</h1>
+            <p className="login-brand-tagline">生成式引擎优化平台</p>
+            <div className="login-brand-features">
+              <div className="login-brand-feature">
+                <span className="login-brand-feature-icon">🔍</span>
+                <span>13+ AI 引擎覆盖</span>
+              </div>
+              <div className="login-brand-feature">
+                <span className="login-brand-feature-icon">📊</span>
+                <span>BVS 可见度评分</span>
+              </div>
+              <div className="login-brand-feature">
+                <span className="login-brand-feature-icon">⚡</span>
+                <span>实时优化建议</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <Card>
-          <form onSubmit={handleSubmit} noValidate style={{ padding: 24 }}>
-            {/* 邮箱 */}
-            <label
-              htmlFor="login-email"
-              style={{
-                display: 'block',
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                marginBottom: 6
-              }}
-            >
-              邮箱
-            </label>
-            <input
-              ref={emailInputRef}
-              id="login-email"
-              type="email"
-              autoComplete="username"
-              spellCheck={false}
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              style={{
-                width: '100%',
-                height: 40,
-                borderRadius: 8,
-                border: '1px solid var(--border-default)',
-                background: 'var(--bg-elevated)',
-                color: 'var(--text-primary)',
-                padding: '0 12px',
-                outline: 'none',
-                fontSize: 14,
-                transition: 'border-color .15s ease, box-shadow .15s ease'
-              }}
-            />
-
-            {/* 密码 */}
-            <label
-              htmlFor="login-password"
-              style={{
-                display: 'block',
-                fontSize: 13,
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                marginTop: 20,
-                marginBottom: 6
-              }}
-            >
-              密码
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                id="login-password"
-                type={showPwd ? 'text' : 'password'}
-                autoComplete="current-password"
-                spellCheck={false}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{
-                  flex: 1,
-                  height: 40,
-                  borderRadius: 8,
-                  border: '1px solid var(--border-default)',
-                  background: 'var(--bg-elevated)',
-                  color: 'var(--text-primary)',
-                  padding: '0 12px',
-                  outline: 'none',
-                  fontSize: 14,
-                  transition: 'border-color .15s ease, box-shadow .15s ease'
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd(v => !v)}
-                style={{
-                  height: 40,
-                  padding: '0 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-default)',
-                  background: 'var(--bg-elevated)',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer'
-                }}
-                aria-label={showPwd ? '隐藏密码' : '显示密码'}
-              >
-                {showPwd ? '🙈' : '👁'}
-              </button>
+        {/* 右侧登录表单 */}
+        <div className="login-form-wrapper">
+          <div className="login-form-card">
+            <div className="login-form-header">
+              <h2 className="login-form-title">欢迎回来</h2>
+              <p className="login-form-subtitle">登录您的账户以继续</p>
             </div>
 
-            {/* 错误提示 */}
-            {errMsg && (
-              <div
-                role="alert"
-                style={{
-                  marginTop: 16,
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  background: 'var(--status-danger-bg)',
-                  color: 'var(--status-danger)',
-                  fontSize: 13,
-                  lineHeight: 1.6
-                }}
-              >
-                {errMsg}
+            <form onSubmit={handleSubmit} noValidate className="login-form">
+              {/* 邮箱 */}
+              <div className={`login-field ${focused === 'email' || email ? 'is-focused' : ''}`}>
+                <label htmlFor="login-email" className="login-field-label">邮箱</label>
+                <div className="login-field-input-wrap">
+                  <span className="login-field-icon">📧</span>
+                  <input
+                    ref={emailInputRef}
+                    id="login-email"
+                    type="email"
+                    autoComplete="username"
+                    spellCheck={false}
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    onFocus={() => setFocused('email')}
+                    onBlur={() => setFocused(null)}
+                    placeholder="you@example.com"
+                    className="login-field-input"
+                  />
+                </div>
               </div>
-            )}
 
-            <div style={{ marginTop: 22, display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                onClick={() => navigate('/', { replace: true })}
-                disabled={submitting}
-              >
-                返回首页
-              </Button>
-              <Button type="submit" size="md" loading={submitting} disabled={submitting}>
-                登录
-              </Button>
+              {/* 密码 */}
+              <div className={`login-field ${focused === 'password' || password ? 'is-focused' : ''}`}>
+                <label htmlFor="login-password" className="login-field-label">密码</label>
+                <div className="login-field-input-wrap">
+                  <span className="login-field-icon">🔒</span>
+                  <input
+                    id="login-password"
+                    type={showPwd ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    spellCheck={false}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onFocus={() => setFocused('password')}
+                    onBlur={() => setFocused(null)}
+                    placeholder="••••••••"
+                    className="login-field-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPwd(v => !v)}
+                    className="login-field-toggle"
+                    aria-label={showPwd ? '隐藏密码' : '显示密码'}
+                  >
+                    {showPwd ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 错误提示 */}
+              {errMsg && (
+                <div className="login-error" role="alert">
+                  <span className="login-error-icon">⚠️</span>
+                  {errMsg}
+                </div>
+              )}
+
+              {/* 按钮 */}
+              <div className="login-actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="md"
+                  onClick={() => navigate('/', { replace: true })}
+                  disabled={submitting}
+                  className="login-btn-secondary"
+                >
+                  返回首页
+                </Button>
+                <Button type="submit" size="md" loading={submitting} disabled={submitting} className="login-btn-primary">
+                  登录
+                </Button>
+              </div>
+            </form>
+
+            <div className="login-form-footer">
+              <span>© 2026 崛起GEO · 安全登录</span>
             </div>
-          </form>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )

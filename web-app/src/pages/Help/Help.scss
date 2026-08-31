@@ -1,35 +1,54 @@
 @use '@/styles/tokens' as *;
 
+// ═══════════════════════════════════════════════════════
+// 帮助中心 — 匹配 Landing 风格，响应式
+// ═══════════════════════════════════════════════════════
+
 .help-page {
   min-height: 100vh;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-family-base);
 
-  // Hero 区域（匹配 Landing 风格）
+  // ── Hero 区域 ────────────────────────────────────
   .help-hero {
-    padding: 80px 48px 64px;
+    position: relative;
+    padding: 80px 48px 56px;
     text-align: center;
-    background: radial-gradient(ellipse at top, color-mix(in srgb, var(--brand-primary) 12%, var(--bg-primary)), var(--bg-primary));
+    overflow: hidden;
+
+    .help-hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in srgb, var(--brand-primary) 15%, transparent), transparent),
+        radial-gradient(ellipse 60% 50% at 80% 20%, color-mix(in srgb, var(--brand-secondary) 10%, transparent), transparent);
+      pointer-events: none;
+    }
+
+    .help-hero-content {
+      position: relative;
+      z-index: 1;
+    }
 
     .help-hero-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 14px;
+      padding: 6px 16px;
       border-radius: var(--radius-full);
       background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
       color: var(--brand-primary);
       font-size: var(--font-size-xs);
       font-weight: var(--font-weight-semibold);
-      margin-bottom: var(--spacing-lg);
+      margin-bottom: 20px;
     }
 
     .help-hero-title {
-      font-size: clamp(36px, 6vw, 64px);
+      font-size: clamp(32px, 5vw, 56px);
       font-weight: var(--font-weight-bold);
       line-height: 1.1;
-      margin: 0 0 var(--spacing-md);
+      margin: 0 0 12px;
       background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -37,300 +56,178 @@
     }
 
     .help-hero-subtitle {
-      font-size: var(--font-size-xl);
+      font-size: var(--font-size-lg);
       color: var(--text-secondary);
       margin: 0;
-      max-width: 600px;
+      max-width: 500px;
       margin: 0 auto;
+    }
+
+    @media (max-width: 768px) {
+      padding: 48px 20px 32px;
     }
   }
 
-  // 内容区域
+  // ── 内容区域 ──────────────────────────────────────
   .help-content {
     max-width: 960px;
     margin: 0 auto;
-    padding: 48px;
+    padding: 0 48px 48px;
   }
 
-  .help-block {
-    margin-bottom: 48px;
+  // ── Section 通用 ──────────────────────────────────
+  .help-section {
+    margin-bottom: 56px;
   }
 
-  .help-block-title {
-    font-size: var(--font-size-xl);
+  .help-section-header {
+    margin-bottom: 24px;
+  }
+
+  .help-section-title {
+    font-size: var(--font-size-2xl);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
-    margin: 0 0 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-tertiary);
+    margin: 0 0 4px;
+    background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
-  // 帮助文章双栏布局
-  .help-layout {
-    display: grid;
-    grid-template-columns: 240px 1fr;
-    gap: var(--spacing-md);
-    min-height: 480px;
-
-    @media (max-width: 768px) {
-      grid-template-columns: 1fr;
-    }
+  .help-section-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    margin: 0;
   }
 
-  // 左侧分类导航
-  .help-category-nav {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-
-    .help-category-item {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-      padding: 10px 14px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--border-primary);
-      background: var(--surface-secondary);
-      color: var(--text-secondary);
-      cursor: pointer;
-      transition: all var(--transition-fast);
-      font-size: var(--font-size-sm);
-      font-weight: var(--font-weight-medium);
-      text-align: left;
-      width: 100%;
-
-      &:hover {
-        background: var(--bg-hover);
-        border-color: var(--border-secondary);
-      }
-
-      &.is-active {
-        background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-primary));
-        border-color: var(--brand-primary);
-        color: var(--brand-primary);
-      }
-
-      .help-category-icon {
-        font-size: 17px;
-      }
-
-      .help-category-count {
-        margin-left: auto;
-        font-size: 13px;
-        padding: 1px 6px;
-        border-radius: var(--radius-full);
-        background: var(--bg-tertiary);
-        color: var(--text-tertiary);
-      }
-    }
-  }
-
-  // 右侧文章列表/内容
-  .help-article-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-  }
-
-  .help-article-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: var(--spacing-md);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-primary);
-    background: var(--surface-primary);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-
-    &:hover {
-      background: var(--surface-secondary);
-      border-color: var(--border-secondary);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .help-article-title {
-      font-size: var(--font-size-base);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-      margin-bottom: 4px;
-    }
-
-    .help-article-summary {
-      font-size: var(--font-size-sm);
-      color: var(--text-tertiary);
-      line-height: var(--line-height-normal);
-    }
-  }
-
-  .help-article-content {
-    padding: var(--spacing-lg);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--border-primary);
-    background: var(--surface-primary);
-    line-height: var(--line-height-relaxed);
-
-    .help-article-content-title {
-      font-size: var(--font-size-2xl);
-      font-weight: var(--font-weight-bold);
-      margin: 0 0 var(--spacing-md);
-    }
-
-    .help-article-content-body {
-      color: var(--text-secondary);
-      font-size: var(--font-size-sm);
-      margin: 0 0 var(--spacing-md);
-
-      h3 {
-        color: var(--text-primary);
-        margin: var(--spacing-lg) 0 var(--spacing-sm);
-      }
-
-      code {
-        padding: 2px 6px;
-        border-radius: var(--radius-xs);
-        background: var(--surface-tertiary);
-        font-family: var(--font-family-mono);
-        font-size: 0.9em;
-      }
-    }
-  }
-
-  // 新手引导
+  // ── 新手引导 ──────────────────────────────────────
   .help-onboarding-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
   }
 
   .help-onboarding-card {
     position: relative;
-    padding: var(--spacing-lg);
+    padding: 24px 20px;
     border-radius: var(--radius-lg);
-    border: 2px solid var(--border-primary);
-    background: var(--surface-primary);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
     cursor: pointer;
     transition: all var(--transition-normal);
-    overflow: hidden;
+    text-align: center;
 
     &:hover {
       border-color: var(--brand-primary);
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
     }
 
     &.is-completed {
       border-color: var(--status-success);
-      background: linear-gradient(135deg, var(--status-success-bg), var(--surface-primary));
+      background: linear-gradient(135deg, var(--status-success-bg), var(--surface-secondary));
 
       .help-onboarding-step {
         background: var(--status-success);
         color: white;
       }
     }
+  }
 
-    .help-onboarding-step {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: var(--font-weight-bold);
-      font-size: var(--font-size-lg);
+  .help-onboarding-step {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-tertiary);
+    margin: 0 auto 10px;
+  }
+
+  .help-onboarding-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  .help-onboarding-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .help-onboarding-desc {
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .help-onboarding-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: var(--font-weight-semibold);
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+
+    &.is-done {
+      background: var(--status-success-bg);
+      color: var(--status-success);
+    }
+
+    &.is-todo {
       background: var(--bg-tertiary);
       color: var(--text-tertiary);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .help-onboarding-title {
-      font-size: var(--font-size-lg);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-      margin-bottom: var(--spacing-xs);
-    }
-
-    .help-onboarding-desc {
-      font-size: var(--font-size-sm);
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .help-onboarding-status {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: var(--font-size-xs);
-      font-weight: var(--font-weight-semibold);
-      padding: 3px 10px;
-      border-radius: var(--radius-full);
-
-      &-done {
-        background: var(--status-success-bg);
-        color: var(--status-success);
-      }
-
-      &-todo {
-        background: var(--bg-tertiary);
-        color: var(--text-tertiary);
-      }
     }
   }
 
-  .help-empty {
-    text-align: center;
-    padding: var(--spacing-2xl);
-    color: var(--text-tertiary);
-    font-size: var(--font-size-base);
-
-    .help-empty-icon {
-      font-size: 48px;
-      margin-bottom: var(--spacing-md);
-    }
-  }
-
-  // 精通路线
+  // ── 精通路线 ──────────────────────────────────────
   .help-journey-list {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-lg);
+    gap: 16px;
   }
 
   .help-journey-stage {
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-lg);
-    background: var(--surface-primary);
-    padding: var(--spacing-lg);
+    background: var(--surface-secondary);
+    padding: 24px;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
     &:hover {
       border-color: var(--brand-primary);
-      box-shadow: var(--shadow-sm);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
     }
   }
 
   .help-journey-stage-head {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
+    gap: 16px;
+    margin-bottom: 16px;
   }
 
   .help-journey-stage-badge {
     flex-shrink: 0;
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
+    font-size: 20px;
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-secondary));
   }
 
   .help-journey-stage-title {
-    font-size: var(--font-size-lg);
+    font-size: var(--font-size-base);
     font-weight: var(--font-weight-semibold);
     color: var(--text-primary);
   }
@@ -343,21 +240,12 @@
 
   .help-journey-stage-body {
     display: grid;
-    grid-template-columns: 1fr 240px;
-    gap: var(--spacing-md);
+    grid-template-columns: 1fr 220px;
+    gap: 16px;
 
     @media (max-width: 768px) {
       grid-template-columns: 1fr;
     }
-  }
-
-  .help-journey-steps-label {
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: var(--spacing-sm);
   }
 
   .help-journey-steps-list {
@@ -366,7 +254,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 6px;
   }
 
   .help-journey-step-item {
@@ -378,12 +266,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--spacing-sm);
+    gap: 8px;
     width: 100%;
     text-align: left;
     padding: 8px 12px;
     border-radius: var(--radius-sm);
-    background: var(--surface-secondary);
+    background: var(--surface-primary);
     border: 1px solid transparent;
     color: var(--text-primary);
     font-size: var(--font-size-sm);
@@ -395,36 +283,107 @@
       border-color: var(--brand-primary);
       color: var(--brand-primary);
     }
+  }
 
-    .help-journey-step-arrow {
-      color: var(--text-muted);
-      flex-shrink: 0;
-    }
+  .help-journey-step-arrow {
+    color: var(--text-muted);
+    flex-shrink: 0;
   }
 
   .help-journey-acceptance {
     align-self: start;
-    padding: var(--spacing-md);
+    padding: 16px;
     border-radius: var(--radius-md);
     background: var(--status-success-bg);
     border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
+  }
 
-    .help-journey-acceptance-label {
-      display: block;
-      font-size: var(--font-size-xs);
-      font-weight: var(--font-weight-semibold);
-      color: var(--status-success);
-      margin-bottom: var(--spacing-xs);
-    }
+  .help-journey-acceptance-label {
+    display: block;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--status-success);
+    margin-bottom: 4px;
+  }
 
-    .help-journey-acceptance-text {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      line-height: var(--line-height-normal);
+  .help-journey-acceptance-text {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  // ── 帮助文章 ──────────────────────────────────────
+  .help-article-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .help-article-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--surface-primary);
+      border-color: var(--brand-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
     }
   }
 
-  // 返回首页按钮
+  .help-article-title {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .help-article-summary {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    line-height: 1.4;
+  }
+
+  .help-article-content {
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+    line-height: 1.7;
+  }
+
+  .help-article-content-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    margin: 0 0 16px;
+  }
+
+  .help-article-content-body {
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+
+    h3 {
+      color: var(--text-primary);
+      margin: 20px 0 8px;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: var(--radius-xs);
+      background: var(--surface-tertiary);
+      font-family: var(--font-family-mono);
+      font-size: 0.9em;
+    }
+  }
+
+  // ── Footer ────────────────────────────────────────
   .help-footer {
     text-align: center;
     padding: 32px 48px 64px;
@@ -449,16 +408,27 @@
   }
 }
 
+// ── 响应式 ──────────────────────────────────────────
 @media (max-width: 768px) {
-  .help-hero {
-    padding: 48px 20px 32px !important;
+  .help-content {
+    padding: 0 20px 32px !important;
   }
 
-  .help-content {
-    padding: 20px !important;
+  .help-onboarding-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .help-article-list {
+    grid-template-columns: 1fr !important;
   }
 
   .help-footer {
     padding: 24px 20px 48px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .help-onboarding-grid {
+    grid-template-columns: 1fr !important;
   }
 }

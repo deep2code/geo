@@ -1,13 +1,16 @@
 @use '@/styles/tokens' as *;
 
-// 落地页是独立全屏页面，不使用 Layout
+// ═══════════════════════════════════════════════════════
+// 落地页 — 现代科技公司风格
+// ═══════════════════════════════════════════════════════
+
 .landing-page {
   min-height: 100vh;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-family-base);
 
-  // 顶部导航栏
+  // ── 顶部导航栏 ──────────────────────────────────
   .landing-nav {
     position: sticky;
     top: 0;
@@ -15,9 +18,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 48px;
+    padding: 14px 48px;
     background: var(--surface-overlay);
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--border-primary);
 
     .landing-nav-brand {
@@ -67,30 +70,70 @@
     }
   }
 
-  // Hero 区域
-  .landing-hero {
-    padding: 80px 48px 64px;
+  // ── 通用 section 头部 ────────────────────────────
+  .landing-section-header {
     text-align: center;
-    background: radial-gradient(ellipse at top, color-mix(in srgb, var(--brand-primary) 12%, var(--bg-primary)), var(--bg-primary));
+    margin-bottom: 48px;
+  }
+
+  .landing-section-title {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: var(--font-weight-bold);
+    margin: 0 0 12px;
+    background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .landing-section-subtitle {
+    font-size: var(--font-size-lg);
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  // ── Hero 区域 ────────────────────────────────────
+  .landing-hero {
+    position: relative;
+    padding: 100px 48px 80px;
+    text-align: center;
+    overflow: hidden;
+
+    .landing-hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in srgb, var(--brand-primary) 15%, transparent), transparent),
+        radial-gradient(ellipse 60% 50% at 80% 20%, color-mix(in srgb, var(--brand-secondary) 10%, transparent), transparent);
+      pointer-events: none;
+    }
+
+    .landing-hero-content {
+      position: relative;
+      z-index: 1;
+    }
 
     .landing-hero-badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 14px;
+      padding: 6px 16px;
       border-radius: var(--radius-full);
       background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
       color: var(--brand-primary);
       font-size: var(--font-size-xs);
       font-weight: var(--font-weight-semibold);
-      margin-bottom: var(--spacing-lg);
+      margin-bottom: 24px;
     }
 
     .landing-hero-title {
-      font-size: clamp(36px, 6vw, 64px);
+      font-size: clamp(40px, 7vw, 72px);
       font-weight: var(--font-weight-bold);
-      line-height: 1.1;
-      margin: 0 0 var(--spacing-md);
+      line-height: 1.08;
+      margin: 0 0 20px;
+      letter-spacing: -0.02em;
       background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -100,159 +143,510 @@
     .landing-hero-subtitle {
       font-size: clamp(16px, 2vw, 20px);
       color: var(--text-secondary);
-      max-width: 640px;
-      margin: 0 auto var(--spacing-xl);
-      line-height: var(--line-height-relaxed);
+      margin: 0 auto 32px;
+      max-width: 560px;
+      line-height: 1.6;
     }
 
     .landing-hero-cta {
       display: flex;
-      gap: var(--spacing-md);
+      gap: 12px;
       justify-content: center;
       flex-wrap: wrap;
     }
 
     @media (max-width: 768px) {
-      padding: 48px 20px 40px;
+      padding: 64px 20px 48px;
     }
   }
 
-  // 平台数据统计
+  // ── 平台数据统计 ────────────────────────────────
   .landing-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--spacing-lg);
-    padding: 0 48px 64px;
-    max-width: 1200px;
-    margin: 0 auto;
+    padding: 0 48px;
+    margin-top: -24px;
+
+    .landing-stats-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 40px;
+      background: var(--surface-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+    }
 
     .landing-stat-item {
       text-align: center;
+      flex: 1;
+    }
 
-      .landing-stat-value {
-        font-size: var(--font-size-4xl);
-        font-weight: var(--font-weight-bold);
-        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
+    .landing-stat-value {
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--brand-primary);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
 
-      .landing-stat-label {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        margin-top: 4px;
-      }
+    .landing-stat-label {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+    }
+
+    .landing-stat-divider {
+      width: 1px;
+      height: 36px;
+      background: var(--border-tertiary);
     }
 
     @media (max-width: 768px) {
-      grid-template-columns: repeat(2, 1fr);
-      padding: 0 20px 40px;
-      gap: var(--spacing-md);
+      padding: 0 16px;
+      margin-top: -16px;
+
+      .landing-stats-inner {
+        flex-wrap: wrap;
+        gap: 20px;
+        padding: 20px;
+      }
+
+      .landing-stat-divider {
+        display: none;
+      }
+
+      .landing-stat-item {
+        min-width: 40%;
+      }
     }
   }
 
-  // 功能亮点区域
+  // ── 功能亮点 ──────────────────────────────────────
   .landing-features {
-    padding: 64px 48px;
-    background: var(--surface-secondary);
-    scroll-margin-top: 80px;
-
-    .landing-section-title {
-      text-align: center;
-      font-size: var(--font-size-3xl);
-      font-weight: var(--font-weight-bold);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .landing-section-subtitle {
-      text-align: center;
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-2xl);
-      font-size: var(--font-size-base);
-    }
+    padding: 80px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
 
     .landing-features-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: var(--spacing-lg);
-      max-width: 1200px;
-      margin: 0 auto;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
     }
 
     .landing-feature-card {
-      padding: var(--spacing-lg);
+      padding: 28px 24px;
       border-radius: var(--radius-lg);
       border: 1px solid var(--border-primary);
-      background: var(--surface-primary);
+      background: var(--surface-secondary);
       transition: all var(--transition-normal);
 
       &:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-lg);
         border-color: var(--brand-primary);
+        transform: translateY(-4px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
       }
+    }
 
-      .landing-feature-icon {
-        width: 48px;
-        height: 48px;
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--brand-primary) 12%, var(--surface-secondary));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        margin-bottom: var(--spacing-md);
-      }
+    .landing-feature-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+    }
 
-      .landing-feature-title {
-        font-size: var(--font-size-lg);
-        font-weight: var(--font-weight-semibold);
-        margin-bottom: var(--spacing-xs);
-      }
+    .landing-feature-title {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: 6px;
+    }
 
-      .landing-feature-desc {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        line-height: var(--line-height-normal);
+    .landing-feature-desc {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1024px) {
+      .landing-features-grid {
+        grid-template-columns: repeat(2, 1fr);
       }
     }
 
     @media (max-width: 768px) {
-      padding: 40px 20px;
+      padding: 48px 20px;
+
+      .landing-features-grid {
+        grid-template-columns: 1fr;
+      }
     }
   }
 
-  // 定价方案区域
-  .landing-pricing {
-    padding: 64px 48px;
-    scroll-margin-top: 80px;
+  // ── GEO 运作流程 ──────────────────────────────────
+  .landing-how {
+    padding: 80px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
 
-    .landing-section-title {
+    .landing-how-flow {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 48px;
+    }
+
+    .landing-how-step {
+      flex: 1;
+      max-width: 220px;
       text-align: center;
-      font-size: var(--font-size-3xl);
+      padding: 0 12px;
+    }
+
+    .landing-how-step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      color: white;
+      font-size: var(--font-size-sm);
       font-weight: var(--font-weight-bold);
-      margin-bottom: var(--spacing-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px;
     }
 
-    .landing-section-subtitle {
-      text-align: center;
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-2xl);
-      font-size: var(--font-size-base);
+    .landing-how-step-icon {
+      font-size: 36px;
+      margin-bottom: 12px;
     }
+
+    .landing-how-step-title {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: 6px;
+    }
+
+    .landing-how-step-desc {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      line-height: 1.5;
+    }
+
+    .landing-how-arrow {
+      display: flex;
+      align-items: center;
+      padding-top: 36px;
+      font-size: 24px;
+      color: var(--text-muted);
+    }
+
+    .landing-how-visual {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 28px 32px;
+      background: var(--surface-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-xl);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .landing-how-query {
+      flex: 1;
+    }
+
+    .landing-how-query-label {
+      display: block;
+      font-size: var(--font-size-xs);
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+
+    .landing-how-query-text {
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      color: var(--text-primary);
+    }
+
+    .landing-how-pulse {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+
+    .landing-how-pulse-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+    }
+
+    .landing-how-pulse-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid var(--brand-primary);
+      animation: pulse-ring 2s ease-out infinite;
+
+      &--2 {
+        animation-delay: 1s;
+      }
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+    }
+
+    .landing-how-result {
+      flex: 1;
+    }
+
+    .landing-how-result-brand {
+      display: block;
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-bold);
+      color: var(--brand-primary);
+      margin-bottom: 4px;
+    }
+
+    .landing-how-result-text {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      padding: 48px 20px;
+
+      .landing-how-flow {
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .landing-how-arrow {
+        transform: rotate(90deg);
+        padding-top: 0;
+      }
+
+      .landing-how-visual {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+    }
+  }
+
+  // ── 优化前后对比 ──────────────────────────────────
+  .landing-beforeafter {
+    padding: 80px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
+
+    .landing-ba-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .landing-ba-card {
+      padding: 28px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-primary);
+      background: var(--surface-secondary);
+
+      &--before {
+        border-color: var(--border-tertiary);
+      }
+
+      &--after {
+        border-color: var(--brand-primary);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      }
+    }
+
+    .landing-ba-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: 12px;
+
+      .landing-ba-card--before & {
+        background: var(--bg-tertiary);
+        color: var(--text-tertiary);
+      }
+
+      .landing-ba-card--after & {
+        background: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+        color: var(--brand-primary);
+      }
+    }
+
+    .landing-ba-query {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: 8px;
+    }
+
+    .landing-ba-answer {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 16px;
+
+      .geo-cite {
+        background: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+        color: var(--brand-primary);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: var(--font-weight-semibold);
+      }
+    }
+
+    .landing-ba-metric {
+      .landing-ba-metric-head {
+        display: flex;
+        justify-content: space-between;
+        font-size: var(--font-size-xs);
+        color: var(--text-tertiary);
+        margin-bottom: 6px;
+      }
+
+      .landing-ba-metric-value {
+        font-weight: var(--font-weight-bold);
+        color: var(--text-primary);
+      }
+
+      .landing-ba-bar {
+        height: 6px;
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-full);
+        overflow: hidden;
+      }
+
+      .landing-ba-bar-fill {
+        display: block;
+        height: 100%;
+        border-radius: var(--radius-full);
+        width: var(--target);
+
+        &--before { background: var(--text-muted); }
+        &--after { background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary)); }
+      }
+    }
+
+    .landing-ba-uplift {
+      text-align: center;
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--brand-primary);
+    }
+
+    @media (max-width: 768px) {
+      padding: 48px 20px;
+
+      .landing-ba-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  }
+
+  // ── AI 引用友好数据 ──────────────────────────────
+  .landing-facts {
+    padding: 80px 48px;
+    max-width: 1000px;
+    margin: 0 auto;
+
+    .landing-facts-quote {
+      text-align: center;
+      font-size: var(--font-size-lg);
+      font-style: italic;
+      color: var(--text-secondary);
+      margin: 0 0 32px;
+      padding: 0 20px;
+      border: none;
+    }
+
+    .landing-facts-table-wrap {
+      overflow-x: auto;
+    }
+
+    .landing-facts-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-sm);
+
+      th, td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-tertiary);
+      }
+
+      th {
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        background: var(--surface-secondary);
+      }
+
+      td {
+        color: var(--text-secondary);
+      }
+    }
+
+    .landing-facts-bvs {
+      margin-top: 24px;
+      padding: 20px;
+      background: var(--surface-secondary);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-primary);
+
+      .landing-facts-bvs-title {
+        font-weight: var(--font-weight-semibold);
+        margin-bottom: 4px;
+      }
+
+      .landing-facts-bvs-text {
+        font-size: var(--font-size-sm);
+        color: var(--text-tertiary);
+        margin: 0;
+      }
+    }
+
+    @media (max-width: 768px) {
+      padding: 48px 20px;
+    }
+  }
+
+  // ── 定价方案 ──────────────────────────────────────
+  .landing-pricing {
+    padding: 80px 48px;
+    max-width: 1200px;
+    margin: 0 auto;
 
     .landing-pricing-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: var(--spacing-lg);
-      max-width: 1100px;
-      margin: 0 auto;
+      gap: 20px;
       align-items: start;
     }
 
     .landing-pricing-card {
-      padding: var(--spacing-xl);
+      padding: 32px 28px;
       border-radius: var(--radius-xl);
       border: 2px solid var(--border-primary);
       background: var(--surface-primary);
@@ -261,66 +655,66 @@
 
       &.is-featured {
         border-color: var(--brand-primary);
-        box-shadow: var(--shadow-xl);
-        transform: scale(1.04);
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+        transform: scale(1.03);
       }
+    }
 
-      .landing-pricing-badge {
-        position: absolute;
-        top: -12px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 4px 14px;
-        border-radius: var(--radius-full);
-        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-        color: white;
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        white-space: nowrap;
-      }
+    .landing-pricing-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 4px 16px;
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+      color: white;
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-bold);
+      white-space: nowrap;
+    }
 
-      .landing-pricing-name {
-        font-size: var(--font-size-xl);
-        font-weight: var(--font-weight-bold);
-        margin-bottom: var(--spacing-sm);
-      }
+    .landing-pricing-name {
+      font-size: var(--font-size-xl);
+      font-weight: var(--font-weight-bold);
+      margin-bottom: 8px;
+    }
 
-      .landing-pricing-price {
-        font-size: var(--font-size-4xl);
-        font-weight: var(--font-weight-bold);
-        margin-bottom: var(--spacing-xs);
+    .landing-pricing-price {
+      font-size: 40px;
+      font-weight: var(--font-weight-bold);
+      margin-bottom: 4px;
 
-        .landing-pricing-price-unit {
-          font-size: var(--font-size-base);
-          color: var(--text-tertiary);
-          font-weight: var(--font-weight-regular);
-        }
-      }
-
-      .landing-pricing-desc {
-        font-size: var(--font-size-sm);
+      .landing-pricing-price-unit {
+        font-size: var(--font-size-base);
         color: var(--text-tertiary);
-        margin-bottom: var(--spacing-lg);
+        font-weight: var(--font-weight-regular);
       }
+    }
 
-      .landing-pricing-features {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 var(--spacing-lg);
+    .landing-pricing-desc {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+      margin-bottom: 20px;
+    }
 
-        li {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          margin-bottom: 10px;
+    .landing-pricing-features {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 24px;
 
-          &::before {
-            content: '✓';
-            color: var(--status-success);
-            font-weight: var(--font-weight-bold);
-          }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        margin-bottom: 10px;
+
+        &::before {
+          content: '✓';
+          color: var(--status-success);
+          font-weight: var(--font-weight-bold);
         }
       }
     }
@@ -337,11 +731,69 @@
     }
 
     @media (max-width: 768px) {
-      padding: 40px 20px;
+      padding: 48px 20px;
     }
   }
 
-  // Footer
+  // ── 联系我们 ──────────────────────────────────────
+  .landing-contact {
+    padding: 80px 48px;
+    text-align: center;
+
+    .landing-contact-card {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 900px;
+      margin: 0 auto 32px;
+    }
+
+    .landing-contact-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 28px 24px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-primary);
+      background: var(--surface-secondary);
+      transition: all var(--transition-fast);
+
+      &:hover {
+        border-color: var(--brand-primary);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+      }
+    }
+
+    .landing-contact-icon {
+      font-size: 28px;
+    }
+
+    .landing-contact-label {
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+    }
+
+    .landing-contact-value {
+      font-size: var(--font-size-base);
+      color: var(--brand-primary);
+      text-decoration: none;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+
+    @media (max-width: 768px) {
+      padding: 48px 20px;
+
+      .landing-contact-card {
+        grid-template-columns: 1fr;
+      }
+    }
+  }
+
+  // ── Footer ────────────────────────────────────────
   .landing-footer {
     padding: 32px 48px;
     background: var(--surface-secondary);
@@ -352,29 +804,29 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: var(--spacing-md);
+      gap: 16px;
       max-width: 1200px;
       margin: 0 auto;
+    }
 
-      .landing-footer-copy {
+    .landing-footer-copy {
+      font-size: var(--font-size-sm);
+      color: var(--text-tertiary);
+    }
+
+    .landing-footer-links {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+
+      a {
+        color: var(--text-secondary);
+        text-decoration: none;
         font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-      }
+        transition: color var(--transition-fast);
 
-      .landing-footer-links {
-        display: flex;
-        gap: var(--spacing-md);
-        flex-wrap: wrap;
-
-        a {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-size: var(--font-size-sm);
-          transition: color var(--transition-fast);
-
-          &:hover {
-            color: var(--brand-primary);
-          }
+        &:hover {
+          color: var(--brand-primary);
         }
       }
     }
@@ -389,1002 +841,47 @@
     }
   }
 
-  // GEO 动作流程（动画）
-  .landing-how {
-    padding: 64px 48px;
+  // ── Footer 版本信息 ──────────────────────────────
+  .landing-footer-version {
     max-width: 1200px;
-    margin: 0 auto;
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.7s ease, transform 0.7s ease;
-
-    &.reveal-in {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .landing-section-title {
-      text-align: center;
-      font-size: var(--font-size-3xl);
-      font-weight: var(--font-weight-bold);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .landing-section-subtitle {
-      text-align: center;
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-2xl);
-      font-size: var(--font-size-base);
-    }
-
-    .landing-how-flow {
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      gap: var(--spacing-md);
-      flex-wrap: wrap;
-
-      .landing-how-step {
-        flex: 1 1 200px;
-        max-width: 240px;
-        text-align: center;
-        padding: var(--spacing-lg);
-        border-radius: var(--radius-lg);
-        background: var(--surface-secondary);
-        border: 1px solid var(--border-primary);
-      }
-
-      .landing-how-icon {
-        width: 64px;
-        height: 64px;
-        margin: 0 auto var(--spacing-md);
-
-        .geo-glyph {
-          width: 100%;
-          height: 100%;
-        }
-
-        // 雷达扫描
-        .geo-ring {
-          fill: none;
-          stroke: color-mix(in srgb, var(--brand-primary) 35%, transparent);
-          stroke-width: 2;
-        }
-
-        .geo-ring--2 {
-          stroke: color-mix(in srgb, var(--brand-primary) 20%, transparent);
-        }
-
-        .geo-sweep {
-          stroke: var(--brand-primary);
-          stroke-width: 2.5;
-          transform-origin: 32px 32px;
-        }
-
-        .geo-dot {
-          fill: var(--brand-primary);
-        }
-
-        // 分析柱状
-        .geo-bar {
-          fill: var(--brand-primary);
-          transform-box: fill-box;
-          transform-origin: bottom;
-          transform: scaleY(0.5);
-        }
-
-        .geo-bar--2 {
-          fill: var(--brand-secondary);
-        }
-
-        .geo-bar--3 {
-          fill: color-mix(in srgb, var(--brand-primary) 70%, var(--brand-secondary));
-        }
-
-        // 优化星火
-        .geo-spark {
-          fill: var(--brand-primary);
-          transform-box: fill-box;
-          transform-origin: center;
-        }
-
-        .geo-spark--2 {
-          fill: var(--brand-secondary);
-        }
-
-        // 监控盾牌
-        .geo-shield {
-          fill: color-mix(in srgb, var(--status-success) 18%, transparent);
-          stroke: var(--status-success);
-          stroke-width: 2.5;
-        }
-
-        .geo-pulse {
-          fill: var(--status-success);
-          transform-box: fill-box;
-          transform-origin: center;
-        }
-      }
-
-      .landing-how-step-title {
-        font-size: var(--font-size-lg);
-        font-weight: var(--font-weight-semibold);
-        margin-bottom: var(--spacing-xs);
-      }
-
-      .landing-how-step-desc {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        line-height: var(--line-height-normal);
-      }
-
-      .landing-how-arrow {
-        align-self: center;
-        font-size: var(--font-size-2xl);
-        color: var(--brand-primary);
-        font-weight: var(--font-weight-bold);
-
-        @media (max-width: 768px) {
-          display: none;
-        }
-      }
-    }
-
-    // 查询 -> 品牌浮现 的可视化
-    .landing-how-visual {
-      margin-top: var(--spacing-2xl);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: var(--spacing-lg);
-      padding: var(--spacing-xl);
-      border-radius: var(--radius-xl);
-      background: radial-gradient(ellipse at center, color-mix(in srgb, var(--brand-primary) 10%, var(--surface-secondary)), var(--surface-secondary));
-      border: 1px solid var(--border-primary);
-
-      .landing-how-query {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-
-        .landing-how-query-label {
-          font-size: var(--font-size-xs);
-          color: var(--text-tertiary);
-        }
-
-        .landing-how-query-text {
-          font-size: var(--font-size-base);
-          font-weight: var(--font-weight-medium);
-          color: var(--text-secondary);
-        }
-      }
-
-      .landing-how-pulse {
-        position: relative;
-        width: 28px;
-        height: 28px;
-
-        .landing-how-pulse-dot {
-          position: absolute;
-          inset: 11px;
-          border-radius: 50%;
-          background: var(--brand-primary);
-        }
-
-        .landing-how-pulse-ring,
-        .landing-how-pulse-ring--2 {
-          position: absolute;
-          inset: 0;
-          border-radius: 50%;
-          border: 2px solid var(--brand-primary);
-          opacity: 0;
-        }
-      }
-
-      .landing-how-result {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        align-items: flex-end;
-
-        .landing-how-result-brand {
-          font-size: var(--font-size-lg);
-          font-weight: var(--font-weight-bold);
-          color: var(--brand-primary);
-        }
-
-        .landing-how-result-text {
-          font-size: var(--font-size-sm);
-          color: var(--text-tertiary);
-        }
-      }
-
-      @media (max-width: 768px) {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-      }
-    }
-
-    @media (max-width: 768px) {
-      padding: 40px 20px;
-    }
-  }
-
-  // GEO 优化前 / 优化后 对比
-  .landing-beforeafter {
-    padding: 64px 48px;
-    background: var(--surface-secondary);
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.7s ease, transform 0.7s ease;
-
-    &.reveal-in {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .landing-section-title {
-      text-align: center;
-      font-size: var(--font-size-3xl);
-      font-weight: var(--font-weight-bold);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .landing-section-subtitle {
-      text-align: center;
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-2xl);
-      font-size: var(--font-size-base);
-    }
-
-    .landing-ba-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--spacing-lg);
-      max-width: 1000px;
-      margin: 0 auto;
-
-      .landing-ba-card {
-        padding: var(--spacing-xl);
-        border-radius: var(--radius-xl);
-        border: 1px solid var(--border-primary);
-        background: var(--surface-primary);
-
-        &.landing-ba-card--before {
-          border-color: color-mix(in srgb, var(--status-error) 40%, var(--border-primary));
-        }
-
-        &.landing-ba-card--after {
-          border-color: color-mix(in srgb, var(--status-success) 50%, var(--border-primary));
-          box-shadow: 0 0 0 1px color-mix(in srgb, var(--status-success) 25%, transparent);
-        }
-      }
-
-      .landing-ba-tag {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: var(--radius-full);
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-bold);
-        margin-bottom: var(--spacing-md);
-
-        .landing-ba-card--before & {
-          background: color-mix(in srgb, var(--status-error) 12%, transparent);
-          color: var(--status-error);
-        }
-
-        .landing-ba-card--after & {
-          background: color-mix(in srgb, var(--status-success) 14%, transparent);
-          color: var(--status-success);
-        }
-      }
-
-      .landing-ba-query {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        margin-bottom: var(--spacing-sm);
-      }
-
-      .landing-ba-answer {
-        font-size: var(--font-size-base);
-        line-height: var(--line-height-relaxed);
-        color: var(--text-secondary);
-        min-height: 84px;
-        padding: var(--spacing-md);
-        border-radius: var(--radius-md);
-        background: var(--surface-secondary);
-        margin-bottom: var(--spacing-lg);
-      }
-
-      .geo-cite {
-        background: color-mix(in srgb, var(--status-success) 20%, transparent);
-        color: var(--status-success);
-        font-weight: var(--font-weight-bold);
-        padding: 0 4px;
-        border-radius: 4px;
-      }
-
-      .landing-ba-metric {
-        .landing-ba-metric-head {
-          display: flex;
-          justify-content: space-between;
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          margin-bottom: 6px;
-
-          .landing-ba-metric-value {
-            font-weight: var(--font-weight-bold);
-          }
-
-          .landing-ba-card--before & .landing-ba-metric-value {
-            color: var(--status-error);
-          }
-
-          .landing-ba-card--after & .landing-ba-metric-value {
-            color: var(--status-success);
-          }
-        }
-      }
-
-      .landing-ba-bar {
-        height: 10px;
-        border-radius: 6px;
-        background: var(--surface-secondary);
-        overflow: hidden;
-
-        .landing-ba-bar-fill {
-          display: block;
-          height: 100%;
-          width: 0;
-          border-radius: 6px;
-
-          &.landing-ba-bar-fill--before {
-            background: var(--status-error);
-          }
-
-          &.landing-ba-bar-fill--after {
-            background: var(--status-success);
-          }
-        }
-      }
-
-      @media (max-width: 768px) {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    // reveal 后触发进度条动画
-    &.reveal-in {
-      .landing-ba-bar-fill {
-        animation: barGrow 1.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-      }
-    }
-
-    .landing-ba-uplift {
-      text-align: center;
-      margin-top: var(--spacing-xl);
-      font-size: var(--font-size-xl);
-      font-weight: var(--font-weight-bold);
-      color: var(--status-success);
-    }
-
-    @media (max-width: 768px) {
-      padding: 40px 20px;
-    }
-  }
-
-  // 报告示例
-  .landing-report {
-    padding: 64px 48px;
-    max-width: 1200px;
-    margin: 0 auto;
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.7s ease, transform 0.7s ease;
-
-    &.reveal-in {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .landing-section-title {
-      text-align: center;
-      font-size: var(--font-size-3xl);
-      font-weight: var(--font-weight-bold);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .landing-section-subtitle {
-      text-align: center;
-      color: var(--text-tertiary);
-      margin-bottom: var(--spacing-2xl);
-      font-size: var(--font-size-base);
-    }
-
-    .landing-report-card {
-      padding: var(--spacing-2xl);
-      border-radius: var(--radius-xl);
-      border: 1px solid var(--border-primary);
-      background: var(--surface-primary);
-      box-shadow: var(--shadow-lg);
-      max-width: 880px;
-      margin: 0 auto;
-
-      .landing-report-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-lg);
-        padding-bottom: var(--spacing-lg);
-        border-bottom: 1px solid var(--border-primary);
-        margin-bottom: var(--spacing-lg);
-
-        .landing-report-brand-name {
-          font-size: var(--font-size-2xl);
-          font-weight: var(--font-weight-bold);
-        }
-
-        .landing-report-brand-sub {
-          font-size: var(--font-size-sm);
-          color: var(--text-tertiary);
-          margin-top: 4px;
-        }
-
-        .landing-report-gauge {
-          position: relative;
-          width: 120px;
-          height: 120px;
-
-          .gauge-svg {
-            width: 100%;
-            height: 100%;
-          }
-
-          .gauge-bg {
-            fill: none;
-            stroke: var(--surface-secondary);
-            stroke-width: 10;
-          }
-
-          .gauge-fg {
-            fill: none;
-            stroke: var(--brand-primary);
-            stroke-width: 10;
-            stroke-linecap: round;
-            stroke-dasharray: var(--c);
-            stroke-dashoffset: var(--c);
-          }
-
-          .gauge-center {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-
-            .gauge-num {
-              font-size: var(--font-size-2xl);
-              font-weight: var(--font-weight-bold);
-              background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
-              -webkit-background-clip: text;
-              -webkit-text-fill-color: transparent;
-              background-clip: text;
-            }
-
-            .gauge-grade {
-              font-size: var(--font-size-xs);
-              color: var(--text-tertiary);
-            }
-          }
-        }
-      }
-
-      .landing-report-section {
-        margin-bottom: var(--spacing-lg);
-
-        .landing-report-section-title {
-          font-size: var(--font-size-lg);
-          font-weight: var(--font-weight-semibold);
-          margin-bottom: var(--spacing-md);
-
-          &::before {
-            content: '';
-            display: inline-block;
-            width: 4px;
-            height: 16px;
-            background: var(--brand-primary);
-            border-radius: 2px;
-            margin-right: 8px;
-            vertical-align: -2px;
-          }
-        }
-      }
-
-      .landing-report-engines {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--spacing-md);
-
-        .landing-report-engine {
-          .landing-report-engine-name {
-            font-size: var(--font-size-sm);
-            font-weight: var(--font-weight-medium);
-            margin-bottom: 6px;
-          }
-
-          .landing-report-engine-bars {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-          }
-
-          .landing-report-bar {
-            position: relative;
-            height: 18px;
-            background: var(--surface-secondary);
-            border-radius: 4px;
-            overflow: hidden;
-
-            span {
-              position: absolute;
-              left: 0;
-              top: 0;
-              height: 100%;
-              width: 0;
-              border-radius: 4px;
-
-              .landing-report-bar--mention & {
-                background: linear-gradient(90deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 70%, var(--brand-secondary)));
-              }
-
-              .landing-report-bar--citation & {
-                background: linear-gradient(90deg, var(--brand-secondary), color-mix(in srgb, var(--brand-secondary) 70%, var(--brand-primary)));
-              }
-            }
-
-            i {
-              position: absolute;
-              right: 8px;
-              top: 0;
-              line-height: 18px;
-              font-size: var(--font-size-xs);
-              font-style: normal;
-              color: var(--text-secondary);
-              z-index: 1;
-            }
-          }
-        }
-
-        @media (max-width: 600px) {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .landing-report-prompts {
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-sm);
-
-        .landing-report-prompt {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: var(--spacing-md);
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-md);
-          background: var(--surface-secondary);
-
-          .landing-report-prompt-text {
-            font-size: var(--font-size-sm);
-            color: var(--text-secondary);
-          }
-
-          .landing-report-badge {
-            font-size: var(--font-size-xs);
-            font-weight: var(--font-weight-bold);
-            padding: 2px 10px;
-            border-radius: var(--radius-full);
-
-            &.is-cited {
-              background: color-mix(in srgb, var(--status-success) 16%, transparent);
-              color: var(--status-success);
-            }
-
-            &.is-miss {
-              background: color-mix(in srgb, var(--text-tertiary) 16%, transparent);
-              color: var(--text-tertiary);
-            }
-          }
-        }
-      }
-
-      .landing-report-actions {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 var(--spacing-lg);
-
-        li {
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          margin-bottom: 10px;
-
-          &::before {
-            content: '✦';
-            color: var(--brand-primary);
-            font-weight: var(--font-weight-bold);
-          }
-        }
-      }
-
-      @media (max-width: 768px) {
-        padding: var(--spacing-lg);
-      }
-    }
-
-    // reveal 后触发进度条 / 仪表盘动画
-    &.reveal-in {
-      .landing-report-bar span {
-        animation: barGrow 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-      }
-
-      .gauge-fg {
-        animation: drawGauge 1.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-      }
-    }
-
-    @media (max-width: 768px) {
-      ipadding: 40px 20px;
-    }
-  }
-}
-
-// GEO 前后对比：进入视口后品牌高亮脉冲
-.landing-beforeafter.reveal-in {
-  .geo-cite {
-    animation: citePulse 1.8s ease-in-out infinite;
-  }
-}
-
-// 共享关键帧
-@keyframes barGrow {
-  to {
-    width: var(--target, 100%);
-  }
-}
-
-@keyframes drawGauge {
-  to {
-    stroke-dashoffset: calc(var(--c) * (1 - var(--pct) / 100));
-  }
-}
-
-@keyframes citePulse {
-  0%, 100% {
-    background: color-mix(in srgb, var(--status-success) 12%, transparent);
-  }
-  50% {
-    background: color-mix(in srgb, var(--status-success) 32%, transparent);
-  }
-}
-
-// 进入视口后，GEO 步骤图标动画启动
-.landing-how.reveal-in {
-  .geo-sweep {
-    animation: sweepRotate 2.6s linear infinite;
-  }
-
-  .geo-bar {
-    animation: barPulse 1.6s ease-in-out infinite;
-  }
-
-  .geo-bar--1 {
-    animation-delay: 0s;
-  }
-
-  .geo-bar--2 {
-    animation-delay: 0.25s;
-  }
-
-  .geo-bar--3 {
-    animation-delay: 0.5s;
-  }
-
-  .geo-spark--1 {
-    animation: sparkle 1.8s ease-in-out infinite;
-  }
-
-  .geo-spark--2 {
-    animation: sparkle 1.8s ease-in-out infinite 0.6s;
-  }
-
-  .geo-pulse {
-    animation: shieldPulse 2s ease-in-out infinite;
-  }
-}
-
-@keyframes sweepRotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes barPulse {
-  0%, 100% {
-    transform: scaleY(0.5);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-
-@keyframes sparkle {
-  0%, 100% {
-    transform: scale(0.85);
-    opacity: 0.55;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-}
-
-@keyframes shieldPulse {
-  0%, 100% {
-    transform: scale(0.85);
-    opacity: 0.6;
-  }
-  50% {
-    transform: scale(1.15);
-    opacity: 1;
-  }
-}
-
-
-// ── AI 引用友好数据区块 ──────────────────────────────
-.landing-facts {
-  max-width: 1000px;
-  margin: 0 auto;
-  padding: 64px 24px;
-
-  .landing-facts-quote {
-    margin: 32px auto;
-    padding: 24px 32px;
-    max-width: 720px;
-    text-align: center;
-    font-size: var(--font-size-lg);
-    font-style: italic;
-    color: var(--text-secondary);
-    border-left: 4px solid var(--brand-primary);
-    background: var(--surface-secondary);
-    border-radius: var(--radius-md);
-    line-height: var(--line-height-relaxed);
-  }
-
-  .landing-facts-table-wrap {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: var(--spacing-lg);
-    align-items: start;
-
-    @media (max-width: 768px) {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .landing-facts-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--font-size-sm);
-    background: var(--surface-primary);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-
-    th, td {
-      padding: 10px 14px;
-      text-align: left;
-      border-bottom: 1px solid var(--border-primary);
-    }
-
-    th {
-      background: var(--surface-secondary);
-      font-weight: var(--font-weight-semibold);
-      color: var(--text-primary);
-    }
-
-    td strong {
-      color: var(--status-success);
-      font-size: var(--font-size-base);
-    }
-
-    tr:hover td {
-      background: var(--bg-hover);
-    }
-  }
-
-  .landing-facts-bvs {
-    padding: var(--spacing-lg);
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--brand-primary) 6%, var(--surface-primary));
-    border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, transparent);
-
-    .landing-facts-bvs-title {
-      font-size: var(--font-size-base);
-      font-weight: var(--font-weight-semibold);
-      color: var(--brand-primary);
-      margin-bottom: var(--spacing-sm);
-    }
-
-    .landing-facts-bvs-text {
-      font-size: var(--font-size-sm);
-      color: var(--text-secondary);
-      line-height: var(--line-height-relaxed);
-      margin: 0;
-    }
-  }
-}
-
-// ── 页脚构建版本信息 ──────────────────────────────
-.landing-footer-version {
-  max-width: 1000px;
-  margin: 16px auto 0;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border-tertiary);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--text-muted);
-
-  .landing-footer-version-item {
-    display: inline-flex;
+    margin: 16px auto 0;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-tertiary);
+    display: flex;
     align-items: center;
-    gap: 4px;
-  }
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-muted);
 
-  .landing-footer-version-commit {
-    font-family: var(--font-family-mono);
-    background: var(--surface-secondary);
-    border: 1px solid var(--border-tertiary);
-    border-radius: 4px;
-    padding: 1px 6px;
-    color: var(--text-secondary);
-  }
-}
+    .landing-footer-version-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
 
-// ── 分页导航 ──────────────────────────────────────
-.landing-pagination {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-sticky);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  background: var(--surface-overlay);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-full);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
-}
-
-.landing-pagination-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-full);
-  background: var(--surface-secondary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  font-size: 14px;
-
-  &:hover:not(:disabled) {
-    background: var(--brand-primary);
-    color: white;
-    border-color: var(--brand-primary);
-  }
-
-  &:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
+    .landing-footer-version-commit {
+      font-family: var(--font-family-mono);
+      background: var(--surface-secondary);
+      border: 1px solid var(--border-tertiary);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--text-secondary);
+    }
   }
 }
 
-.landing-pagination-dots {
-  display: flex;
-  gap: 6px;
-}
+// ── Reveal 动画 ────────────────────────────────────
+.landing-features,
+.landing-how,
+.landing-beforeafter,
+.landing-facts {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
 
-.landing-pagination-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--border-tertiary);
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  padding: 0;
-
-  &:hover {
-    background: var(--text-muted);
-  }
-
-  &.is-active {
-    background: var(--brand-primary);
-    width: 24px;
-    border-radius: 4px;
-  }
-}
-
-// ── 页面内容区域 ──────────────────────────────────
-.landing-content {
-  min-height: 60vh;
-}
-
-// ── 联系我们 ──────────────────────────────────────
-.landing-contact {
-  padding: 80px 48px;
-  text-align: center;
-
-  @media (max-width: 768px) {
-    padding: 48px 20px;
-  }
-}
-
-.landing-contact-card {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: var(--spacing-lg);
-  max-width: 800px;
-  margin: 40px auto;
-  text-align: left;
-}
-
-.landing-contact-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: var(--spacing-lg);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-primary);
-  background: var(--surface-secondary);
-  transition: all var(--transition-fast);
-
-  &:hover {
-    border-color: var(--brand-primary);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  }
-}
-
-.landing-contact-icon {
-  font-size: 28px;
-}
-
-.landing-contact-label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.landing-contact-value {
-  font-size: var(--font-size-base);
-  color: var(--brand-primary);
-  text-decoration: none;
-
-  &:hover {
-    text-decoration: underline;
+  &.reveal-in {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
