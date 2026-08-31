@@ -5,7 +5,6 @@ import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { useAppStore } from '@/store/useAppStore'
 import api from '@/services/api'
-import '../Dashboard/Dashboard.scss'
 import './Help.scss'
 
 // 文章数据类型
@@ -149,11 +148,15 @@ const Help: React.FC = () => {
 
   return (
     <div className="help-page help-page--linear">
-      <div className="page-header">
-        <h1 className="page-title">{t('help.title')}</h1>
-        <p className="page-subtitle">{t('help.subtitle')}</p>
-      </div>
+      {/* Hero 区域 */}
+      <section className="help-hero">
+        <div className="help-hero-badge">📚 帮助中心</div>
+        <h1 className="help-hero-title">{t('help.title')}</h1>
+        <p className="help-hero-subtitle">{t('help.subtitle')}</p>
+      </section>
 
+      {/* 内容区域 */}
+      <div className="help-content">
       {/* ① 新手引导（快速上手） */}
       <section className="help-block">
         <h2 className="help-block-title">{t('help.onboardingTitle')}</h2>
@@ -259,6 +262,14 @@ const Help: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* 返回首页 */}
+      <div className="help-footer">
+        <button className="help-back-btn" onClick={() => navigate('/')}>
+          ← 返回首页
+        </button>
+      </div>
+      </div>
     </div>
   )
 }

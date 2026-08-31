@@ -10,12 +10,13 @@ import (
 	"my-geo/internal/models"
 )
 
-// 评分维度满分上限，四维合计 100 分。
+// 评分维度满分上限，五维合计 100 分。
 const (
-	maxCitabilityScore = 40.0 // 可引用性信号
-	maxStructureScore  = 30.0 // 结构信号
-	maxQualityScore    = 20.0 // 内容质量
-	maxNegativeScore   = 10.0 // 负向信号（扣分制）
+	maxCitabilityScore   = 35.0 // 可引用性信号
+	maxStructureScore    = 25.0 // 结构信号
+	maxQualityScore      = 15.0 // 内容质量
+	maxRetrievalScore    = 15.0 // 检索友好度（SAGEO Arena 2026）
+	maxNegativeScore     = 10.0 // 负向信号（扣分制）
 )
 
 // 以下权重/参数默认值对标 AutoGEO 策略效果系数。全部为可覆盖变量（var），
@@ -60,6 +61,15 @@ var (
 	negativeFullSignals      = 4   // 达到该数量扣满本维度
 )
 
+// scoreRetrieval 检索友好度评分。
+func scoreRetrieval(rs *models.RetrievalSignals) float64 {
+	if rs == nil {
+		return 0
+	}
+	// 直接使用分析器计算的 RetrievalScore（0-100），折合到满分 15
+	return rs.RetrievalScore / 100.0 * maxRetrievalScore
+}
+
 // EstimateVisibility 可见度预估参数。
 var (
 	positionScoreDivisor  = 100.0 // 评分 → 0-1 位置分
@@ -84,7 +94,7 @@ var (
 // 应在启动早期调用一次（Scorer 创建前），非并发安全。
 // 支持的键：quotation / statistics / cite_sources / fluency / authoritative /
 // technical_terms / unique_words / heading_hierarchy / front_loading / lists /
-// definition_opening / tables / faq / negative_penalty / evergreen。
+// definition_opening / tables / faq / negative_penalty / evergreen / retrieval。
 func OverrideWeights(w map[string]float64) {
 	if len(w) == 0 {
 		return
@@ -141,22 +151,28 @@ func (s *Scorer) Analyze(content string) *models.ContentAnalysis {
 func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models.ScoreBreakdown) {
 	var breakdowns []models.ScoreBreakdown
 
-	// 可引用性信号（满分 40）
+	// 可引用性信号（满分 35）
 	citScore, citDetail := scoreCitability(a.CitabilitySignals)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
 		Category: "citability", Score: citScore, MaxScore: maxCitabilityScore, Detail: citDetail,
 	})
 
-	// 结构信号（满分 30）
+	// 结构信号（满分 25）
 	struScore, struDetail := scoreStructure(a.StructureSignals)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
 		Category: "structure", Score: struScore, MaxScore: maxStructureScore, Detail: struDetail,
 	})
 
-	// 内容质量（满分 20）—— 基于词数与常青度
+	// 内容质量（满分 15）—— 基于词数与常青度
 	qualityScore := scoreQuality(a)
 	breakdowns = append(breakdowns, models.ScoreBreakdown{
 		Category: "quality", Score: qualityScore, MaxScore: maxQualityScore,
+	})
+
+	// 检索友好度（满分 15）—— SAGEO Arena 2026
+	retrievalScore := scoreRetrieval(a.RetrievalSignals)
+	breakdowns = append(breakdowns, models.ScoreBreakdown{
+		Category: "retrieval_friendliness", Score: retrievalScore, MaxScore: maxRetrievalScore,
 	})
 
 	// 负向信号扣分（满分 10）
@@ -168,9 +184,10 @@ func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models
 		Category: "negative_penalty", Score: negScore, MaxScore: maxNegativeScore,
 	})
 
-	total := citScore + struScore + qualityScore + negScore
-	if total > maxCitabilityScore+maxStructureScore+maxQualityScore+maxNegativeScore {
-		total = maxCitabilityScore + maxStructureScore + maxQualityScore + maxNegativeScore
+	total := citScore + struScore + qualityScore + retrievalScore + negScore
+	maxTotal := maxCitabilityScore + maxStructureScore + maxQualityScore + maxRetrievalScore + maxNegativeScore
+	if total > maxTotal {
+		total = maxTotal
 	}
 	return total, breakdowns
 }

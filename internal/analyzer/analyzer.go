@@ -19,6 +19,12 @@ import (
 // Analyzer 内容分析器。
 type Analyzer struct{}
 
+// 检索友好度参数（与 scorer.go 保持一致）。
+const (
+	retrievalFullWordMin = 300  // 词数达标下限
+	retrievalFullWordMax = 2000 // 词数达标上限
+)
+
 // New 创建内容分析器。
 func New() *Analyzer {
 	return &Analyzer{}
@@ -85,6 +91,9 @@ func (a *Analyzer) Analyze(content string) *models.ContentAnalysis {
 
 	// 常青度评分
 	analysis.EvergreenScore = calcEvergreenScore(content, analysis)
+
+	// 检索友好度信号（SAGEO Arena 2026）
+	analysis.RetrievalSignals = calcRetrievalSignals(content, analysis)
 
 	return analysis
 }
@@ -294,4 +303,100 @@ func splitSentences(content string) []string {
 		}
 	}
 	return result
+}
+
+// calcRetrievalSignals 计算检索友好度信号。
+//
+// 基于 SAGEO Arena (2026) 研究发现：AutoGEO 的内容扩写策略导致检索排名下降 22.35，
+// 原因是关键词密度稀释和语义漂移。此函数评估内容对 BM25/神经检索器的友好程度。
+func calcRetrievalSignals(content string, a *models.ContentAnalysis) *models.RetrievalSignals {
+	words := strings.Fields(content)
+	wordCount := len(words)
+	if wordCount == 0 {
+		return &models.RetrievalSignals{RetrievalScore: 0}
+	}
+
+	// 1. 关键词密度：高频词占比（模拟 BM25 的词频信号）
+	termFreq := make(map[string]int)
+	for _, w := range words {
+		lower := strings.ToLower(w)
+		if utf8.RuneCountInString(lower) > 1 { // 过滤单字符
+			termFreq[lower]++
+		}
+	}
+	maxFreq := 0
+	for _, f := range termFreq {
+		if f > maxFreq {
+			maxFreq = f
+		}
+	}
+	// 关键词密度 = 最高频词出现次数 / 总词数（健康区间 0.01-0.05）
+	kwDensity := float64(maxFreq) / float64(wordCount)
+
+	// 2. 内容长度是否在检索友好区间
+	contentLengthOK := wordCount >= retrievalFullWordMin && wordCount <= retrievalFullWordMax
+
+	// 3. 无语义漂移：检查关键实体词是否保留（通过实体词占比估算）
+	//    保留词 = 技术术语 + 数字 + 专有名词（首字母大写）
+	preservedCount := 0
+	for _, w := range words {
+		runes := []rune(w)
+		if len(runes) == 0 {
+			continue
+		}
+		// 数字
+		if runes[0] >= '0' && runes[0] <= '9' {
+			preservedCount++
+			continue
+		}
+		// 技术术语（全大写缩写）
+		if reTechnical.MatchString(w) {
+			preservedCount++
+			continue
+		}
+		// 首字母大写（英文实体词）
+		if runes[0] >= 'A' && runes[0] <= 'Z' && len(runes) > 1 {
+			preservedCount++
+		}
+	}
+	// 保留率 > 5% 视为无语义漂移
+	noSemanticDrift := float64(preservedCount)/float64(wordCount) > 0.05
+
+	// 4. 术语重叠得分：基于词汇多样性（Type-Token Ratio）
+	uniqueWords := make(map[string]bool)
+	for _, w := range words {
+		uniqueWords[strings.ToLower(w)] = true
+	}
+	termOverlap := float64(len(uniqueWords)) / float64(wordCount)
+
+	// 5. 综合检索友好度评分（0-100）
+	score := 0.0
+	// 关键词密度得分（0-25）：0.01-0.05 为最佳区间
+	if kwDensity >= 0.01 && kwDensity <= 0.05 {
+		score += 25
+	} else if kwDensity > 0.05 {
+		score += max(0, 25-200*(kwDensity-0.05)) // 过密扣分
+	} else {
+		score += kwDensity * 2500 // 过稀扣分
+	}
+	// 内容长度得分（0-25）
+	if contentLengthOK {
+		score += 25
+	} else if wordCount > 0 {
+		score += max(0, 25*min(float64(wordCount), float64(retrievalFullWordMax))/float64(retrievalFullWordMax))
+	}
+	// 语义漂移得分（0-25）
+	if noSemanticDrift {
+		score += 25
+	}
+	// 词汇多样性得分（0-25）
+	score += min(25, termOverlap*50)
+
+	return &models.RetrievalSignals{
+		KeywordDensity:   kwDensity,
+		ContentLengthOK:  contentLengthOK,
+		NoSemanticDrift:  noSemanticDrift,
+		TermOverlapScore: termOverlap,
+		RetrievalScore:   min(100, max(0, score)),
+	}
 }

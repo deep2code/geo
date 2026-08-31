@@ -367,6 +367,7 @@ var expensivePathPatterns = []string{
 	"/api/v1/autorewriter/rewrite",
 	"/api/v1/autorewriter/geu",
 	"/api/v1/optimize",
+	"/api/v1/dual-format",
 	"/api/v1/brand/discover",
 	"/api/v1/brand/scheduler/trigger",
 	"/api/v1/brand/readiness",

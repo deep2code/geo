@@ -84,6 +84,8 @@ type Enterprise struct {
 // OptimizationResponse 优化响应。
 type OptimizationResponse struct {
 	OptimizedContent  string            `json:"optimized_content"`
+	MarkdownContent   string            `json:"markdown_content,omitempty"` // Markdown 格式（供 AI 爬虫）
+	HTMLContent       string            `json:"html_content,omitempty"`     // HTML 格式（供浏览器）
 	ScoreBefore       float64           `json:"score_before"`
 	ScoreAfter        float64           `json:"score_after"`
 	GeoScore          VisibilityMetrics `json:"geo_score"`
@@ -154,7 +156,17 @@ type ContentAnalysis struct {
 	StructureSignals  map[string]bool `json:"structure_signals"`
 	NegativeSignals   []string        `json:"negative_signals,omitempty"`
 	EvergreenScore    int             `json:"evergreen_score"`
+	RetrievalSignals  *RetrievalSignals `json:"retrieval_signals,omitempty"` // 检索友好度信号
 	AnalyzedAt        time.Time       `json:"analyzed_at"`
+}
+
+// RetrievalSignals 检索友好度信号（SAGEO Arena 2026 研究发现：内容扩写会稀释关键词密度导致检索排名下降）。
+type RetrievalSignals struct {
+	KeywordDensity    float64 `json:"keyword_density"`     // 查询相关关键词密度（0-1）
+	ContentLengthOK   bool    `json:"content_length_ok"`   // 内容长度是否在检索友好区间（300-2000词）
+	NoSemanticDrift   bool    `json:"no_semantic_drift"`   // 无语义漂移（改写后关键词保留率）
+	TermOverlapScore  float64 `json:"term_overlap_score"`  // 术语重叠得分（BM25 风格）
+	RetrievalScore    float64 `json:"retrieval_score"`     // 综合检索友好度 0-100
 }
 
 // Citation AI 引擎回答中的引用。

@@ -572,6 +572,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/optimize", s.handleOptimize)
 	s.mux.HandleFunc("/api/v1/batch-optimize", s.handleBatchOptimize)
 	s.mux.HandleFunc("/api/v1/diff", s.handleDiff)
+	// 双格式输出（HTML + Markdown content negotiation）
+	s.mux.HandleFunc("/api/v1/dual-format", s.handleDualFormat)
+	// llms.txt 生成
+	s.mux.HandleFunc("/api/v1/llms-txt", s.handleLLMsTxt)
 	// 规则集外部化管理（替代原 CLI `geo rules`）
 	s.mux.HandleFunc("/api/v1/rules", s.handleRulesList)              // GET 列出可用规则集
 	s.mux.HandleFunc("/api/v1/rules/default", s.handleRulesDefault)   // GET 默认规则集 JSON
@@ -748,6 +752,20 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/auth/workspace/members/change-role", s.authH.ChangeRole)
 	s.mux.HandleFunc("/api/v1/auth/workspace/members/remove", s.authH.RemoveMember)
 	s.mux.HandleFunc("/api/v1/auth/admin/audit", s.authH.AdminAuditLog)
+	// ── 实时可见度趋势追踪 ──
+	s.mux.HandleFunc("/api/v1/brand/trend", s.handleTrendData)
+	s.mux.HandleFunc("/api/v1/brand/trend/chart", s.handleTrendChart)
+	s.mux.HandleFunc("/api/v1/brand/trend/record", s.handleTrendRecord)
+	s.mux.HandleFunc("/api/v1/brand/trend/alerts", s.handleTrendAlerts)
+	// ── 服务器日志 AI 流量归因 ──
+	s.mux.HandleFunc("/api/v1/brand/log-analysis", s.handleLogAnalysis)
+	s.mux.HandleFunc("/api/v1/brand/log-analysis/text", s.handleLogAnalysisText)
+	// ── 竞品引用对比分析 ──
+	s.mux.HandleFunc("/api/v1/brand/competitive/overview", s.handleCompetitiveOverview)
+	s.mux.HandleFunc("/api/v1/brand/competitive/matrix", s.handleCompetitiveMatrix)
+	s.mux.HandleFunc("/api/v1/brand/competitive/emergence", s.handleCompetitiveEmergence)
+	// ── 内容模拟器（A/B 测试） ──
+	s.mux.HandleFunc("/api/v1/brand/simulate", s.handleSimulate)
 	// Web SPA 前端（必须放在最后，catch-all 非 API 路径）
 	s.mux.HandleFunc("/", s.handleWebSPA)
 }

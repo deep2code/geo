@@ -1,7 +1,71 @@
 @use '@/styles/tokens' as *;
 
 .help-page {
-  // 帮助文章双栏布局：左侧分类导航 + 右侧文章内容
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-base);
+
+  // Hero 区域（匹配 Landing 风格）
+  .help-hero {
+    padding: 80px 48px 64px;
+    text-align: center;
+    background: radial-gradient(ellipse at top, color-mix(in srgb, var(--brand-primary) 12%, var(--bg-primary)), var(--bg-primary));
+
+    .help-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+      color: var(--brand-primary);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .help-hero-title {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: var(--font-weight-bold);
+      line-height: 1.1;
+      margin: 0 0 var(--spacing-md);
+      background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .help-hero-subtitle {
+      font-size: var(--font-size-xl);
+      color: var(--text-secondary);
+      margin: 0;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+  }
+
+  // 内容区域
+  .help-content {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px;
+  }
+
+  .help-block {
+    margin-bottom: 48px;
+  }
+
+  .help-block-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    margin: 0 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-tertiary);
+  }
+
+  // 帮助文章双栏布局
   .help-layout {
     display: grid;
     grid-template-columns: 240px 1fr;
@@ -100,7 +164,6 @@
     }
   }
 
-  // 文章正文
   .help-article-content {
     padding: var(--spacing-lg);
     border-radius: var(--radius-md);
@@ -117,10 +180,7 @@
     .help-article-content-body {
       color: var(--text-secondary);
       font-size: var(--font-size-sm);
-
-      p {
-        margin: 0 0 var(--spacing-md);
-      }
+      margin: 0 0 var(--spacing-md);
 
       h3 {
         color: var(--text-primary);
@@ -137,7 +197,7 @@
     }
   }
 
-  // 新手引导卡片
+  // 新手引导
   .help-onboarding-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -218,7 +278,6 @@
     }
   }
 
-  // 空状态
   .help-empty {
     text-align: center;
     padding: var(--spacing-2xl);
@@ -231,7 +290,7 @@
     }
   }
 
-  // ── 精通路线（一步步精通）──
+  // 精通路线
   .help-journey-list {
     display: flex;
     flex-direction: column;
@@ -249,165 +308,157 @@
       border-color: var(--brand-primary);
       box-shadow: var(--shadow-sm);
     }
+  }
 
-    .help-journey-stage-head {
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
-      margin-bottom: var(--spacing-md);
+  .help-journey-stage-head {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+  }
 
-      .help-journey-stage-badge {
-        flex-shrink: 0;
-        width: 44px;
-        height: 44px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 22px;
-        border-radius: var(--radius-md);
-        background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-secondary));
-      }
+  .help-journey-stage-badge {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--brand-primary) 10%, var(--surface-secondary));
+  }
 
-      .help-journey-stage-title {
-        font-size: var(--font-size-lg);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-primary);
-      }
+  .help-journey-stage-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+  }
 
-      .help-journey-stage-goal {
-        font-size: var(--font-size-sm);
-        color: var(--text-tertiary);
-        margin-top: 2px;
-      }
+  .help-journey-stage-goal {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+
+  .help-journey-stage-body {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: var(--spacing-md);
+
+    @media (max-width: 768px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .help-journey-steps-label {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .help-journey-steps-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+
+  .help-journey-step-item {
+    margin: 0;
+    padding: 0;
+  }
+
+  .help-journey-step-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-secondary);
+    border: 1px solid transparent;
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-primary));
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
     }
 
-    .help-journey-stage-body {
-      display: grid;
-      grid-template-columns: 1fr 240px;
-      gap: var(--spacing-md);
+    .help-journey-step-arrow {
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+  }
 
-      @media (max-width: 768px) {
-        grid-template-columns: 1fr;
-      }
+  .help-journey-acceptance {
+    align-self: start;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    background: var(--status-success-bg);
+    border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
 
-      .help-journey-steps-label {
-        font-size: var(--font-size-xs);
-        font-weight: var(--font-weight-semibold);
-        color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: var(--spacing-sm);
-      }
+    .help-journey-acceptance-label {
+      display: block;
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      color: var(--status-success);
+      margin-bottom: var(--spacing-xs);
+    }
 
-      .help-journey-steps-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: var(--spacing-xs);
-      }
+    .help-journey-acceptance-text {
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: var(--line-height-normal);
+    }
+  }
 
-      .help-journey-step-item {
-        margin: 0;
-        padding: 0;
-      }
+  // 返回首页按钮
+  .help-footer {
+    text-align: center;
+    padding: 32px 48px 64px;
+  }
 
-      .help-journey-step-link {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--spacing-sm);
-        width: 100%;
-        text-align: left;
-        padding: 8px 12px;
-        border-radius: var(--radius-sm);
-        background: var(--surface-secondary);
-        border: 1px solid transparent;
-        color: var(--text-primary);
-        font-size: var(--font-size-sm);
-        cursor: pointer;
-        transition: all var(--transition-fast);
+  .help-back-btn {
+    padding: 10px 24px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
 
-        &:hover {
-          background: color-mix(in srgb, var(--brand-primary) 8%, var(--surface-primary));
-          border-color: var(--brand-primary);
-          color: var(--brand-primary);
-        }
-
-        .help-journey-step-arrow {
-          color: var(--text-muted);
-          flex-shrink: 0;
-        }
-      }
-
-      .help-journey-acceptance {
-        align-self: start;
-        padding: var(--spacing-md);
-        border-radius: var(--radius-md);
-        background: var(--status-success-bg);
-        border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
-
-        .help-journey-acceptance-label {
-          display: block;
-          font-size: var(--font-size-xs);
-          font-weight: var(--font-weight-semibold);
-          color: var(--status-success);
-          margin-bottom: var(--spacing-xs);
-        }
-
-        .help-journey-acceptance-text {
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          line-height: var(--line-height-normal);
-        }
-      }
+    &:hover {
+      background: var(--bg-hover);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
     }
   }
 }
 
-// ── 线性布局（无 Tabs / 无分类导航，从上到下依次展示）──
-.help-page--linear {
-  max-width: 860px;
-  margin: 0 auto;
-
-  .page-header {
-    margin-bottom: 32px;
+@media (max-width: 768px) {
+  .help-hero {
+    padding: 48px 20px 32px !important;
   }
 
-  // 每个内容区块
-  .help-block {
-    margin-bottom: 48px;
-
-    .help-block-title {
-      font-size: var(--font-size-xl);
-      font-weight: var(--font-weight-bold);
-      color: var(--text-primary);
-      margin: 0 0 16px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border-tertiary);
-    }
+  .help-content {
+    padding: 20px !important;
   }
 
-  // 精通路线在窄屏下保持单列，验收框置顶
-  .help-journey-stage-body {
-    @media (max-width: 768px) {
-      grid-template-columns: 1fr;
-
-      .help-journey-acceptance {
-        order: -1;
-      }
-    }
-  }
-
-  // 文章列表在窄屏下保持可读
-  .help-article-list {
-    @media (max-width: 768px) {
-      gap: var(--spacing-sm);
-    }
-  }
-
-  .help-article-content {
-    padding: var(--spacing-md);
+  .help-footer {
+    padding: 24px 20px 48px !important;
   }
 }

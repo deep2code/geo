@@ -55,6 +55,11 @@ type Engine struct {
 	configuredEngines map[models.EngineType]bool
 }
 
+// Monitor 返回品牌监控引擎（供模拟器等模块使用）。
+func (e *Engine) Monitor() *Monitor {
+	return e.monitor
+}
+
 // Option Engine 配置选项。
 type Option func(*Engine)
 

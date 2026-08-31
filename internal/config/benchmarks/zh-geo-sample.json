@@ -1,0 +1,9 @@
+{
+  "id": "zh-geo-sample",
+  "name": "中文 GEO 示例评测集",
+  "language": "zh",
+  "domain": "general",
+  "region": "cn",
+  "case_count": 10,
+  "description": "中文 GEO 基础评测集，包含常见的优化场景"
+}

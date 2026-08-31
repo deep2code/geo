@@ -1,6 +1,7 @@
 package server
 
 import (
+	"my-geo/internal/dualformat"
 	"my-geo/internal/models"
 	"my-geo/internal/util"
 	"net/http"
@@ -76,6 +77,68 @@ func (s *Server) handleOptimize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// ── 双格式输出（HTML + Markdown content negotiation） ──
+
+// handleDualFormat 双格式内容优化，根据 Accept 头自动选择 HTML 或 Markdown 输出。
+//
+// POST /api/v1/dual-format
+// 请求体: OptimizationRequest（与 /optimize 相同）
+// 响应: 根据 Accept 头返回 HTML 或 Markdown，X-Content-Format 头标识实际格式。
+func (s *Server) handleDualFormat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+	var req models.OptimizationRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "content 不能为空"})
+		return
+	}
+	resp, err := s.engine.Optimize(r.Context(), &req)
+	if err != nil {
+		writeInternalError(w, err, "")
+		return
+	}
+
+	// 根据协商格式输出
+	title := req.Title
+	if title == "" && req.Enterprise != nil && req.Enterprise.CompanyName != "" {
+		title = req.Enterprise.CompanyName
+	}
+	dualformat.WriteResponse(w, r, resp.OptimizedContent, title)
+}
+
+// ── llms.txt 生成 ──
+
+// handleLLMsTxt 生成 llms.txt 内容。
+//
+// POST /api/v1/llms-txt
+// 请求体: {"title": "...", "description": "...", "url": "...", "sections": [...]}
+func (s *Server) handleLLMsTxt(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+	var req struct {
+		Title       string               `json:"title"`
+		Description string               `json:"description"`
+		URL         string               `json:"url,omitempty"`
+		Sections    []dualformat.LLMsSection `json:"sections,omitempty"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	content := dualformat.GenerateLLMsTxt(req.Title, req.Description, req.URL, req.Sections)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Format", "llms-txt")
+	w.Write([]byte(content))
 }
 
 // ── 内容 diff 对比 ──

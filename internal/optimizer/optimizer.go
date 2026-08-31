@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"my-geo/internal/config"
+	"my-geo/internal/dualformat"
 	"my-geo/internal/llm"
 	"my-geo/internal/models"
 	"my-geo/internal/optimizer/strategies"
@@ -124,8 +125,17 @@ func (o *Optimizer) Optimize(ctx context.Context, req *models.OptimizationReques
 	// 9. 生成建议
 	recommendations := o.generateRecommendations(scoreBefore, scoreAfter, analysis)
 
+	// 10. 生成双格式内容（HTML + Markdown）
+	title := req.Title
+	if title == "" && req.Enterprise != nil && req.Enterprise.CompanyName != "" {
+		title = req.Enterprise.CompanyName
+	}
+	dual := dualformat.Render(content, title, dualformat.FormatHTML)
+
 	return &models.OptimizationResponse{
 		OptimizedContent:  content,
+		MarkdownContent:   dual.Markdown,
+		HTMLContent:       string(dual.HTML),
 		ScoreBefore:       scoreBefore,
 		ScoreAfter:        scoreAfter,
 		GeoScore:          visibility,
@@ -149,14 +159,16 @@ func buildCombinedPrompt(prompts []string, req *models.OptimizationRequest) stri
 		b.WriteString(engineHint)
 		b.WriteString("\n\n")
 	}
+	b.WriteString("检索友好度约束（SAGEO Arena 2026 研究发现：内容扩写会稀释关键词密度导致检索排名下降）：\n")
+	b.WriteString("- 控制改写后文档长度在 300-2000 词区间，避免过度扩写\n")
+	b.WriteString("- 保留原文中的高频关键词，不要用同义词替换所有术语\n")
+	b.WriteString("- 关键词密度保持在 1%-5%（即每个关键词在文中出现 1-5 次/百词）\n")
+	b.WriteString("- 保留数字、缩写、专有名词等实体词，这些是检索匹配的关键信号\n")
+	b.WriteString("- 优先增加结构化信息（标题、列表、表格）而非纯文本扩展\n\n")
 	b.WriteString("约束：\n")
 	b.WriteString("- 保持原文核心语义不变，不得编造事实\n")
 	b.WriteString("- 自然融入优化，避免生硬堆砌\n")
 	b.WriteString("- 输出纯文本/Markdown，不要解释优化过程\n")
-	// 不再内嵌原文：LLM Provider（internal/llm）会在本提示词之后统一追加
-	// "待优化内容：<预处理后的内容>"。此前这里再嵌一份原始 req.Content，
-	// 模型会同时看到 N+1 份原文与 1 份预处理稿，常改写无标记的原文，
-	// 预处理标记丢失且 token 成本随策略数线性放大。
 	return b.String()
 }
 
@@ -261,6 +273,33 @@ func (o *Optimizer) generateRecommendations(scoreBefore, scoreAfter float64, a *
 			Category: "negative", Priority: "high",
 			Message: fmt.Sprintf("检测到负向信号: %s，建议消除以避免被 AI 引擎降权", neg),
 		})
+	}
+	// 检索友好度建议（SAGEO Arena 2026）
+	if a.RetrievalSignals != nil {
+		if !a.RetrievalSignals.ContentLengthOK {
+			recs = append(recs, models.Recommendation{
+				Category: "retrieval", Priority: "high",
+				Message: fmt.Sprintf("内容长度不在检索友好区间（当前 %d 词，推荐 300-2000 词），过长的内容会稀释关键词密度导致检索排名下降", a.WordCount),
+			})
+		}
+		if a.RetrievalSignals.KeywordDensity < 0.01 {
+			recs = append(recs, models.Recommendation{
+				Category: "retrieval", Priority: "medium",
+				Message: "关键词密度过低，建议保留更多高频关键词而非用同义词全部替换",
+			})
+		}
+		if a.RetrievalSignals.KeywordDensity > 0.05 {
+			recs = append(recs, models.Recommendation{
+				Category: "retrieval", Priority: "medium",
+				Message: "关键词密度过高，可能存在关键词堆砌风险，建议自然分散关键词",
+			})
+		}
+		if !a.RetrievalSignals.NoSemanticDrift {
+			recs = append(recs, models.Recommendation{
+				Category: "retrieval", Priority: "medium",
+				Message: "实体词保留率偏低，改写可能造成语义漂移，建议保留更多专有名词和缩写",
+			})
+		}
 	}
 	return recs
 }

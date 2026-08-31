@@ -1258,3 +1258,133 @@
     color: var(--text-secondary);
   }
 }
+
+// ── 分页导航 ──────────────────────────────────────
+.landing-pagination {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-full);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+}
+
+.landing-pagination-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-full);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: 14px;
+
+  &:hover:not(:disabled) {
+    background: var(--brand-primary);
+    color: white;
+    border-color: var(--brand-primary);
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+}
+
+.landing-pagination-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.landing-pagination-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--border-tertiary);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+
+  &:hover {
+    background: var(--text-muted);
+  }
+
+  &.is-active {
+    background: var(--brand-primary);
+    width: 24px;
+    border-radius: 4px;
+  }
+}
+
+// ── 页面内容区域 ──────────────────────────────────
+.landing-content {
+  min-height: 60vh;
+}
+
+// ── 联系我们 ──────────────────────────────────────
+.landing-contact {
+  padding: 80px 48px;
+  text-align: center;
+
+  @media (max-width: 768px) {
+    padding: 48px 20px;
+  }
+}
+
+.landing-contact-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--spacing-lg);
+  max-width: 800px;
+  margin: 40px auto;
+  text-align: left;
+}
+
+.landing-contact-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-primary);
+  background: var(--surface-secondary);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    border-color: var(--brand-primary);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.landing-contact-icon {
+  font-size: 28px;
+}
+
+.landing-contact-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.landing-contact-value {
+  font-size: var(--font-size-base);
+  color: var(--brand-primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

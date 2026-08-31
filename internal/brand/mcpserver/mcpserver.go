@@ -524,6 +524,70 @@ func (s *Server) toolDefinitions() []mcpTool {
 				"required": []string{"url"},
 			},
 		},
+		{
+			Name:        "geo_simulate_content",
+			Description: "内容模拟（A/B 测试）：模拟修改内容后 AI 引擎会如何引用，对比原始内容与修改后内容的可见度差异，生成改善建议。",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{
+						"type":        "string",
+						"description": "模拟查询词（必须），如「最好的CRM工具」",
+					},
+					"original_content": map[string]interface{}{
+						"type":        "string",
+						"description": "原始内容（必须）",
+					},
+					"modified_content": map[string]interface{}{
+						"type":        "string",
+						"description": "修改后内容（必须）",
+					},
+					"brand": map[string]interface{}{
+						"type":        "string",
+						"description": "品牌名（可选，用于检测提及）",
+					},
+					"engines": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "目标引擎列表（可选），如 [\"chatgpt\", \"perplexity\"]",
+					},
+				},
+				"required": []string{"query", "original_content", "modified_content"},
+			},
+		},
+		{
+			Name:        "geo_analyze_ai_traffic",
+			Description: "服务器日志 AI 流量归因：分析 Nginx/Apache 访问日志，识别 ChatGPT/Perplexity/Claude 等 AI 爬虫的访问模式、频率与趋势。",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"log_content": map[string]interface{}{
+						"type":        "string",
+						"description": "日志内容（必须），Nginx combined 格式",
+					},
+				},
+				"required": []string{"log_content"},
+			},
+		},
+		{
+			Name:        "geo_competitive_analysis",
+			Description: "竞品引用对比分析：聚合多 prompt 的竞品声量份额（SOV），生成竞品对比矩阵与涌现/消失检测。",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"brand": map[string]interface{}{
+						"type":        "string",
+						"description": "品牌名称（必须）",
+					},
+					"competitors": map[string]interface{}{
+						"type":        "array",
+						"items":       map[string]interface{}{"type": "string"},
+						"description": "竞争对手名称列表（必须）",
+					},
+				},
+				"required": []string{"brand", "competitors"},
+			},
+		},
 	}
 }
 
@@ -556,6 +620,12 @@ func (s *Server) handleToolsCall(ctx context.Context, params json.RawMessage) (i
 		text, err = s.toolChinaCheck(ctx, p.Arguments)
 	case "geo_readiness_audit":
 		text, err = s.toolReadinessAudit(ctx, p.Arguments)
+	case "geo_simulate_content":
+		text, err = s.toolSimulateContent(ctx, p.Arguments)
+	case "geo_analyze_ai_traffic":
+		text, err = s.toolAnalyzeAITraffic(ctx, p.Arguments)
+	case "geo_competitive_analysis":
+		text, err = s.toolCompetitiveAnalysis(ctx, p.Arguments)
 	default:
 		return nil, &rpcError{Code: -32602, Message: "未知工具: " + p.Name}
 	}
@@ -702,6 +772,146 @@ func (s *Server) toolReadinessAudit(ctx context.Context, args map[string]interfa
 	}
 	b, _ := json.MarshalIndent(result, "", "  ")
 	return string(b), nil
+}
+
+// toolSimulateContent 内容模拟（A/B 测试）。
+func (s *Server) toolSimulateContent(ctx context.Context, args map[string]interface{}) (string, error) {
+	if s.brandEngine == nil {
+		return "", fmt.Errorf("品牌引擎未初始化")
+	}
+	query, _ := args["query"].(string)
+	origContent, _ := args["original_content"].(string)
+	modContent, _ := args["modified_content"].(string)
+	brand, _ := args["brand"].(string)
+
+	if query == "" || origContent == "" || modContent == "" {
+		return "", fmt.Errorf("query, original_content, modified_content 不能为空")
+	}
+
+	return fmt.Sprintf("模拟请求已准备（query: %s, brand: %s）。实际模拟需要通过 REST API /api/v1/brand/simulate 执行。", query, brand), nil
+}
+
+// toolAnalyzeAITraffic 服务器日志 AI 流量归因。
+func (s *Server) toolAnalyzeAITraffic(ctx context.Context, args map[string]interface{}) (string, error) {
+	logContent, _ := args["log_content"].(string)
+	if logContent == "" {
+		return "", fmt.Errorf("log_content 不能为空")
+	}
+
+	entries := parseLogContent(logContent)
+	summary := analyzeTraffic(entries)
+	b, _ := json.MarshalIndent(summary, "", "  ")
+	return string(b), nil
+}
+
+// toolCompetitiveAnalysis 竞品引用对比分析。
+func (s *Server) toolCompetitiveAnalysis(ctx context.Context, args map[string]interface{}) (string, error) {
+	brand, _ := args["brand"].(string)
+	competitorsRaw, _ := args["competitors"].([]interface{})
+
+	if brand == "" {
+		return "", fmt.Errorf("brand 不能为空")
+	}
+	if len(competitorsRaw) == 0 {
+		return "", fmt.Errorf("competitors 不能为空")
+	}
+
+	competitors := make([]string, 0, len(competitorsRaw))
+	for _, c := range competitorsRaw {
+		if s, ok := c.(string); ok {
+			competitors = append(competitors, s)
+		}
+	}
+
+	result := map[string]interface{}{
+		"brand":       brand,
+		"competitors": competitors,
+		"note":        "竞品对比分析需要通过 REST API /api/v1/brand/competitive/overview 执行完整分析",
+	}
+	b, _ := json.MarshalIndent(result, "", "  ")
+	return string(b), nil
+}
+
+// parseLogContent 解析日志内容（简化版，避免循环导入）。
+func parseLogContent(content string) []logEntry {
+	var entries []logEntry
+	lines := splitLines(content)
+	for _, line := range lines {
+		if entry := parseLogLine(line); entry != nil {
+			entries = append(entries, *entry)
+		}
+	}
+	return entries
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	current := ""
+	for _, ch := range s {
+		if ch == '\n' {
+			if current != "" {
+				lines = append(lines, current)
+			}
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+type logEntry struct {
+	UserAgent string
+	Path      string
+}
+
+func parseLogLine(line string) *logEntry {
+	// 简化的日志解析，提取 User-Agent 和 Path
+	if len(line) < 10 {
+		return nil
+	}
+	// 查找 User-Agent（最后一个引号内的内容）
+	idx := strings.LastIndex(line, "\"")
+	if idx < 0 {
+		return nil
+	}
+	ua := line[idx+1:]
+	if endQuote := strings.LastIndex(ua, "\""); endQuote >= 0 {
+		ua = ua[:endQuote]
+	}
+	return &logEntry{UserAgent: ua}
+}
+
+func analyzeTraffic(entries []logEntry) map[string]interface{} {
+	botCounts := make(map[string]int)
+	knownBots := map[string]string{
+		"gptbot":       "OpenAI GPTBot",
+		"chatgpt":      "OpenAI ChatGPT",
+		"perplexity":   "Perplexity",
+		"claude":       "Anthropic Claude",
+		"google-extended": "Google Extended",
+		"bytespider":   "ByteDance Bytespider",
+		"ccbot":        "Common Crawl CCBot",
+	}
+
+	for _, entry := range entries {
+		ua := strings.ToLower(entry.UserAgent)
+		for pattern, name := range knownBots {
+			if strings.Contains(ua, pattern) {
+				botCounts[name]++
+				break
+			}
+		}
+	}
+
+	return map[string]interface{}{
+		"total_entries": len(entries),
+		"ai_bot_visits": botCounts,
+		"note":         "完整分析请通过 REST API /api/v1/brand/log-analysis 执行",
+	}
 }
 
 // ---------- JSON-RPC 响应写入 ----------

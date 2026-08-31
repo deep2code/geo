@@ -1,0 +1,201 @@
+@use '@/styles/tokens' as *;
+
+.support-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-base);
+
+  // Hero 区域
+  .support-hero {
+    padding: 80px 48px 64px;
+    text-align: center;
+    background: radial-gradient(ellipse at top, color-mix(in srgb, var(--brand-primary) 12%, var(--bg-primary)), var(--bg-primary));
+
+    .support-hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+      color: var(--brand-primary);
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .support-hero-title {
+      font-size: clamp(36px, 6vw, 64px);
+      font-weight: var(--font-weight-bold);
+      line-height: 1.1;
+      margin: 0 0 var(--spacing-md);
+      background: linear-gradient(135deg, var(--text-primary), var(--brand-primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .support-hero-subtitle {
+      font-size: var(--font-size-xl);
+      color: var(--text-secondary);
+      margin: 0;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+  }
+
+  // 联系方式
+  .support-contact {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px;
+  }
+
+  .support-contact-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+    text-align: center;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      border-color: var(--brand-primary);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+      transform: translateY(-2px);
+    }
+  }
+
+  .support-contact-icon {
+    font-size: 36px;
+  }
+
+  .support-contact-label {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+  }
+
+  .support-contact-value {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--brand-primary);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .support-contact-btn {
+    padding: 10px 24px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--brand-primary);
+    background: var(--brand-primary);
+    color: white;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: color-mix(in srgb, var(--brand-primary) 85%, transparent);
+    }
+  }
+
+  .support-contact-desc {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+  }
+
+  // 常见问题
+  .support-faq {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 48px 48px;
+  }
+
+  .support-section-title {
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-bold);
+    text-align: center;
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .support-faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .support-faq-item {
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+  }
+
+  .support-faq-q {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+
+  .support-faq-a {
+    font-size: var(--font-size-base);
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  // 返回首页
+  .support-footer {
+    text-align: center;
+    padding: 32px 48px 64px;
+  }
+
+  .support-back-btn {
+    padding: 10px 24px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-primary);
+    background: var(--surface-secondary);
+    color: var(--text-secondary);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    &:hover {
+      background: var(--bg-hover);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .support-hero {
+    padding: 48px 20px 32px !important;
+  }
+
+  .support-contact {
+    padding: 20px !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .support-faq {
+    padding: 0 20px 32px !important;
+  }
+
+  .support-footer {
+    padding: 24px 20px 48px !important;
+  }
+}

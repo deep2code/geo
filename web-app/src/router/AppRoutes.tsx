@@ -25,6 +25,7 @@ const Evaluate = lazy(() => import('@/pages/Evaluate'))
 const BrandDBImport = lazy(() => import('@/pages/BrandDBImport'))
 const Integrations = lazy(() => import('@/pages/Integrations'))
 const Help = lazy(() => import('@/pages/Help'))
+const Support = lazy(() => import('@/pages/Support'))
 const Tickets = lazy(() => import('@/pages/Tickets'))
 const Landing = lazy(() => import('@/pages/Landing'))
 const Terms = lazy(() => import('@/pages/Terms'))
@@ -225,6 +226,9 @@ export const AppRoutes: React.FC = () => {
         {/* 公开业务页（帮助/工单/法务） */}
         <Route path="/help" element={
           <PublicPage showNav={false}><Suspense fallback={<PageFallback />}><Help /></Suspense></PublicPage>
+        } />
+        <Route path="/support" element={
+          <PublicPage><Suspense fallback={<PageFallback />}><Support /></Suspense></PublicPage>
         } />
         <Route path="/tickets" element={
           <PublicPage><Suspense fallback={<PageFallback />}><Tickets /></Suspense></PublicPage>

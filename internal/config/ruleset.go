@@ -60,6 +60,7 @@ func DefaultWeights() map[string]float64 {
 		"faq":               2.0,
 		"negative_penalty":  2.5,
 		"evergreen":         12.0,
+		"retrieval":         15.0,
 	}
 }
 

@@ -44,6 +44,11 @@ func NewMonitor(adapters map[models.EngineType]adapter.Adapter) *Monitor {
 	return m
 }
 
+// Adapters 返回引擎适配器映射（供模拟器等模块使用）。
+func (m *Monitor) Adapters() map[models.EngineType]adapter.Adapter {
+	return m.adapters
+}
+
 // WithMaxConcurrency 设置并行查询的最大并发数。
 //
 // 高批次查询（prompt×引擎 组合很多）时调高可提升速度；需注意避免引擎限流。
