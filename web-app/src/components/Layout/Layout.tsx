@@ -26,10 +26,6 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   // 新增模块
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
   { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
-  // 法律 / 合规页面
-  { key: 'terms', to: '/terms', icon: '📜', labelKey: 'nav.terms' },
-  { key: 'privacy', to: '/privacy', icon: '🔒', labelKey: 'nav.privacy' },
-  { key: 'dpa', to: '/dpa', icon: '📋', labelKey: 'nav.dpa' }
 ]
 
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
