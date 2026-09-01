@@ -15,13 +15,10 @@ import type {
   HistoryStats,
   HistoryDailyResponse,
   EngineStats,
-  HistoryRecord,
-  ReadyCheckItem,
-  MetaSystem
+  HistoryRecord
 } from '@/types/api'
 import './Dashboard.scss'
 
-/** 示例数据标记：Dashboard 部分模块在无真实数据时展示演示数据，必须明确标注，避免误导用户。 */
 const DemoBadge: React.FC = () => (
   <span
     title="当前为示例数据（演示用），接入真实数据后自动替换"
@@ -37,7 +34,7 @@ const DemoBadge: React.FC = () => (
       whiteSpace: 'nowrap'
     }}
   >
-    示例数据
+    演示
   </span>
 )
 
@@ -49,30 +46,20 @@ const Dashboard: React.FC = () => {
   const [history, setHistory] = useState<HistoryListResponse | null>(null)
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null)
   const [historyDaily, setHistoryDaily] = useState<HistoryDailyResponse | null>(null)
-  const [metaSystem, setMetaSystem] = useState<MetaSystem | null>(null)
-  const [systemReady, setSystemReady] = useState<{
-    ready: boolean
-    checks: Record<string, ReadyCheckItem>
-  } | null>(null)
-
   const brands = useAppStore(s => s.brands)
   const lastReport = useAppStore(s => s.lastReport)
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [hist, hstats, hdaily, ready, meta] = await Promise.all([
+        const [hist, hstats, hdaily] = await Promise.all([
           api.historyList(undefined, 5).catch(() => null),
           api.historyStats().catch(() => null),
-          api.historyStatsDaily(30).catch(() => null),
-          api.ready().catch(() => null),
-          api.metaSystem().catch(() => null)
+          api.historyStatsDaily(30).catch(() => null)
         ])
         if (hist) setHistory(hist)
         if (hstats) setHistoryStats(hstats)
         if (hdaily) setHistoryDaily(hdaily)
-        if (ready) setSystemReady({ ready: ready.status === 'ready', checks: ready.checks })
-        if (meta) setMetaSystem(meta)
       } finally {
         setLoading(false)
       }
@@ -80,7 +67,6 @@ const Dashboard: React.FC = () => {
     load()
   }, [])
 
-  // 平均分：优先取自历史统计/最近审计结果；无数据时用占位 null（UI 显示 "—"），绝不使用随机。
   const avgScore: number | null =
     lastReport?.score != null
       ? Math.round(lastReport.score)
@@ -92,9 +78,6 @@ const Dashboard: React.FC = () => {
           ? Math.round(historyDaily.summary.avg_score_daily)
           : null
 
-  // 7 日趋势按天取值：优先用每日统计的末 7 天；此前直接用"最近 5 条审计
-  // 记录"的分数序列，同一天多次审计会被误读成一周走势。每日数据缺失时
-  // 才退回记录序列（并只作最近几次参考）。
   const trend7d: number[] | null = useMemo(() => {
     const recs = historyDaily?.records
     if (recs && recs.length >= 2) {
@@ -110,33 +93,18 @@ const Dashboard: React.FC = () => {
     return null
   }, [historyDaily, history])
 
-  // 系统就绪分级：fail > warn > ok > unknown
-  // 后端 /ready 的 ready=true 仅代表"无 fail"（warn 不阻塞服务），但前端必须诚实反映 warn 状态，
-  // 否则用户在 dashboard 看到绿色"所有依赖正常"但实际 history_db/offline_db 都 warn，会被严重误导。
-  const readyLevel: 'ok' | 'warn' | 'fail' | 'unknown' = (() => {
-    if (!systemReady) return 'unknown'
-    const entries = Object.entries(systemReady.checks ?? {})
-    if (entries.some(([, v]) => v?.status === 'fail')) return 'fail'
-    if (entries.some(([, v]) => v?.status === 'warn')) return 'warn'
-    return 'ok'
-  })()
-
-  // 30 天趋势：取自历史库按天聚合 count；后端已按日期升序、无记录日期补 0。
   const trend30d: number[] | null = useMemo(() => {
     const recs = historyDaily?.records
     if (!recs || recs.length === 0) return null
     return recs.map(r => Number(r.count) || 0)
   }, [historyDaily])
 
-  // 每日平均分趋势（给内容优化篇数 KPI 的 sparkline 用；没有分数的天用上一天/整体均值兜底不强制，这里无数据即 0）。
   const trend30dScore: number[] | null = useMemo(() => {
     const recs = historyDaily?.records
     if (!recs || recs.length === 0) return null
     return recs.map(r => (r.avg_score != null && r.avg_score >= 0 ? Math.round(r.avg_score) : 0))
   }, [historyDaily])
 
-  // 品牌榜：仅当 brands + 历史均可用时才取最后一次审计分；否则空数组避免 mock。
-  // 注：未使用 Array.prototype.findLast 以兼容 ES2022 以下 TS lib 配置。
   const pickLast = (records: HistoryRecord[] | undefined, name: string): HistoryRecord | undefined => {
     if (!records) return undefined
     let last: HistoryRecord | undefined
@@ -148,6 +116,7 @@ const Dashboard: React.FC = () => {
     }
     return last
   }
+
   const topBrandsData = brands.map((b) => {
     const last = pickLast(history?.records, b.name)
     const score = last?.score != null ? Math.round(last.score) : null
@@ -254,7 +223,6 @@ const Dashboard: React.FC = () => {
           </Button>
         </div>
       </div>
-
       <div className="kpi-grid">
         <Kpi
           label={t('dashboard.overviewBvs')}
@@ -306,60 +274,11 @@ const Dashboard: React.FC = () => {
             </span>
           }
         />
-        <Kpi
-          label="系统就绪"
-          value={readyLevel === 'ok' ? '✓' : readyLevel === 'fail' ? '✗' : '⚠️'}
-          icon="🩺"
-          trendValue={
-            readyLevel === 'ok'
-              ? '所有依赖正常'
-              : readyLevel === 'fail'
-                ? '关键依赖故障'
-                : readyLevel === 'warn'
-                  ? '部分依赖降级运行'
-                  : '未知'
-          }
-          trendDirection={readyLevel === 'ok' ? 'up' : 'neutral'}
-          variant={readyLevel === 'ok' ? 'success' : readyLevel === 'fail' ? 'error' : 'warning'}
-          footer={
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {Object.entries(systemReady?.checks ?? {}).map(([k, v]) => {
-                const ok = v?.status === 'ok'
-                const warn = v?.status === 'warn'
-                return (
-                  <span
-                    key={k}
-                    title={v?.message || v?.detail || ''}
-                    style={{
-                      fontSize: 11,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: ok
-                        ? 'var(--status-success-bg)'
-                        : warn
-                          ? 'var(--status-warning-bg)'
-                          : 'var(--status-danger-bg)',
-                      color: ok
-                        ? 'var(--status-success)'
-                        : warn
-                          ? 'var(--status-warning)'
-                          : 'var(--status-danger)'
-                    }}
-                  >
-                    {k}: {ok ? 'ok' : (v?.status ?? 'unknown')}
-                  </span>
-                )
-              })}
-            </div>
-          }
-        />
       </div>
-
       <div className="dashboard-grid">
         <Card title={t('dashboard.topBrands')} subtitle={`${brands.length} brands`} compact>
           <Table columns={cols} dataSource={topBrandsData} rowKey="id" striped />
         </Card>
-
         <Card title={<>{t('dashboard.engineDistribution')}<DemoBadge /></>} compact>
           <div style={{ height: 320 }}>
             <MatrixBubble
@@ -372,7 +291,6 @@ const Dashboard: React.FC = () => {
             />
           </div>
         </Card>
-
         <Card title={<>{t('dashboard.contentGap')}<DemoBadge /></>} actions={<Button variant="ghost" size="sm">查看全部 →</Button>} compact>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {contentGaps.map(g => (
@@ -396,7 +314,6 @@ const Dashboard: React.FC = () => {
             ))}
           </div>
         </Card>
-
         <Card title={<>{t('dashboard.recentAudits')}{!history?.records && <DemoBadge />}</>} compact>
           <Table
             rowKey="id"
@@ -432,21 +349,6 @@ const Dashboard: React.FC = () => {
           />
         </Card>
       </div>
-
-      {/* 系统构建信息（公开接口 /api/v1/meta/system，无需登录） */}
-      {metaSystem && (
-        <Card title="📦 系统构建信息" compact>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-secondary)' }}>
-            <span><b style={{ color: 'var(--text-primary)' }}>打包版本</b>：{metaSystem.build_version}</span>
-            <span><b style={{ color: 'var(--text-primary)' }}>打包时间</b>：{metaSystem.build_at && metaSystem.build_at !== 'unknown' ? new Date(metaSystem.build_at).toLocaleString() : '-'}</span>
-            <span><b style={{ color: 'var(--text-primary)' }}>打包系统</b>：{metaSystem.build_os || '-'}</span>
-            <span style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              title={metaSystem.build_commit}>
-              <b style={{ color: 'var(--text-primary)' }}>git-hash</b>：{metaSystem.build_commit}</span>
-            <span><b style={{ color: 'var(--text-primary)' }}>Go</b>：{metaSystem.go_version}</span>
-          </div>
-        </Card>
-      )}
     </div>
   )
 }
