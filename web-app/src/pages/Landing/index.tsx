@@ -431,16 +431,13 @@ const Landing: React.FC = () => {
             <div className="landing-contact-label">{t('landing.contactVersion')}</div>
             <div className="landing-contact-value">
               {meta ? (
-                <>版本 {meta.build_version} · 编译 {meta.build_at}</>
+                <>{meta.build_at}</>
               ) : (
                 '加载中...'
               )}
             </div>
           </div>
         </div>
-        <Button size="lg" onClick={() => window.location.href = 'mailto:deep2code@aliyun.com'}>
-          ✉️ {t('landing.contactCta')}
-        </Button>
       </section>
 
       {/* Footer */}

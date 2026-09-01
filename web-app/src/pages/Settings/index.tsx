@@ -446,38 +446,6 @@ const Settings: React.FC = () => {
       </Tabs>
 
       <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border-primary)' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => navigate('/terms')}
-            style={{
-              background: 'none', border: 'none', padding: 0,
-              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
-            }}
-          >
-            服务条款
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/privacy')}
-            style={{
-              background: 'none', border: 'none', padding: 0,
-              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
-            }}
-          >
-            隐私政策
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/dpa')}
-            style={{
-              background: 'none', border: 'none', padding: 0,
-              color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer'
-            }}
-          >
-            数据处理协议 (DPA)
-          </button>
-        </div>
 
         <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <Button variant="danger" onClick={() => {

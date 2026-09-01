@@ -857,7 +857,6 @@
     "contactCustom": "カスタム開発",
     "contactCustomDesc": "カスタム開発歓迎、最適化ソリューションをカスタマイズ",
     "contactVersion": "現在のバージョン",
-    "contactCta": "メールを送る",
     "support": {
       "title": "テクニカルサポート",
       "subtitle": "技術的な問題についてサポートいたします",
@@ -917,7 +916,7 @@
     "reportCta": "無料でレポートを作成",
     "factsTitle": "AI引用向けデータ",
     "factsSubtitle": "大モデルが直接引用できる事実とデータ（Princeton GEO / KDD 2024 論文と本プラットフォームの評価体系に基づく）",
-    "factsQuote": "GEO の目標はランキングではなく引用されること：AI が質問に答えるとき、自然にあなたのブランドを言及させる。",
+    "factsQuote": "GEO はランキングではなく引用されること。",
     "factsTableTitle": "9 つの GEO 戦略 · 引用率向上の実測値",
     "factsTactic": "戦略",
     "factsGain": "引用率向上",

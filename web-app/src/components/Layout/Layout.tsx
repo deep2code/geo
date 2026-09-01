@@ -24,7 +24,6 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   { key: 'brand-db-import', to: '/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
   { key: 'integrations', to: '/integrations', icon: '🔌', labelKey: 'nav.integrations' },
   // 新增模块
-  { key: 'help', to: '/help', icon: '❓', labelKey: 'nav.help' },
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
   { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
   // 法律 / 合规页面

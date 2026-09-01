@@ -857,7 +857,6 @@
     "contactCustom": "Custom Development",
     "contactCustomDesc": "Welcome custom development, tailor-made GEO optimization solutions",
     "contactVersion": "Current Version",
-    "contactCta": "Send Email",
     "support": {
       "title": "Technical Support",
       "subtitle": "We are here to help you with any technical issues",
@@ -917,7 +916,7 @@
     "reportCta": "Generate My Report Free",
     "factsTitle": "AI-Friendly Facts",
     "factsSubtitle": "Facts & data directly quotable by LLMs (Princeton GEO / KDD 2024 & platform scoring)",
-    "factsQuote": "GEO is not about ranking — it is about being cited: making AI naturally mention your brand when answering questions.",
+    "factsQuote": "GEO is not about ranking — it is about being cited by AI.",
     "factsTableTitle": "9 GEO Tactics · Measured Citation Lift",
     "factsTactic": "Tactic",
     "factsGain": "Citation lift",

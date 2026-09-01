@@ -857,7 +857,6 @@
     "contactCustom": "定制开发",
     "contactCustomDesc": "欢迎定制开发，按需定制专属 GEO 优化方案",
     "contactVersion": "当前版本",
-    "contactCta": "发送邮件",
     "support": {
       "title": "技术支持",
       "subtitle": "我们随时为您提供技术支持",
@@ -917,7 +916,7 @@
     "reportCta": "免费生成我的报告",
     "factsTitle": "AI 引用友好数据",
     "factsSubtitle": "可直接被大模型引用的事实与数据（基于 Princeton GEO / KDD 2024 论文与平台评分体系）",
-    "factsQuote": "GEO 的目标不是排名，而是被引用：让 AI 在回答问题时，自然地提到你的品牌与内容。",
+    "factsQuote": "GEO 不追求排名，追求被 AI 引用。",
     "factsTableTitle": "9 法 GEO 策略 · 引用率提升实测",
     "factsTactic": "策略",
     "factsGain": "引用率提升",
