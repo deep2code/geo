@@ -25,11 +25,11 @@ import (
 
 // 版本信息，通过 ldflags 注入：
 //
-//	go build -ldflags "-X main.version=v1.2.3 -X main.commit=$(git rev-parse --short HEAD) -X 'main.buildAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)' -X main.buildOS=$(uname -s)"
+//	go build -ldflags "-X main.version=v1.2.3 -X main.commit=$(git rev-parse --short HEAD) -X 'main.buildAt=$(date +%Y-%m-%d %H:%M:%S)' -X main.buildOS=$(uname -s)"
 var (
 	version = "dev"   // 语义化版本号（release 时由 CI 注入）
 	commit  = "none"  // git commit 短哈希
-	buildAt = "unknown" // 构建时间（UTC ISO8601）
+	buildAt = "unknown" // 构建时间
 	buildOS = runtime.GOOS // 打包操作系统（打包机 uname -s，如 Linux/Darwin/Windows）
 )
 

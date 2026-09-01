@@ -31,7 +31,7 @@ import (
 var (
 	buildVersion = "dev"
 	buildCommit  = "none"
-	buildAt      = "unknown"    // 构建时间（UTC ISO8601）
+	buildAt      = "unknown"    // 构建时间
 	buildOS      = runtime.GOOS // 打包操作系统（打包机 uname -s，如 Linux/Darwin/Windows）
 )
 

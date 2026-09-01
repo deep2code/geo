@@ -222,7 +222,7 @@ do_build() {
         archs="$(printf '%s' "$PLATFORM" | tr ',' '\n' | sed 's|^linux/||' | tr '\n' ',' | sed 's/,$//')"
         version="$(git describe --tags --always 2>/dev/null || echo dev)"
         commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
-        build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        build_at="$(date '+%Y-%m-%d %H:%M:%S')"
         build_os="$(uname -s)"
         if [[ "$DRY_RUN" == 1 ]]; then
             echo -e "${YELLOW}[DRY-RUN]${NC} 本机编译：npm ci + npm run build（web-app/，前端有变化时）→ internal/server/web/dist"
@@ -265,7 +265,7 @@ do_build() {
     local version commit build_at build_os base_tag base_remote
     version="$(git describe --tags --always 2>/dev/null || echo dev)"
     commit="$(git rev-parse --short HEAD 2>/dev/null || echo none)"
-    build_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    build_at="$(date '+%Y-%m-%d %H:%M:%S')"
     build_os="$(uname -s)"
 
     # base 镜像的远端仓库：复用与 app 镜像 ACR_IMAGE 同一个「仓库」(codeup2026/geo)，

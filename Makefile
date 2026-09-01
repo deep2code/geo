@@ -5,7 +5,7 @@ BINARY   := geo
 MAIN_PKG := ./cmd/geo
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-BUILD_AT := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+BUILD_AT := $(shell date '+%Y-%m-%d %H:%M:%S')
 # ldflags 注入版本信息（main.go 的 version/commit/buildAt/buildOS，与 publish.sh/Dockerfile 一致）
 LDFLAGS  := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildAt=$(BUILD_AT) -X main.buildOS=$(shell uname -s)
 GOFLAGS  := -trimpath

@@ -431,7 +431,7 @@ const Landing: React.FC = () => {
             <div className="landing-contact-label">{t('landing.contactVersion')}</div>
             <div className="landing-contact-value">
               {meta ? (
-                <>{meta.build_at}</>
+                <>{meta.build_at} ({meta.build_commit})</>
               ) : (
                 '加载中...'
               )}
