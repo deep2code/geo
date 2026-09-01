@@ -170,7 +170,7 @@ const SystemCheck: React.FC = () => {
             <div style={{ fontSize: 32, marginBottom: 8 }}>🔐</div>
             <div className="sc-forbidden-title">需要管理员权限</div>
             <p className="sc-forbidden-text">
-              系统自检属于管理后台能力，需以 <code>Owner/Admin</code> 账号登录。请在右上角「登录」输入部署时预置的管理员邮箱与密码（<code>GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD</code>）。
+              系统自检属于系统管理能力，需以 <code>Owner/Admin</code> 账号登录。请在右上角「登录」输入部署时预置的管理员邮箱与密码（<code>GEO_ADMIN_EMAIL / GEO_ADMIN_PASSWORD</code>）。
             </p>
             <Button
               variant="primary"

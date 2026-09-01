@@ -71,7 +71,7 @@
     "settings": "Settings",
     "help": "Help Center",
     "tickets": "Tickets",
-    "admin": "Admin Console",
+    "admin": "System Admin",
     "systemCheck": "System Check",
     "rules": "Rules",
     "evaluate": "Evaluate",
@@ -563,7 +563,7 @@
     "jumpAudit": "Go to Audit"
   },
   "admin": {
-    "title": "Admin Console",
+    "title": "System Admin",
     "subtitle": "Tenant management, usage stats, announcements & system info",
     "tabTenants": "Tenants",
     "tabUsage": "Usage",

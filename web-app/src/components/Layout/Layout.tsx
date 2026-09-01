@@ -39,8 +39,16 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const toast = useAppStore(s => s.toast)
   const clearToast = useAppStore(s => s.clearToast)
   const whitelabel = useAppStore(s => s.whitelabel)
-
+  const userRole = useAppStore(s => s.userRole)
   const currentLang = getCurrentLanguage()
+
+  // 过滤导航项：非管理员隐藏系统管理
+  const filteredNavItems = navItems.filter(item => {
+    if (item.key === 'admin' && userRole !== 'owner' && userRole !== 'admin') {
+      return false
+    }
+    return true
+  })
   const [activeTabKey, setActiveTabKey] = useState('/dashboard')
 
   useEffect(() => {
@@ -94,7 +102,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </button>
         </div>
         <nav className="app-sidebar-nav">
-          {navItems.map(item => (
+          {filteredNavItems.map(item => (
             <NavLink
               key={item.key}
               to={item.to}
@@ -127,7 +135,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               size="sm"
               className="app-header-tabs"
             >
-              {navItems.slice(0, 7).map(item => (
+              {filteredNavItems.slice(0, 7).map(item => (
                 <TabPane
                   key={item.to}
                   tabKey={item.to}

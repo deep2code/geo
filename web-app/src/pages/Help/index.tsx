@@ -17,11 +17,11 @@ interface ArticleItem {
 
 // 默认文章
 const mockArticles: ArticleItem[] = [
-  { id: 'overview', title: '平台功能总览', summary: '一张图看懂 崛起GEO 能为你做什么', category: 'quickstart', content: '崛起GEO 是面向生成式引擎优化（GEO）的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。核心模块：品牌管理、品牌审计、内容优化器、关键词发现、竞品对标、引擎来源研究、外部提交分析、报告导出、告警邮件、管理后台。' },
+  { id: 'overview', title: '平台功能总览', summary: '一张图看懂 崛起GEO 能为你做什么', category: 'quickstart', content: '崛起GEO 是面向生成式引擎优化（GEO）的平台：让品牌在 ChatGPT、文心、通义、DeepSeek 等 AI 回答中被正确提及与引用。核心模块：品牌管理、品牌审计、内容优化器、关键词发现、竞品对标、引擎来源研究、外部提交分析、报告导出、告警邮件、系统管理。' },
   { id: 'getting-started', title: '5 分钟快速开始', summary: '创建品牌 → 执行审计 → 查看报告', category: 'quickstart', content: '四步完成首次审计：1) 品牌管理创建品牌；2) 补充查询词；3) 品牌审计选择引擎开始；4) 报告导出查看 BVS 与建议。' },
   { id: 'run-audit', title: '执行品牌审计', summary: '模拟真实提问，检测 AI 中的品牌可见度', category: 'audit', content: '在品牌审计页面选择品牌与引擎，点击开始审计。系统针对提示词模拟提问，检测提及率、引用率、情感与位置，汇总为 BVS 分数。' },
   { id: 'understand-bvs', title: '理解 BVS 分数', summary: 'BVS 评分维度与 A-F 等级说明', category: 'audit', content: 'BVS 范围 0-100，对应 A-F 等级。由提及率、引用率、引用位置、情感、实体识别等加权计算，区分「被提及」与「被引用」。' },
-  { id: 'external-submissions', title: '外部提交分析', summary: '采集真实用户与 AI 的对话', category: 'features', content: '外部系统提交大模型对话，后台定时抽取情感、主题、来源域名等，反哺优化。在管理后台「外部提交分析」Tab 查看与触发。' },
+  { id: 'external-submissions', title: '外部提交分析', summary: '采集真实用户与 AI 的对话', category: 'features', content: '外部系统提交大模型对话，后台定时抽取情感、主题、来源域名等，反哺优化。在系统管理「外部提交分析」Tab 查看与触发。' },
   { id: 'content-optimizer', title: '内容优化器', summary: '针对单篇内容给出优化建议', category: 'features', content: '粘贴内容并选择目标引擎，系统给出提升 AI 可见度的结构、实体、引用信号等建议。' },
   { id: 'export-report', title: '导出与分享报告', summary: 'HTML / PDF 在线报告与邮件发送', category: 'report', content: '审计完成后在报告导出页面查看 HTML 报告、下载 PDF 或邮件发送，包含分数、引擎对比与优化建议。' },
   { id: 'api-keys', title: '配置 AI 引擎 API Key', summary: '在服务端环境变量配置各引擎密钥', category: 'settings', content: '在服务端环境变量配置 GEO_CHATGPT_KEY、GEO_GLM_KEY、GEO_DEEPSEEK_KEY 等。未配置的引擎审计时自动跳过。' },

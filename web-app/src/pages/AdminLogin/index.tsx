@@ -10,6 +10,7 @@ const AdminLogin: React.FC = () => {
   const location = useLocation()
   const [sp] = useSearchParams()
   const showToast = useAppStore(s => s.showToast)
+  const setUserRole = useAppStore(s => s.setUserRole)
   const brandName = useAppStore(s => s.whitelabel?.brand_name) || DEFAULT_WHITELABEL.brand_name
 
   const redirect = (() => {
@@ -59,6 +60,11 @@ const AdminLogin: React.FC = () => {
         return
       }
       setApiAuthToken(res.tokens.access_token)
+      // 存储用户角色
+      if (res.workspaces && res.workspaces.length > 0) {
+        const role = res.workspaces[0].role || 'viewer'
+        setUserRole(role)
+      }
       showToast && showToast('登录成功', 'success')
       navigate(redirect, { replace: true })
     } finally {

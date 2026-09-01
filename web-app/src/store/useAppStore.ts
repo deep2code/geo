@@ -47,15 +47,20 @@ interface ContentSlice {
 interface UISlice {
   sidebarOpen: boolean
   toast: { message: string; type: 'success' | 'error' | 'info' | 'warning' } | null
-  _toastTimer: ReturnType<typeof setTimeout> | null // 内部状态：Toast 自动关闭定时器 ID
+  _toastTimer: ReturnType<typeof setTimeout> | null
   setSidebarOpen: (v: boolean) => void
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void
   clearToast: () => void
 }
 
-export type AppState = WhitelabelSlice & SettingsSlice & BrandSlice & ContentSlice & UISlice
+interface AuthSlice {
+  userRole: string | null
+  setUserRole: (role: string | null) => void
+  isAdmin: () => boolean
+}
 
-// 站点名称（浏览器标签标题），用于动态覆盖 document.title
+export type AppState = WhitelabelSlice & SettingsSlice & BrandSlice & ContentSlice & UISlice & AuthSlice
+
 export const SITE_TAGLINE = 'AI 平台'
 
 const DEFAULT_BRAND: BrandProfile = {
@@ -67,7 +72,6 @@ const DEFAULT_BRAND: BrandProfile = {
   category: 'CRM',
   prompts: [
     '最好的 CRM 软件推荐',
-    '中小企业客户管理系统对比',
     '国内 SaaS CRM 排行榜'
   ],
   competitors: [
@@ -160,7 +164,6 @@ export const useAppStore = create<AppState>()(
       _toastTimer: null as ReturnType<typeof setTimeout> | null,
       setSidebarOpen: (v) => set({ sidebarOpen: v }),
       showToast: (message, type = 'info') => {
-        // 清除之前的定时器，避免快速触发时多个定时器叠加
         const prevTimer = get()._toastTimer
         if (prevTimer) clearTimeout(prevTimer)
         set({ toast: { message, type } })
@@ -174,7 +177,14 @@ export const useAppStore = create<AppState>()(
           set({ _toastTimer: null })
         }
         set({ toast: null })
-      }
+      },
+
+      userRole: null,
+      setUserRole: (role) => set({ userRole: role }),
+      isAdmin: () => {
+        const role = get().userRole
+        return role === 'owner' || role === 'admin'
+      },
     }),
     {
       name: 'geo-app-storage',
@@ -186,7 +196,8 @@ export const useAppStore = create<AppState>()(
         apiBaseUrl: s.apiBaseUrl,
         apiTimeout: s.apiTimeout,
         brands: s.brands,
-        currentBrand: s.currentBrand
+        currentBrand: s.currentBrand,
+        userRole: s.userRole
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

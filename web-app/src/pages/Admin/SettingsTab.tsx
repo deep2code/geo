@@ -36,7 +36,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   chinacheck: '工商核验',
   offline: '离线工商库',
   history: '审计历史',
-  admin: '管理后台',
+  admin: '系统管理',
   whitelabel: '白标定制',
   mail: '邮件',
   mcp: 'MCP',

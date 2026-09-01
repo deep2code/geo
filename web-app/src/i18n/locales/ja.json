@@ -71,7 +71,7 @@
     "settings": "設定",
     "help": "ヘルプセンター",
     "tickets": "チケット",
-    "admin": "管理コンソール",
+    "admin": "システム管理",
     "systemCheck": "システム診断",
     "rules": "ルールセット",
     "evaluate": "評価",
@@ -563,7 +563,7 @@
     "jumpAudit": "監査画面へ"
   },
   "admin": {
-    "title": "管理コンソール",
+    "title": "システム管理",
     "subtitle": "テナント管理、使用統計、お知らせ、システム情報",
     "tabTenants": "テナント管理",
     "tabUsage": "使用統計",

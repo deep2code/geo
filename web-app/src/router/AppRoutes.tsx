@@ -59,6 +59,29 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 }
 
 /**
+ * AdminRoute：需要管理员权限的路由守卫。
+ * 未登录跳转登录页；已登录但非管理员跳转工作台。
+ */
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation()
+  const userRole = useAppStore(s => s.userRole)
+
+  const token = getApiAuthToken()
+  if (!token) {
+    const qs = new URLSearchParams()
+    qs.set('redirect', `${location.pathname}${location.search}`)
+    return <Navigate to={`/admin/login?${qs.toString()}`} replace />
+  }
+
+  // 非管理员跳转到工作台
+  if (userRole !== 'owner' && userRole !== 'admin') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
+/**
  * 把全局 401/403 统一跳转到管理员登录入口，并附带 redirect。
  * 放在 AppRoutes 顶层可以直接拿到 useNavigate/useLocation。
  */
@@ -148,6 +171,13 @@ const ProtectedPage: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   </Layout>
 )
 
+// 管理员页面：需要管理员权限（owner/admin），非管理员跳转工作台
+const AdminPage: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Layout>
+    <AdminRoute>{children}</AdminRoute>
+  </Layout>
+)
+
 // 公开业务页（无需登录，如帮助/工单/法务）：用 Landing 首页风格外壳（PublicShell），
 // 不落入管理后台（Layout 侧边栏）布局。showNav=false 时隐藏顶部导航（帮助中心纯内容页）。
 const PublicPage: React.FC<{ children: React.ReactNode; showNav?: boolean }> = ({ children, showNav }) => (
@@ -205,7 +235,7 @@ export const AppRoutes: React.FC = () => {
           <ProtectedPage><Suspense fallback={<PageFallback />}><Settings /></Suspense></ProtectedPage>
         } />
         <Route path="/admin" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><Admin /></Suspense></ProtectedPage>
+          <AdminPage><Suspense fallback={<PageFallback />}><Admin /></Suspense></AdminPage>
         } />
         <Route path="/system-check" element={
           <ProtectedPage><Suspense fallback={<PageFallback />}><SystemCheck /></Suspense></ProtectedPage>

@@ -43,7 +43,7 @@ const AlertEmail: React.FC = () => {
 
   const [testOpen, setTestOpen] = useState(false)
   const [testSubject, setTestSubject] = useState('[崛起GEO] 测试邮件')
-  const [testBody, setTestBody] = useState('这是一封来自 崛起GEO 控制台的测试邮件。')
+  const [testBody, setTestBody] = useState('这是一封来自 崛起GEO 工作台的测试邮件。')
   const [testSending, setTestSending] = useState(false)
 
   useEffect(() => {
