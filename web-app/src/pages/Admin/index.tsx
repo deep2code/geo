@@ -7,6 +7,7 @@ import { Input, Textarea } from '@/components/Input'
 import { Table, type TableColumn } from '@/components/Table'
 import { Tabs, TabPane } from '@/components/Tabs'
 import SettingsTab from './SettingsTab'
+import EngineConfigTab from './EngineConfigTab'
 import ExternalSubmissions from './ExternalSubmissions'
 import AIBotVisits from './AIBotVisits'
 import DatabaseTab from './DatabaseTab'
@@ -533,22 +534,27 @@ const Admin: React.FC = () => {
           <SettingsTab />
         </TabPane>
 
-        {/* Tab 6: 外部提交分析（外部系统提交的大模型对话 + 定时分析） */}
+        {/* Tab 6: AI 引擎配置 */}
+        <TabPane tabKey="engines" tab={`🤖 ${t('admin.tabEngines')}`}>
+          <EngineConfigTab />
+        </TabPane>
+
+        {/* Tab 7: 外部提交分析（外部系统提交的大模型对话 + 定时分析） */}
         <TabPane tabKey="ext-submissions" tab={`📥 ${t('admin.tabExternalSubmissions')}`}>
           <ExternalSubmissions />
         </TabPane>
 
-        {/* Tab 7: AI 爬虫访问监控（哪些大模型来爬过本站） */}
+        {/* Tab 8: AI 爬虫访问监控（哪些大模型来爬过本站） */}
         <TabPane tabKey="aibots" tab={`🤖 ${t('admin.tabAIBots')}`}>
           <AIBotVisits />
         </TabPane>
 
-        {/* Tab 8: 数据库管理（SQL 执行，管理员 + 写操作二次确认） */}
+        {/* Tab 9: 数据库管理（SQL 执行，管理员 + 写操作二次确认） */}
         <TabPane tabKey="database" tab={`🗄️ ${t('admin.tabDatabase')}`}>
           <DatabaseTab />
         </TabPane>
 
-        {/* Tab 9: 审计日志（管理员操作留痕） */}
+        {/* Tab 10: 审计日志（管理员操作留痕） */}
         <TabPane tabKey="audit" tab={`📋 ${t('admin.tabAudit')}`}>
           <AuditLogTab />
         </TabPane>

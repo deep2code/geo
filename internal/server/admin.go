@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"my-geo/internal/config"
 	"my-geo/internal/diagnostics"
 	"my-geo/internal/httputil"
 	"my-geo/internal/llm"
@@ -460,4 +463,116 @@ func (s *Server) handleAdminSelfCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	report := diagnostics.SelfCheck(r.Context(), s.engine, "")
 	writeJSON(w, http.StatusOK, report)
+}
+
+// handleAdminEngineTest 测试 AI 引擎连通性。
+// POST /admin/engine/test { "engine": "chatgpt" }
+func (s *Server) handleAdminEngineTest(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+		return
+	}
+
+	var req struct {
+		Engine string `json:"engine"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "请求格式错误"})
+		return
+	}
+	if req.Engine == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "engine 参数不能为空"})
+		return
+	}
+
+	// 构建引擎 key 名称
+	engineKey := strings.ToUpper(req.Engine)
+	apiKeyEnv := "GEO_" + engineKey + "_KEY"
+	apiKey := config.Env(apiKeyEnv, "")
+	if apiKey == "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "未配置 API Key",
+		})
+		return
+	}
+
+	// 简单测试：发送一个最小请求到引擎 API
+	baseURL := config.Env("GEO_"+engineKey+"_BASE", "")
+	if baseURL == "" {
+		// 使用默认 base URL
+		switch strings.ToLower(req.Engine) {
+		case "chatgpt":
+			baseURL = "https://api.openai.com/v1"
+		case "claude":
+			baseURL = "https://api.anthropic.com"
+		case "gemini":
+			baseURL = "https://generativelanguage.googleapis.com"
+		default:
+			baseURL = "https://api.openai.com/v1" // fallback
+		}
+	}
+
+	// 创建 HTTP 客户端，设置超时
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// 发送测试请求
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var testReq *http.Request
+	var err error
+
+	switch strings.ToLower(req.Engine) {
+	case "chatgpt", "openai":
+		testReq, err = http.NewRequestWithContext(ctx, "GET", baseURL+"/models", nil)
+		if err == nil {
+			testReq.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+	case "claude":
+		testReq, err = http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/models", nil)
+		if err == nil {
+			testReq.Header.Set("x-api-key", apiKey)
+			testReq.Header.Set("anthropic-version", "2023-06-01")
+		}
+	default:
+		// 通用测试：尝试获取模型列表
+		testReq, err = http.NewRequestWithContext(ctx, "GET", baseURL+"/v1/models", nil)
+		if err == nil {
+			testReq.Header.Set("Authorization", "Bearer "+apiKey)
+		}
+	}
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"message": "创建测试请求失败: " + err.Error(),
+		})
+		return
+	}
+
+	resp, err := client.Do(testReq)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "连接失败: " + err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"message": "连接成功 (HTTP " + strconv.Itoa(resp.StatusCode) + ")",
+		})
+	} else {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": "API 返回错误 (HTTP " + strconv.Itoa(resp.StatusCode) + ")",
+		})
+	}
 }

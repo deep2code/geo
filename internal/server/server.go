@@ -717,6 +717,7 @@ func (s *Server) registerRoutes() {
 	// 系统设置（DB 变量存储：管理后台可改）
 	s.mux.HandleFunc("/api/v1/admin/settings", s.handleAdminSettingsList)     // GET 列出 / PUT 更新
 	s.mux.HandleFunc("/api/v1/admin/settings/reset", s.handleAdminSettingsReset) // POST 恢复默认
+	s.mux.HandleFunc("/api/v1/admin/engine/test", s.handleAdminEngineTest)   // POST 测试引擎连通性
 	// 管理后台 SQL 执行（管理员专用，写操作需二次确认）
 	s.mux.HandleFunc("/api/v1/admin/db/exec", s.handleAdminDBExec)
 	// 帮助中心与新手引导接口（#101）

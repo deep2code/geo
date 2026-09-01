@@ -547,6 +547,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ key })
       }),
+    // 测试引擎连通性
+    testEngine: (engineKey: string) =>
+      request<{ success: boolean; message: string }>('/admin/engine/test', {
+        method: 'POST',
+        body: JSON.stringify({ engine: engineKey })
+      }),
     // 外部系统提交列表 + 统计（status 过滤：''=全部 / pending / analyzed / failed）
     externalSubmissions: (params?: { status?: string; limit?: number }) => {
       const qs = new URLSearchParams()

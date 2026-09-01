@@ -1,0 +1,184 @@
+.engine-config-tab {
+  .engine-config-desc {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+
+  .engine-config-loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-tertiary);
+  }
+
+  .engine-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .engine-card {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    background: var(--surface-secondary);
+    padding: 16px;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: var(--brand-primary);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    &.configured {
+      border-color: var(--status-success);
+    }
+
+    &.disabled {
+      opacity: 0.6;
+    }
+
+    .engine-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-primary);
+
+      .engine-icon {
+        font-size: 24px;
+      }
+
+      .engine-name {
+        font-weight: 600;
+        font-size: 15px;
+        flex: 1;
+      }
+
+      .engine-toggle {
+        position: relative;
+        display: inline-block;
+        width: 44px;
+        height: 24px;
+
+        input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+
+          &:checked + .engine-toggle-slider {
+            background-color: var(--status-success);
+
+            &::before {
+              transform: translateX(20px);
+            }
+          }
+        }
+
+        .engine-toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-color: var(--bg-tertiary);
+          transition: 0.3s;
+          border-radius: 24px;
+
+          &::before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+          }
+        }
+      }
+    }
+
+    .engine-card-body {
+      .engine-field {
+        margin-bottom: 12px;
+
+        label {
+          display: block;
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-secondary);
+          margin-bottom: 4px;
+        }
+
+        input, .input {
+          width: 100%;
+          font-size: 13px;
+        }
+
+        &.engine-checkbox {
+          label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+
+            input {
+              width: auto;
+            }
+          }
+        }
+      }
+    }
+
+    .engine-card-footer {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-primary);
+    }
+
+    .engine-test-result {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+
+      &.success {
+        background: var(--status-success-bg);
+        color: var(--status-success);
+        border: 1px solid color-mix(in srgb, var(--status-success) 30%, transparent);
+      }
+
+      &.error {
+        background: var(--status-error-bg);
+        color: var(--status-error);
+        border: 1px solid color-mix(in srgb, var(--status-error) 30%, transparent);
+      }
+    }
+
+    .engine-status {
+      margin-top: 12px;
+      font-size: 12px;
+
+      .status-configured {
+        color: var(--status-success);
+      }
+
+      .status-not-configured {
+        color: var(--text-tertiary);
+      }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .engine-config-tab .engine-grid {
+    grid-template-columns: 1fr;
+  }
+}
