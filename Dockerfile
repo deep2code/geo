@@ -56,6 +56,10 @@ WORKDIR /build
 
 # 依赖缓存：基础镜像已把模块下载进 /go/pkg/mod（镜像层），直接复用，不再重新下载。
 COPY go.mod go.sum ./
+# 预下载依赖（利用 Docker 层缓存：go.mod/go.sum 不变则跳过）
+RUN --mount=type=cache,id=gopath,target=/go/pkg/mod \
+    go mod download
+
 # 拷贝源码
 COPY . .
 
