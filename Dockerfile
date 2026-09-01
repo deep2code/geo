@@ -78,7 +78,7 @@ COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 RUN --mount=type=cache,id=gocache,sharing=locked,target=/gocache \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
     -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildAt=${BUILD_AT} -X main.buildOS=${BUILD_OS}" \
+    -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.commit=${COMMIT}' -X 'main.buildAt=${BUILD_AT}' -X 'main.buildOS=${BUILD_OS}'" \
     -o /out/geo \
     ./cmd/geo
 

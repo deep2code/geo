@@ -248,7 +248,7 @@ do_build() {
             (cd "$PROJECT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
                 GOPROXY="${GOPROXY_URL:-https://goproxy.cn,direct}" GOSUMDB="${GOSUMDB_URL:-off}" \
                 go build -trimpath \
-                -ldflags "-s -w -X main.version=${version} -X main.commit=${commit} -X main.buildAt=${build_at} -X main.buildOS=${build_os}" \
+                -ldflags "-s -w -X 'main.version=${version}' -X 'main.commit=${commit}' -X 'main.buildAt=${build_at}' -X 'main.buildOS=${build_os}'" \
                 -o "$out" ./cmd/geo)
         done
         # 轻量打包（仅 COPY 二进制；buildx 多平台时按 TARGETARCH 匹配 build/geo-linux-<arch>）
