@@ -126,8 +126,8 @@ const AdminLogin: React.FC = () => {
         <div className="login-form-wrapper">
           <div className="login-form-card">
             <div className="login-form-header">
-              <h2 className="login-form-title">欢迎回来</h2>
-              <p className="login-form-subtitle">登录您的账户以继续</p>
+              <h2 className="login-form-title">系统管理</h2>
+              <p className="login-form-subtitle">管理员登录</p>
             </div>
 
             <form onSubmit={handleSubmit} noValidate className="login-form">
@@ -207,7 +207,7 @@ const AdminLogin: React.FC = () => {
             </form>
 
             <div className="login-form-footer">
-              <span>© 2026 崛起GEO · 安全登录</span>
+              <a href="/login" className="login-admin-link">工作台登录 →</a>
             </div>
           </div>
         </div>

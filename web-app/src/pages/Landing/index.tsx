@@ -179,7 +179,8 @@ const Landing: React.FC = () => {
     loadMeta()
   }, [])
 
-  const handleStartFree = () => navigate('/dashboard')
+  const handleDashboardLogin = () => navigate('/login')
+  const handleAdminLogin = () => navigate('/admin/login')
   const handleScrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -199,7 +200,10 @@ const Landing: React.FC = () => {
           <a href="#contact" onClick={(e) => { e.preventDefault(); handleScrollTo('contact') }}>{t('landing.navContact')}</a>
           <a href="/help">{t('landing.navHelp')}</a>
         </div>
-        <Button size="sm" onClick={handleStartFree}>{t('landing.navLogin')}</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button size="sm" onClick={handleDashboardLogin}>工作台登录</Button>
+          <Button size="sm" variant="ghost" onClick={handleAdminLogin}>系统管理</Button>
+        </div>
       </nav>
 
       {/* Hero 区域 */}
@@ -210,8 +214,8 @@ const Landing: React.FC = () => {
           <h1 className="landing-hero-title">{t('landing.heroTitle')}</h1>
           <p className="landing-hero-subtitle">{t('landing.heroSubtitle')}</p>
           <div className="landing-hero-cta">
-            <Button size="lg" onClick={handleStartFree}>✨ {t('landing.heroCtaStart')}</Button>
-            <Button size="lg" variant="outline" onClick={() => handleScrollTo('pricing')}>💰 {t('landing.heroCtaPricing')}</Button>
+            <Button size="lg" onClick={handleDashboardLogin}>✨ {t('landing.heroCtaStart')}</Button>
+            <Button size="lg" variant="outline" onClick={handleAdminLogin}>⚙️ 系统管理</Button>
           </div>
         </div>
       </section>
@@ -399,7 +403,7 @@ const Landing: React.FC = () => {
               </ul>
               <Button
                 variant={plan.featured ? 'primary' : 'outline'}
-                onClick={plan.id === 'enterprise' ? () => navigate('/tickets') : handleStartFree}
+                onClick={plan.id === 'enterprise' ? () => navigate('/tickets') : handleDashboardLogin}
                 style={{ width: '100%' }}
               >
                 {t(plan.ctaKey)}

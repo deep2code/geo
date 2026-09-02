@@ -421,7 +421,16 @@
     margin-top: 28px;
     padding-top: 20px;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.3);
+  }
+
+  .login-admin-link {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+    text-decoration: none;
+    transition: color 0.2s;
+
+    &:hover {
+      color: #6366f1;
+    }
   }
 }

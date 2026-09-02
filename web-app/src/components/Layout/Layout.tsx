@@ -7,7 +7,15 @@ import { Button } from '@/components/Button'
 import { Tabs, TabPane } from '@/components/Tabs'
 import './Layout.scss'
 
-const navItems: { key: string; to: string; icon: string; labelKey: string }[] = [
+interface NavItem {
+  key: string
+  to: string
+  icon: string
+  labelKey: string
+}
+
+// 工作台导航项（业务导向）
+const dashboardNavItems: NavItem[] = [
   { key: 'dashboard', to: '/dashboard', icon: '📊', labelKey: 'nav.dashboard' },
   { key: 'compare', to: '/compare', icon: '⚖️', labelKey: 'nav.compare' },
   { key: 'leaderboard', to: '/leaderboard', icon: '🏆', labelKey: 'nav.leaderboard' },
@@ -18,14 +26,24 @@ const navItems: { key: string; to: string; icon: string; labelKey: string }[] = 
   { key: 'report', to: '/report-export', icon: '📄', labelKey: 'nav.reportExport' },
   { key: 'alerts', to: '/alert-email', icon: '📧', labelKey: 'nav.alertEmail' },
   { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
-  { key: 'system-check', to: '/system-check', icon: '🩺', labelKey: 'nav.systemCheck' },
-  { key: 'rules', to: '/rules', icon: '⚙️', labelKey: 'nav.rules' },
-  { key: 'evaluate', to: '/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
-  { key: 'brand-db-import', to: '/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
-  { key: 'integrations', to: '/integrations', icon: '🔌', labelKey: 'nav.integrations' },
-  // 新增模块
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
+]
+
+// 系统管理导航项（技术/管理导向）
+const adminNavItems: NavItem[] = [
   { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
+  { key: 'admin-settings', to: '/admin?tab=settings', icon: '⚙️', labelKey: 'nav.adminSettings' },
+  { key: 'admin-engines', to: '/admin?tab=engines', icon: '🤖', labelKey: 'nav.adminEngines' },
+  { key: 'admin-system', to: '/admin?tab=system', icon: '🩺', labelKey: 'nav.systemCheck' },
+  { key: 'admin-users', to: '/admin?tab=tenants', icon: '👥', labelKey: 'nav.adminUsers' },
+  { key: 'admin-roles', to: '/admin?tab=roles', icon: '🔐', labelKey: 'nav.adminRoles' },
+  { key: 'admin-rules', to: '/rules', icon: '📋', labelKey: 'nav.rules' },
+  { key: 'admin-evaluate', to: '/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
+  { key: 'admin-integrations', to: '/integrations', icon: '🔌', labelKey: 'nav.integrations' },
+  { key: 'admin-import', to: '/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
+  { key: 'admin-audit', to: '/admin?tab=audit', icon: '📜', labelKey: 'nav.adminAuditLog' },
+  { key: 'admin-database', to: '/admin?tab=database', icon: '💾', labelKey: 'nav.adminDatabase' },
+  { key: 'admin-announcements', to: '/admin?tab=announcements', icon: '📢', labelKey: 'nav.adminAnnouncements' },
 ]
 
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -42,21 +60,20 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const userRole = useAppStore(s => s.userRole)
   const currentLang = getCurrentLanguage()
 
-  // 过滤导航项：非管理员隐藏系统管理
-  const filteredNavItems = navItems.filter(item => {
-    if (item.key === 'admin' && userRole !== 'owner' && userRole !== 'admin') {
-      return false
-    }
-    return true
-  })
+  // 判断当前是否在管理后台
+  const isAdminRoute = location.pathname.startsWith('/admin')
+
+  // 根据路由选择导航项
+  const currentNavItems = isAdminRoute ? adminNavItems : dashboardNavItems
+
   const [activeTabKey, setActiveTabKey] = useState('/dashboard')
 
   useEffect(() => {
-    const current = navItems.find(n => location.pathname.startsWith(n.to))
+    const current = currentNavItems.find(n => location.pathname.startsWith(n.to.split('?')[0]))
     if (current) {
       setActiveTabKey(current.to)
     }
-  }, [location.pathname])
+  }, [location.pathname, currentNavItems])
 
   const handleThemeToggle = (t: ThemeMode) => {
     setTheme(t)
@@ -102,10 +119,10 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </button>
         </div>
         <nav className="app-sidebar-nav">
-          {filteredNavItems.map(item => (
+          {currentNavItems.map(item => (
             <NavLink
               key={item.key}
-              to={item.to}
+              to={item.to.split('?')[0]}
               className={({ isActive }) => `app-nav-item ${isActive ? 'is-active' : ''}`}
               onClick={() => navigate(item.to)}
             >
@@ -115,7 +132,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           ))}
         </nav>
       </aside>
-
       <div className="app-main">
         <header className="app-header">
           <div className="app-header-left">
@@ -135,7 +151,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               size="sm"
               className="app-header-tabs"
             >
-              {filteredNavItems.slice(0, 7).map(item => (
+              {currentNavItems.slice(0, 7).map(item => (
                 <TabPane
                   key={item.to}
                   tabKey={item.to}
@@ -173,19 +189,17 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               ))}
             </div>
             <Button
-              size="sm"
               variant="ghost"
               onClick={() => navigate('/settings')}
-              icon="⚙️"
-            />
+            >
+              ⚙️
+            </Button>
           </div>
         </header>
-
         <main className="app-content">
           {children ?? <Outlet />}
         </main>
       </div>
-
       {toast && (
         <div
           className={`app-toast app-toast-${toast.type}`}

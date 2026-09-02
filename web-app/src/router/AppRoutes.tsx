@@ -19,6 +19,7 @@ const Leaderboard = lazy(() => import('@/pages/Leaderboard'))
 // 新增模块
 const Admin = lazy(() => import('@/pages/Admin'))
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'))
+const UserLogin = lazy(() => import('@/pages/UserLogin'))
 const SystemCheck = lazy(() => import('@/pages/SystemCheck'))
 const Rules = lazy(() => import('@/pages/Rules'))
 const Evaluate = lazy(() => import('@/pages/Evaluate'))
@@ -201,6 +202,10 @@ export const AppRoutes: React.FC = () => {
         {/* 管理员登录：独立全屏，不带 Layout */}
         <Route path="/admin/login" element={
           <Suspense fallback={<PageFallback />}><AdminLogin /></Suspense>
+        } />
+        {/* 工作台登录：独立全屏，不带 Layout */}
+        <Route path="/login" element={
+          <Suspense fallback={<PageFallback />}><UserLogin /></Suspense>
         } />
 
         {/* 后台业务页（需登录） */}
