@@ -18,7 +18,7 @@ const AdminLogin: React.FC = () => {
     if (raw && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
     const stateFrom = (location.state as { from?: string } | null)?.from
     if (stateFrom && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(stateFrom)) return stateFrom
-    return '/dashboard'
+    return '/admin'
   })()
 
   const [email, setEmail] = useState('')

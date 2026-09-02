@@ -5,6 +5,7 @@ import { useAppStore, type ThemeMode } from '@/store/useAppStore'
 import { LANGUAGES, getCurrentLanguage, changeLanguage, type LanguageCode } from '@/i18n'
 import { Button } from '@/components/Button'
 import { Tabs, TabPane } from '@/components/Tabs'
+import { TicketsPanel } from '@/components/TicketsPanel'
 import './Layout.scss'
 
 interface NavItem {
@@ -16,16 +17,15 @@ interface NavItem {
 
 // 工作台导航项（业务导向）
 const dashboardNavItems: NavItem[] = [
+  { key: 'brand-mgmt', to: '/brand-management', icon: '🏢', labelKey: 'nav.brandManagement' },
   { key: 'dashboard', to: '/dashboard', icon: '📊', labelKey: 'nav.dashboard' },
+  { key: 'brand-audit', to: '/brand-audit', icon: '🔍', labelKey: 'nav.brandAudit' },
+  { key: 'content', to: '/content-optimizer', icon: '✍️', labelKey: 'nav.contentOptimizer' },
   { key: 'compare', to: '/compare', icon: '⚖️', labelKey: 'nav.compare' },
   { key: 'leaderboard', to: '/leaderboard', icon: '🏆', labelKey: 'nav.leaderboard' },
-  { key: 'content', to: '/content-optimizer', icon: '✍️', labelKey: 'nav.contentOptimizer' },
-  { key: 'brand-mgmt', to: '/brand-management', icon: '🏢', labelKey: 'nav.brandManagement' },
-  { key: 'brand-audit', to: '/brand-audit', icon: '🔍', labelKey: 'nav.brandAudit' },
   { key: 'keywords', to: '/keyword-discovery', icon: '🔑', labelKey: 'nav.keywordDiscovery' },
   { key: 'report', to: '/report-export', icon: '📄', labelKey: 'nav.reportExport' },
   { key: 'alerts', to: '/alert-email', icon: '📧', labelKey: 'nav.alertEmail' },
-  { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
 ]
 
@@ -44,6 +44,7 @@ const adminNavItems: NavItem[] = [
   { key: 'admin-audit', to: '/admin?tab=audit', icon: '📜', labelKey: 'nav.adminAuditLog' },
   { key: 'admin-database', to: '/admin?tab=database', icon: '💾', labelKey: 'nav.adminDatabase' },
   { key: 'admin-announcements', to: '/admin?tab=announcements', icon: '📢', labelKey: 'nav.adminAnnouncements' },
+  { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
 ]
 
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -67,6 +68,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const currentNavItems = isAdminRoute ? adminNavItems : dashboardNavItems
 
   const [activeTabKey, setActiveTabKey] = useState('/dashboard')
+  const [ticketsOpen, setTicketsOpen] = useState(false)
 
   useEffect(() => {
     const current = currentNavItems.find(n => location.pathname.startsWith(n.to.split('?')[0]))
@@ -84,6 +86,11 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   }
 
   const handleTabChange = (key: string) => {
+    // 工单特殊处理：打开侧边面板
+    if (key.includes('/tickets')) {
+      setTicketsOpen(true)
+      return
+    }
     setActiveTabKey(key)
     navigate(key)
   }
@@ -213,6 +220,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           <button type="button" className="app-toast-close" onClick={clearToast}>×</button>
         </div>
       )}
+      <TicketsPanel open={ticketsOpen} onClose={() => setTicketsOpen(false)} />
     </div>
   )
 }
