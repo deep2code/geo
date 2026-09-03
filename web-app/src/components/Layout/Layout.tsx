@@ -77,8 +77,8 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     }
   }, [location.pathname, currentNavItems])
 
-  const handleThemeToggle = (t: ThemeMode) => {
-    setTheme(t)
+  const handleThemeToggle = (tm: ThemeMode) => {
+    setTheme(tm)
   }
 
   const handleLangChange = (code: LanguageCode) => {
@@ -91,9 +91,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
       setTicketsOpen(true)
       return
     }
-    setActiveTabKey(key)
-    navigate(key)
-  }
     setActiveTabKey(key)
     navigate(key)
   }
@@ -198,6 +195,16 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                 </button>
               ))}
             </div>
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/settings')}
+            >
+              ⚙️
+            </Button>
+          </div>
+        </header>
+        <main className="app-content">
+          {children ?? <Outlet />}
         </main>
       </div>
       {toast && (
