@@ -94,6 +94,9 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
     setActiveTabKey(key)
     navigate(key)
   }
+    setActiveTabKey(key)
+    navigate(key)
+  }
 
   return (
     <div className="app-layout">
@@ -195,16 +198,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                 </button>
               ))}
             </div>
-            <Button
-              variant="ghost"
-              onClick={() => navigate('/settings')}
-            >
-              ⚙️
-            </Button>
-          </div>
-        </header>
-        <main className="app-content">
-          {children ?? <Outlet />}
         </main>
       </div>
       {toast && (

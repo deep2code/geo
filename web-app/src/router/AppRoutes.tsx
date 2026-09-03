@@ -42,18 +42,22 @@ const PageFallback: React.FC = () => (
 
 /**
  * ProtectedRoute：需要登录态的路由守卫。
- * 未登录时重定向到 /admin/login，保留原始路径用于登录后跳回。
+ * 未登录时根据路由类型重定向到对应登录页：
+ * - /admin/* 路由 → /admin/login（系统管理登录）
+ * - 其他路由 → /login（工作台登录）
+ * 保留原始路径用于登录后跳回。
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation()
 
   const token = getApiAuthToken()
   if (!token) {
-    // 未登录：声明式重定向（渲染期调 navigate() 属于 render 副作用，
-    // 会触发 "Cannot update a component while rendering a different component"）
+    // 未登录：根据路由类型选择登录页
+    const isAdminRoute = location.pathname.startsWith('/admin')
+    const loginPath = isAdminRoute ? '/admin/login' : '/login'
     const qs = new URLSearchParams()
     qs.set('redirect', `${location.pathname}${location.search}`)
-    return <Navigate to={`/admin/login?${qs.toString()}`} replace />
+    return <Navigate to={`${loginPath}?${qs.toString()}`} replace />
   }
 
   return <>{children}</>
@@ -83,7 +87,10 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 }
 
 /**
- * 把全局 401/403 统一跳转到管理员登录入口，并附带 redirect。
+ * 把全局 401/403 统一跳转到对应登录入口，并附带 redirect。
+ * 根据当前路由类型选择登录页：
+ * - /admin/* 路由 → /admin/login（系统管理登录）
+ * - 其他路由 → /login（工作台登录）
  * 放在 AppRoutes 顶层可以直接拿到 useNavigate/useLocation。
  */
 const AuthErrorRedirector: React.FC = () => {
@@ -94,12 +101,15 @@ const AuthErrorRedirector: React.FC = () => {
     const unsub = onAuthError(({ status }) => {
       const current = `${location.pathname}${location.search}`
       // 避免在登录页本身收到 401/403 时反复重定向
-      if (location.pathname === '/admin/login') return
-      const redirect = current === '/admin/login' ? '/admin' : current
+      if (location.pathname === '/admin/login' || location.pathname === '/login') return
+      // 根据路由类型选择登录页
+      const isAdminRoute = location.pathname.startsWith('/admin')
+      const loginPath = isAdminRoute ? '/admin/login' : '/login'
+      const redirect = current
       const qs = new URLSearchParams()
       qs.set('redirect', redirect)
       qs.set('reason', status === 401 ? 'unauthorized' : 'forbidden')
-      navigate(`/admin/login?${qs.toString()}`, { replace: true })
+      navigate(`${loginPath}?${qs.toString()}`, { replace: true })
     })
     return unsub
   }, [navigate, location])
@@ -147,7 +157,7 @@ const PageTitleManager: React.FC = () => {
   useEffect(() => {
     const path = location.pathname
     // 首页 / 登录页：品牌名 · 站点标语
-    if (path === '/' || path === '/landing' || path === '/admin/login') {
+    if (path === '/' || path === '/landing' || path === '/admin/login' || path === '/login') {
       document.title = `${brandName} · ${SITE_TAGLINE}`
       return
     }
