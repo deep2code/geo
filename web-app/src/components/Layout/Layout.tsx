@@ -126,17 +126,33 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           </button>
         </div>
         <nav className="app-sidebar-nav">
-          {currentNavItems.map(item => (
-            <NavLink
-              key={item.key}
-              to={item.to.split('?')[0]}
-              className={({ isActive }) => `app-nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => navigate(item.to)}
-            >
-              <span className="app-nav-icon">{item.icon}</span>
-              {sidebarOpen && <span className="app-nav-label">{t(item.labelKey)}</span>}
-            </NavLink>
-          ))}
+          {currentNavItems.map(item => {
+            const isTickets = item.key === 'tickets'
+            if (isTickets) {
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="app-nav-item"
+                  onClick={() => setTicketsOpen(true)}
+                >
+                  <span className="app-nav-icon">{item.icon}</span>
+                  {sidebarOpen && <span className="app-nav-label">{t(item.labelKey)}</span>}
+                </button>
+              )
+            }
+            return (
+              <NavLink
+                key={item.key}
+                to={item.to.split('?')[0]}
+                className={({ isActive }) => `app-nav-item ${isActive ? 'is-active' : ''}`}
+                onClick={() => navigate(item.to)}
+              >
+                <span className="app-nav-icon">{item.icon}</span>
+                {sidebarOpen && <span className="app-nav-label">{t(item.labelKey)}</span>}
+              </NavLink>
+            )
+          })}
         </nav>
       </aside>
       <div className="app-main">
