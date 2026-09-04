@@ -66,6 +66,9 @@ func (s *Server) handleCMSInfo(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/security/audit
 // 用于运维快速确认限流、WAF、CSRF、安全头等防护是否生效。
 func (s *Server) handleSecurityAudit(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return

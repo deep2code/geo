@@ -45,6 +45,9 @@ func newGeoEngineFromEnv() *geo.Engine {
 
 // handleRulesList GET /api/v1/rules 列出可用规则集（内置默认 + config/rules/*.json）。
 func (s *Server) handleRulesList(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
@@ -91,6 +94,9 @@ func (s *Server) handleRulesList(w http.ResponseWriter, r *http.Request) {
 
 // handleRulesDefault GET /api/v1/rules/default 返回内置默认规则集 JSON。
 func (s *Server) handleRulesDefault(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
@@ -102,6 +108,9 @@ func (s *Server) handleRulesDefault(w http.ResponseWriter, r *http.Request) {
 // handleRulesValidate POST /api/v1/rules/validate 校验规则集 JSON。
 // 请求体：{"content": "<ruleset json 字符串>"} 或 {"path": "<文件或 config/rules 下路径>"}。
 func (s *Server) handleRulesValidate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
@@ -172,6 +181,9 @@ type evaluateRequest struct {
 
 // handleEvaluate POST /api/v1/evaluate 运行评测集，返回 md 或 json 报告。
 func (s *Server) handleEvaluate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
@@ -445,6 +457,9 @@ func parseInt(s string) (int, error) {
 
 // handleRulesVersions GET /api/v1/rules/versions 列出所有版本。
 func (s *Server) handleRulesVersions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
@@ -477,6 +492,9 @@ func (s *Server) handleRulesVersions(w http.ResponseWriter, r *http.Request) {
 
 // handleRulesVersionsSave POST /api/v1/rules/versions 保存新版本。
 func (s *Server) handleRulesVersionsSave(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
@@ -511,6 +529,9 @@ func (s *Server) handleRulesVersionsSave(w http.ResponseWriter, r *http.Request)
 
 // handleRulesVersionsActivate PUT /api/v1/rules/versions/:id/activate 切换激活版本。
 func (s *Server) handleRulesVersionsActivate(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodPut {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 PUT"})
 		return
@@ -530,6 +551,9 @@ func (s *Server) handleRulesVersionsActivate(w http.ResponseWriter, r *http.Requ
 
 // handleRulesVersionsDelete DELETE /api/v1/rules/versions/:id 删除版本。
 func (s *Server) handleRulesVersionsDelete(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodDelete {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 DELETE"})
 		return
@@ -550,6 +574,9 @@ func (s *Server) handleRulesVersionsDelete(w http.ResponseWriter, r *http.Reques
 
 // handleQueueStats GET /api/v1/queue/stats 获取队列各状态任务数量。
 func (s *Server) handleQueueStats(w http.ResponseWriter, r *http.Request) {
+	if !s.requireDataAdmin(w, r) {
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return

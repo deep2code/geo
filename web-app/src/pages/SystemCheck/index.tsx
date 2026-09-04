@@ -175,7 +175,7 @@ const SystemCheck: React.FC = () => {
             <Button
               variant="primary"
               size="md"
-              onClick={() => navigate('/admin/login?redirect=/system-check')}
+              onClick={() => navigate('/admin/login?redirect=/admin/system-check')}
             >
               前往登录
             </Button>

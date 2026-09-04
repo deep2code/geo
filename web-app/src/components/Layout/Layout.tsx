@@ -29,7 +29,7 @@ const dashboardNavItems: NavItem[] = [
   { key: 'tickets', to: '/tickets', icon: '🎫', labelKey: 'nav.tickets' },
 ]
 
-// 系统管理导航项（技术/管理导向）
+// 系统管理导航项（技术/管理导向，路由统一在 /admin/* 下）
 const adminNavItems: NavItem[] = [
   { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
   { key: 'admin-settings', to: '/admin?tab=settings', icon: '⚙️', labelKey: 'nav.adminSettings' },
@@ -37,14 +37,13 @@ const adminNavItems: NavItem[] = [
   { key: 'admin-system', to: '/admin?tab=system', icon: '🩺', labelKey: 'nav.systemCheck' },
   { key: 'admin-users', to: '/admin?tab=tenants', icon: '👥', labelKey: 'nav.adminUsers' },
   { key: 'admin-roles', to: '/admin?tab=roles', icon: '🔐', labelKey: 'nav.adminRoles' },
-  { key: 'admin-rules', to: '/rules', icon: '📋', labelKey: 'nav.rules' },
-  { key: 'admin-evaluate', to: '/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
-  { key: 'admin-integrations', to: '/integrations', icon: '🔌', labelKey: 'nav.integrations' },
-  { key: 'admin-import', to: '/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
+  { key: 'admin-rules', to: '/admin/rules', icon: '📋', labelKey: 'nav.rules' },
+  { key: 'admin-evaluate', to: '/admin/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
+  { key: 'admin-integrations', to: '/admin/integrations', icon: '🔌', labelKey: 'nav.integrations' },
+  { key: 'admin-import', to: '/admin/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
   { key: 'admin-audit', to: '/admin?tab=audit', icon: '📜', labelKey: 'nav.adminAuditLog' },
   { key: 'admin-database', to: '/admin?tab=database', icon: '💾', labelKey: 'nav.adminDatabase' },
   { key: 'admin-announcements', to: '/admin?tab=announcements', icon: '📢', labelKey: 'nav.adminAnnouncements' },
-  { key: 'settings', to: '/settings', icon: '⚙️', labelKey: 'nav.settings' },
 ]
 
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {

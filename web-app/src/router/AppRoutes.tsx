@@ -135,11 +135,11 @@ const PAGE_TITLES: { prefix: string; key?: string; brandOnly?: boolean }[] = [
   { prefix: '/report-export', key: 'nav.reportExport' },
   { prefix: '/alert-email', key: 'nav.alertEmail' },
   { prefix: '/settings', key: 'nav.settings' },
-  { prefix: '/system-check', key: 'nav.systemCheck' },
-  { prefix: '/rules', key: 'nav.rules' },
-  { prefix: '/evaluate', key: 'nav.evaluate' },
-  { prefix: '/brand-db-import', key: 'nav.brandDBImport' },
-  { prefix: '/integrations', key: 'nav.integrations' },
+  { prefix: '/admin/system-check', key: 'nav.systemCheck' },
+  { prefix: '/admin/rules', key: 'nav.rules' },
+  { prefix: '/admin/evaluate', key: 'nav.evaluate' },
+  { prefix: '/admin/brand-db-import', key: 'nav.brandDBImport' },
+  { prefix: '/admin/integrations', key: 'nav.integrations' },
   { prefix: '/help', key: 'nav.help' },
   { prefix: '/admin', key: 'nav.admin' },
   { prefix: '/terms', key: 'nav.terms' },
@@ -250,20 +250,21 @@ export const AppRoutes: React.FC = () => {
         <Route path="/admin" element={
           <AdminPage><Suspense fallback={<PageFallback />}><Admin /></Suspense></AdminPage>
         } />
-        <Route path="/system-check" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><SystemCheck /></Suspense></ProtectedPage>
+        {/* 系统管理子页面（需管理员权限，路由统一在 /admin/* 下） */}
+        <Route path="/admin/system-check" element={
+          <AdminPage><Suspense fallback={<PageFallback />}><SystemCheck /></Suspense></AdminPage>
         } />
-        <Route path="/rules" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><Rules /></Suspense></ProtectedPage>
+        <Route path="/admin/rules" element={
+          <AdminPage><Suspense fallback={<PageFallback />}><Rules /></Suspense></AdminPage>
         } />
-        <Route path="/evaluate" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><Evaluate /></Suspense></ProtectedPage>
+        <Route path="/admin/evaluate" element={
+          <AdminPage><Suspense fallback={<PageFallback />}><Evaluate /></Suspense></AdminPage>
         } />
-        <Route path="/brand-db-import" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense></ProtectedPage>
+        <Route path="/admin/brand-db-import" element={
+          <AdminPage><Suspense fallback={<PageFallback />}><BrandDBImport /></Suspense></AdminPage>
         } />
-        <Route path="/integrations" element={
-          <ProtectedPage><Suspense fallback={<PageFallback />}><Integrations /></Suspense></ProtectedPage>
+        <Route path="/admin/integrations" element={
+          <AdminPage><Suspense fallback={<PageFallback />}><Integrations /></Suspense></AdminPage>
         } />
 
         {/* 公开业务页（帮助/工单/法务） */}

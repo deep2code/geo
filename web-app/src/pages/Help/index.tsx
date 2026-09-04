@@ -46,11 +46,11 @@ const journeyStages: {
   stepsKey: string
   routes: string[]
 }[] = [
-  { stage: 1, icon: '🚀', titleKey: 'help.journeyS1Title', goalKey: 'help.journeyS1Goal', acceptanceKey: 'help.journeyS1Acceptance', stepsKey: 'help.journeyS1Steps', routes: ['/content-optimizer', '/system-check', '/content-optimizer', '/system-check'] },
+  { stage: 1, icon: '🚀', titleKey: 'help.journeyS1Title', goalKey: 'help.journeyS1Goal', acceptanceKey: 'help.journeyS1Acceptance', stepsKey: 'help.journeyS1Steps', routes: ['/content-optimizer', '/admin/system-check', '/content-optimizer', '/admin/system-check'] },
   { stage: 2, icon: '🤖', titleKey: 'help.journeyS2Title', goalKey: 'help.journeyS2Goal', acceptanceKey: 'help.journeyS2Acceptance', stepsKey: 'help.journeyS2Steps', routes: ['/settings', '/content-optimizer', '/content-optimizer', '/content-optimizer'] },
-  { stage: 3, icon: '🎯', titleKey: 'help.journeyS3Title', goalKey: 'help.journeyS3Goal', acceptanceKey: 'help.journeyS3Acceptance', stepsKey: 'help.journeyS3Steps', routes: ['/brand-management', '/brand-audit', '/brand-audit', '/rules'] },
-  { stage: 4, icon: '🧩', titleKey: 'help.journeyS4Title', goalKey: 'help.journeyS4Goal', acceptanceKey: 'help.journeyS4Acceptance', stepsKey: 'help.journeyS4Steps', routes: ['/brand-db-import', '/keyword-discovery', '/compare', '/alert-email'] },
-  { stage: 5, icon: '🛠️', titleKey: 'help.journeyS5Title', goalKey: 'help.journeyS5Goal', acceptanceKey: 'help.journeyS5Acceptance', stepsKey: 'help.journeyS5Steps', routes: ['/system-check', '/brand-audit', '/settings', '/alert-email'] }
+  { stage: 3, icon: '🎯', titleKey: 'help.journeyS3Title', goalKey: 'help.journeyS3Goal', acceptanceKey: 'help.journeyS3Acceptance', stepsKey: 'help.journeyS3Steps', routes: ['/brand-management', '/brand-audit', '/brand-audit', '/admin/rules'] },
+  { stage: 4, icon: '🧩', titleKey: 'help.journeyS4Title', goalKey: 'help.journeyS4Goal', acceptanceKey: 'help.journeyS4Acceptance', stepsKey: 'help.journeyS4Steps', routes: ['/admin/brand-db-import', '/keyword-discovery', '/compare', '/alert-email'] },
+  { stage: 5, icon: '🛠️', titleKey: 'help.journeyS5Title', goalKey: 'help.journeyS5Goal', acceptanceKey: 'help.journeyS5Acceptance', stepsKey: 'help.journeyS5Steps', routes: ['/admin/system-check', '/brand-audit', '/settings', '/alert-email'] }
 ]
 
 const Help: React.FC = () => {
