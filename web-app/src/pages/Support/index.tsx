@@ -30,7 +30,7 @@ const Support: React.FC = () => {
         <div className="support-contact-card">
           <div className="support-contact-icon">💬</div>
           <div className="support-contact-label">{t('support.ticketLabel')}</div>
-          <button className="support-contact-btn" onClick={() => navigate('/login?redirect=/dashboard')}>
+          <button className="support-contact-btn" onClick={() => navigate('/tickets')}>
             {t('support.ticketBtn')}
           </button>
           <div className="support-contact-desc">{t('support.ticketDesc')}</div>

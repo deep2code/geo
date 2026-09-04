@@ -27,6 +27,7 @@ const BrandDBImport = lazy(() => import('@/pages/BrandDBImport'))
 const Integrations = lazy(() => import('@/pages/Integrations'))
 const Help = lazy(() => import('@/pages/Help'))
 const Support = lazy(() => import('@/pages/Support'))
+const Tickets = lazy(() => import('@/pages/Tickets'))
 const Landing = lazy(() => import('@/pages/Landing'))
 const Terms = lazy(() => import('@/pages/Terms'))
 const Privacy = lazy(() => import('@/pages/Privacy'))
@@ -134,6 +135,7 @@ const PAGE_TITLES: { prefix: string; key?: string; brandOnly?: boolean }[] = [
   { prefix: '/keyword-discovery', key: 'nav.keywordDiscovery' },
   { prefix: '/report-export', key: 'nav.reportExport' },
   { prefix: '/alert-email', key: 'nav.alertEmail' },
+  { prefix: '/tickets', key: 'nav.tickets' },
   { prefix: '/settings', key: 'nav.settings' },
   { prefix: '/admin/system-check', key: 'nav.systemCheck' },
   { prefix: '/admin/rules', key: 'nav.rules' },
@@ -243,6 +245,9 @@ export const AppRoutes: React.FC = () => {
         } />
         <Route path="/alert-email" element={
           <ProtectedPage><Suspense fallback={<PageFallback />}><AlertEmail /></Suspense></ProtectedPage>
+        } />
+        <Route path="/tickets" element={
+          <ProtectedPage><Suspense fallback={<PageFallback />}><Tickets /></Suspense></ProtectedPage>
         } />
         <Route path="/settings" element={
           <ProtectedPage><Suspense fallback={<PageFallback />}><Settings /></Suspense></ProtectedPage>

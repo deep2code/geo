@@ -5,7 +5,6 @@ import { useAppStore, type ThemeMode } from '@/store/useAppStore'
 import { LANGUAGES, getCurrentLanguage, changeLanguage, type LanguageCode } from '@/i18n'
 import { Button } from '@/components/Button'
 import { Tabs, TabPane } from '@/components/Tabs'
-import { TicketsPanel } from '@/components/TicketsPanel'
 import './Layout.scss'
 
 interface NavItem {
@@ -70,7 +69,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const currentNavItems = isAdminRoute ? adminNavItems : dashboardNavItems
 
   const [activeTabKey, setActiveTabKey] = useState('/dashboard')
-  const [ticketsOpen, setTicketsOpen] = useState(false)
 
   useEffect(() => {
     const fullPath = location.pathname + location.search
@@ -96,11 +94,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   }
 
   const handleTabChange = (key: string) => {
-    // 工单特殊处理：打开侧边面板
-    if (key.includes('/tickets')) {
-      setTicketsOpen(true)
-      return
-    }
     setActiveTabKey(key)
     navigate(key)
   }
@@ -137,20 +130,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
         </div>
         <nav className="app-sidebar-nav">
           {currentNavItems.map(item => {
-            const isTickets = item.key === 'tickets'
-            if (isTickets) {
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className="app-nav-item"
-                  onClick={() => setTicketsOpen(true)}
-                >
-                  <span className="app-nav-icon">{item.icon}</span>
-                  {sidebarOpen && <span className="app-nav-label">{t(item.labelKey)}</span>}
-                </button>
-              )
-            }
             const fullPath = location.pathname + location.search
             const isActive = item.to.includes('?')
               ? fullPath === item.to
@@ -249,7 +228,6 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
           <button type="button" className="app-toast-close" onClick={clearToast}>×</button>
         </div>
       )}
-      <TicketsPanel open={ticketsOpen} onClose={() => setTicketsOpen(false)} />
     </div>
   )
 }
