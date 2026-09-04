@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Input, Textarea } from '@/components/Input'
@@ -56,6 +56,8 @@ const mockAnnouncements: AnnouncementRow[] = [
 const Admin: React.FC = () => {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'tenants'
   const showToast = useAppStore(s => s.showToast)
 
   const hasApiToken = Boolean(getApiAuthToken())
@@ -349,7 +351,7 @@ const Admin: React.FC = () => {
         </div>
       </div>
 
-      <Tabs variant="pills">
+      <Tabs variant="pills" activeKey={activeTab} onChange={(key) => setSearchParams({ tab: key })}>
         {/* Tab 1: 租户管理 */}
         <TabPane tabKey="tenants" tab={`🏢 ${t('admin.tabTenants')}`}>
           <div className="admin-filter-bar">

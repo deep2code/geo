@@ -1137,11 +1137,11 @@ func (s *Server) handleExternalSubmit(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/admin/external-submissions?status=&limit=
 // 需要数据管理权限（与 audit/correction 对齐）。
 func (s *Server) handleExternalSubmissionsAdmin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
-	if !s.requireDataAdmin(w, r) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 GET"})
 		return
 	}
 	srv := s.externalStore
@@ -1178,11 +1178,11 @@ func (s *Server) handleExternalSubmissionsAdmin(w http.ResponseWriter, r *http.R
 //
 // POST /api/v1/admin/external-submissions/trigger
 func (s *Server) handleExternalTrigger(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
+	if !s.requireDataAdmin(w, r) {
 		return
 	}
-	if !s.requireDataAdmin(w, r) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
 	}
 	if s.externalWorker == nil {

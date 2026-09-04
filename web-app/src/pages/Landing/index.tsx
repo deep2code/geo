@@ -403,7 +403,7 @@ const Landing: React.FC = () => {
               </ul>
               <Button
                 variant={plan.featured ? 'primary' : 'outline'}
-                onClick={plan.id === 'enterprise' ? () => navigate('/tickets') : handleDashboardLogin}
+                onClick={plan.id === 'enterprise' ? () => navigate('/login?redirect=/dashboard') : handleDashboardLogin}
                 style={{ width: '100%' }}
               >
                 {t(plan.ctaKey)}

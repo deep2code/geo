@@ -32,18 +32,21 @@ const dashboardNavItems: NavItem[] = [
 // 系统管理导航项（技术/管理导向，路由统一在 /admin/* 下）
 const adminNavItems: NavItem[] = [
   { key: 'admin', to: '/admin', icon: '🛡️', labelKey: 'nav.admin' },
+  { key: 'admin-users', to: '/admin?tab=tenants', icon: '👥', labelKey: 'nav.adminUsers' },
+  { key: 'admin-usage', to: '/admin?tab=usage', icon: '📊', labelKey: 'admin.tabUsage' },
+  { key: 'admin-announcements', to: '/admin?tab=announcements', icon: '📢', labelKey: 'nav.adminAnnouncements' },
+  { key: 'admin-system', to: '/admin?tab=system', icon: '🩺', labelKey: 'admin.tabSystem' },
   { key: 'admin-settings', to: '/admin?tab=settings', icon: '⚙️', labelKey: 'nav.adminSettings' },
   { key: 'admin-engines', to: '/admin?tab=engines', icon: '🤖', labelKey: 'nav.adminEngines' },
-  { key: 'admin-system', to: '/admin?tab=system', icon: '🩺', labelKey: 'nav.systemCheck' },
-  { key: 'admin-users', to: '/admin?tab=tenants', icon: '👥', labelKey: 'nav.adminUsers' },
-  { key: 'admin-roles', to: '/admin?tab=roles', icon: '🔐', labelKey: 'nav.adminRoles' },
+  { key: 'admin-ext-submissions', to: '/admin?tab=ext-submissions', icon: '📥', labelKey: 'admin.tabExternalSubmissions' },
+  { key: 'admin-aibots', to: '/admin?tab=aibots', icon: '🤖', labelKey: 'admin.tabAIBots' },
+  { key: 'admin-database', to: '/admin?tab=database', icon: '💾', labelKey: 'nav.adminDatabase' },
+  { key: 'admin-audit', to: '/admin?tab=audit', icon: '📜', labelKey: 'nav.adminAuditLog' },
+  { key: 'admin-system-check', to: '/admin/system-check', icon: '🔍', labelKey: 'nav.systemCheck' },
   { key: 'admin-rules', to: '/admin/rules', icon: '📋', labelKey: 'nav.rules' },
   { key: 'admin-evaluate', to: '/admin/evaluate', icon: '📊', labelKey: 'nav.evaluate' },
   { key: 'admin-integrations', to: '/admin/integrations', icon: '🔌', labelKey: 'nav.integrations' },
   { key: 'admin-import', to: '/admin/brand-db-import', icon: '🗄️', labelKey: 'nav.brandDBImport' },
-  { key: 'admin-audit', to: '/admin?tab=audit', icon: '📜', labelKey: 'nav.adminAuditLog' },
-  { key: 'admin-database', to: '/admin?tab=database', icon: '💾', labelKey: 'nav.adminDatabase' },
-  { key: 'admin-announcements', to: '/admin?tab=announcements', icon: '📢', labelKey: 'nav.adminAnnouncements' },
 ]
 
 export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -70,11 +73,19 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   const [ticketsOpen, setTicketsOpen] = useState(false)
 
   useEffect(() => {
-    const current = currentNavItems.find(n => location.pathname.startsWith(n.to.split('?')[0]))
-    if (current) {
-      setActiveTabKey(current.to)
+    const fullPath = location.pathname + location.search
+    // Try exact match first (handles ?tab= items)
+    const exact = currentNavItems.find(n => n.to === fullPath)
+    if (exact) {
+      setActiveTabKey(exact.to)
+      return
     }
-  }, [location.pathname, currentNavItems])
+    // Fall back to pathname match for items without query params
+    const pathMatch = currentNavItems.find(n => !n.to.includes('?') && location.pathname === n.to)
+    if (pathMatch) {
+      setActiveTabKey(pathMatch.to)
+    }
+  }, [location.pathname, location.search, currentNavItems])
 
   const handleThemeToggle = (tm: ThemeMode) => {
     setTheme(tm)
@@ -140,12 +151,15 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
                 </button>
               )
             }
+            const fullPath = location.pathname + location.search
+            const isActive = item.to.includes('?')
+              ? fullPath === item.to
+              : location.pathname === item.to && !currentNavItems.some(n => n.to.includes('?') && n.to === fullPath)
             return (
               <NavLink
                 key={item.key}
-                to={item.to.split('?')[0]}
-                className={({ isActive }) => `app-nav-item ${isActive ? 'is-active' : ''}`}
-                onClick={() => navigate(item.to)}
+                to={item.to}
+                className={`app-nav-item ${isActive ? 'is-active' : ''}`}
               >
                 <span className="app-nav-icon">{item.icon}</span>
                 {sidebarOpen && <span className="app-nav-label">{t(item.labelKey)}</span>}
@@ -173,7 +187,7 @@ export const Layout: React.FC<{ children?: React.ReactNode }> = ({ children }) =
               size="sm"
               className="app-header-tabs"
             >
-              {currentNavItems.slice(0, 7).map(item => (
+              {currentNavItems.map(item => (
                 <TabPane
                   key={item.to}
                   tabKey={item.to}
