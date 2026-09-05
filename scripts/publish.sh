@@ -217,6 +217,15 @@ do_build() {
     fi
     # 本机编译模式（自动选择）：本机有 go+npm → 内置前端构建 + Go 交叉编译
     # （GOCACHE 常驻，增量秒级）→ Dockerfile.local 轻量打包；否则回退容器内全量构建。
+    # ssh 非交互 shell 不加载 ~/.bashrc，PATH 可能缺工具链——先探测常见安装位置
+    if ! command -v go &>/dev/null && [ -x /usr/local/go/bin/go ]; then
+        export PATH="/usr/local/go/bin:$PATH"
+    fi
+    if ! command -v npm &>/dev/null; then
+        for d in /usr/local/bin /usr/bin "$HOME/.nvm/versions/node"; do
+            [ -x "$d/npm" ] && export PATH="$d:$PATH" && break
+        done
+    fi
     if command -v go &>/dev/null && command -v npm &>/dev/null; then
         local archs version commit build_at build_os arch out
         archs="$(printf '%s' "$PLATFORM" | tr ',' '\n' | sed 's|^linux/||' | tr '\n' ',' | sed 's/,$//')"
