@@ -193,14 +193,14 @@ const AdminLogin: React.FC = () => {
                 <Button
                   type="button"
                   variant="outline"
-                  size="md"
+                  size="lg"
                   onClick={() => navigate('/', { replace: true })}
                   disabled={submitting}
                   className="login-btn-secondary"
                 >
                   返回首页
                 </Button>
-                <Button type="submit" size="md" loading={submitting} disabled={submitting} className="login-btn-primary">
+                <Button type="submit" size="lg" loading={submitting} disabled={submitting} className="login-btn-primary">
                   登录
                 </Button>
               </div>
