@@ -244,7 +244,9 @@ do_build() {
         if needs_web; then
             info "前端有变化或 dist 缺失，重新构建前端"
             # 显式传入 NPM_REGISTRY（国内环境加速；与 Dockerfile 保持一致）
-            (cd "$PROJECT_DIR/web-app" && npm_config_registry="${NPM_REGISTRY:-https://registry.npmmirror.com}" npm ci && npm run build)
+            # npm install(增量)而非 npm ci(全删重装):2G 小内存机 npm ci 的小文件写风暴会打满
+            # 系统盘 IOPS。锁文件没变的包不动,写量大减;偶发构建诡异错时手动删 node_modules 重跑即可
+            (cd "$PROJECT_DIR/web-app" && npm_config_registry="${NPM_REGISTRY:-https://registry.npmmirror.com}" npm install --prefer-offline --no-audit --no-fund && npm run build)
         else
             info "前端无变化，复用已有 internal/server/web/dist"
         fi
