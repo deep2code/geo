@@ -695,6 +695,19 @@ func (g *gzipResponseWriter) Write(b []byte) (int, error) {
 	if g.gz != nil {
 		return g.gz.Write(b)
 	}
+	if g.contentType == "" {
+		g.contentType = g.Header().Get("Content-Type")
+	}
+	// 不可压缩类型直接透传：原实现会把整个响应体缓存在 buf 到请求结束才落盘，
+	// 并发下载大 PDF/附件时每请求占用数 MB 堆内存
+	if !g.shouldCompress() {
+		if !g.headerWritten {
+			g.ResponseWriter.WriteHeader(g.statusCode)
+			g.headerWritten = true
+		}
+		g.buf = nil
+		return g.ResponseWriter.Write(b)
+	}
 	g.buf = append(g.buf, b...)
 	if len(g.buf) >= gzipMinSize && g.shouldCompress() {
 		g.startGzip()

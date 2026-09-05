@@ -111,7 +111,7 @@ const Admin: React.FC = () => {
       const res = await api.admin.announcements()
       if (res?.items) setAnnouncements(res.items)
     } catch {
-      // 保留默认模拟数据
+      showToast('公告加载失败，当前展示的是演示数据', 'warning')
     }
   }
 
@@ -121,7 +121,7 @@ const Admin: React.FC = () => {
       const res = await api.admin.tenants({ status: statusFilter || undefined, page, limit: pageSize })
       if (res?.items) setTenants(res.items)
     } catch {
-      // 保留默认模拟数据
+      showToast('租户列表加载失败，当前展示的是演示数据（非真实租户）', 'warning')
     }
   }
 
@@ -148,9 +148,8 @@ const Admin: React.FC = () => {
       showToast(`${tenant.name} 已${newStatus === 'active' ? '激活' : '暂停'}`, 'success')
       setTenants(prev => prev.map(t => t.id === tenant.id ? { ...t, status: newStatus } : t))
     } catch {
-      // API 不可用时仍更新本地状态
-      showToast(`${tenant.name} 已${newStatus === 'active' ? '激活' : '暂停'}（本地）`, 'info')
-      setTenants(prev => prev.map(t => t.id === tenant.id ? { ...t, status: newStatus } : t))
+      // 操作失败不得改动本地状态——否则管理员误以为停用成功，租户实际仍活跃
+      showToast(`${tenant.name} 状态变更失败，请检查后端连接与权限`, 'error')
     }
   }
 

@@ -142,6 +142,10 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*SearchRe
 			return hit, nil
 		}
 	}
+	// 与调用方 ctx 解耦：singleflight 的等待者共享领导者结果，
+	// 领导者的 ctx 取消/超时不应把同 key 的其他等待者一起拖垮
+	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	v, err := c.flight.Do(key, func() (interface{}, error) {
 		// 双检：等锁期间其他 goroutine 可能已回填缓存
 		if c.cache != nil {
@@ -157,7 +161,7 @@ func (c *Client) Search(ctx context.Context, query string, limit int) (*SearchRe
 			args["limit"] = limit
 		}
 		var out SearchResult
-		if err := c.callTool(ctx, "search_chinese_company", args, &out); err != nil {
+		if err := c.callTool(callCtx, "search_chinese_company", args, &out); err != nil {
 			return nil, err
 		}
 		// 写缓存（错误忽略：缓存失败不影响查询结果）；空结果也写，

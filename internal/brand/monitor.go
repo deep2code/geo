@@ -458,25 +458,37 @@ func isAlnum(b byte) bool {
 }
 
 // detectCitation 检测引用列表中是否包含目标域名。
+// 只做主机名精确/子域匹配，不做子串匹配——避免 "acme.com" 误判命中 "acme.com.cn"。
 func detectCitation(citations []models.Citation, domain string) bool {
 	if domain == "" || len(citations) == 0 {
 		return false
 	}
-	domainLower := strings.ToLower(domain)
+	domainLower := strings.TrimPrefix(strings.ToLower(domain), "www.")
 	for _, c := range citations {
-		urlLower := strings.ToLower(c.URL)
-		// 去掉协议后比较
-		u := strings.TrimPrefix(urlLower, "https://")
-		u = strings.TrimPrefix(u, "http://")
-		u = strings.TrimPrefix(u, "www.")
-		if strings.HasPrefix(u, domainLower) {
-			return true
-		}
-		if strings.Contains(urlLower, domainLower) {
+		host := hostOf(c.URL)
+		if host == domainLower || strings.HasSuffix(host, "."+domainLower) {
 			return true
 		}
 	}
 	return false
+}
+
+// hostOf 提取 URL 的小写主机名（去协议、userinfo、端口、路径、www. 前缀）。
+func hostOf(raw string) string {
+	u := strings.ToLower(strings.TrimSpace(raw))
+	u = strings.TrimPrefix(u, "https://")
+	u = strings.TrimPrefix(u, "http://")
+	u = strings.TrimPrefix(u, "//")
+	if i := strings.IndexAny(u, "/?#"); i >= 0 {
+		u = u[:i]
+	}
+	if i := strings.LastIndex(u, "@"); i >= 0 {
+		u = u[i+1:]
+	}
+	if i := strings.Index(u, ":"); i >= 0 {
+		u = u[:i]
+	}
+	return strings.TrimPrefix(u, "www.")
 }
 
 // detectCompetitors 检测回答中提及的竞争对手。

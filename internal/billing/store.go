@@ -326,9 +326,16 @@ func (s *Store) OrdersByWorkspace(ctx context.Context, wsID string) ([]*Order, e
 }
 
 // MarkOrderPaid 标记订单已支付并补建发票。
+// UPDATE 与发票写入在同一事务：否则"已置 paid 但发票写失败"会让渠道重试
+// 命中 ErrOrderAlreadyPaid 幂等哨兵而停止，发票永久缺失。
 func (s *Store) MarkOrderPaid(ctx context.Context, id, providerOrderID string) error {
 	now := time.Now().Unix()
-	res, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
 		`UPDATE payment_orders SET status='paid', paid_at=?, provider_order_id=?
 		 WHERE id=? AND status IN ('created','failed')`, now, providerOrderID, id)
 	if err != nil {
@@ -351,7 +358,16 @@ func (s *Store) MarkOrderPaid(ctx context.Context, id, providerOrderID string) e
 		Status:      "issued",
 		IssuedAt:    now,
 	}
-	return s.CreateInvoice(ctx, inv)
+	if inv.Currency == "" {
+		inv.Currency = "CNY"
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO invoices (id, workspace_id, order_id, amount_cents, currency, status, issued_at, url)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		inv.ID, inv.WorkspaceID, inv.OrderID, inv.AmountCents, inv.Currency, inv.Status, inv.IssuedAt, inv.URL); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Invoice 发票/账单记录。

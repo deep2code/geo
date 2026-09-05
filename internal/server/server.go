@@ -557,10 +557,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/healthz", s.handleLiveness)
 	s.mux.HandleFunc("/readyz", s.handleReadiness)
 	// 可观测性：Prometheus 指标（免鉴权）+ pprof 性能剖析。
-	// pprof 不加入鉴权白名单——启用账号体系（GEO_AUTH_ENABLED=true）时受保护；
-	// 未启用账号体系时与 /healthz 一样公开（仅限单机内网部署）。
+	// pprof 会泄露堆/栈转储（含密钥、DSN、内部地址）：启用账号体系时要求
+	// PermManageData（Owner/Admin），未启用时与 /healthz 一样公开（仅限单机内网部署）。
 	s.mux.HandleFunc("/metrics", s.handleMetrics)
-	s.mux.Handle("/debug/pprof/", http.DefaultServeMux)
+	s.mux.Handle("/debug/pprof/", s.adminPprof())
 	// REST API（/api/v1/health, /api/v1/ready 复用同一实现，保持向后兼容）
 	s.mux.HandleFunc("/api/v1/health", s.handleLiveness)
 	s.mux.HandleFunc("/api/v1/ready", s.handleReadiness)
@@ -1205,6 +1205,21 @@ func (s *Server) requireDataAdmin(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// adminPprof pprof 性能剖析端点包装：会泄露堆/栈转储（密钥、DSN、内部拓扑），
+// 启用账号体系时要求 PermManageData（Owner/Admin），未启用时公开（单机内网部署）。
+// JWT 鉴权由 WithAuthN 完成（/debug/pprof/ 不在非 /api/ 豁免名单内）。
+func (s *Server) adminPprof() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.authSvc != nil && s.authSvc.Enabled() {
+			if err := auth.RequirePermission(r.Context(), auth.PermManageData); err != nil {
+				writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
+				return
+			}
+		}
+		http.DefaultServeMux.ServeHTTP(w, r)
+	})
 }
 
 // ternary 三目运算符（避免 map 取值啰嗦）。

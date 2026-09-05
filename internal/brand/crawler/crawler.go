@@ -125,19 +125,22 @@ func (c *WebsiteCrawler) Crawl(ctx context.Context, domain string) (*WebsiteInfo
 	util.HostThrottle(domain)
 
 	body, status, err := c.fetchHTML(ctx, rawURL)
-	if err != nil {
-		// https 失败，回退 http
+	// https 失败或返回非 2xx（WAF 反爬拦截页）同样回退 http：
+	// 否则拦截页会被解析成品牌 Title/Description 污染画像
+	if err != nil || status < 200 || status >= 300 {
 		rawURL = "http://" + domain + "/"
 		if util.RobotsAllows(ctx, rawURL, "/") {
 			util.HostThrottle(domain)
 			body2, status2, err2 := c.fetchHTML(ctx, rawURL)
-			if err2 != nil {
-				info.Error = fmt.Sprintf("https 与 http 均失败: %v; %v", err, err2)
+			if err2 != nil || status2 < 200 || status2 >= 300 {
+				info.StatusCode = status
+				info.Error = fmt.Sprintf("https 与 http 均不可用: %v(状态 %d); %v(状态 %d)", err, status, err2, status2)
 				return info, nil
 			}
 			body, status = body2, status2
 		} else {
-			info.Error = fmt.Sprintf("https 失败 %v；http robots 禁止访问", err)
+			info.StatusCode = status
+			info.Error = fmt.Sprintf("https 不可用 %v；http robots 禁止访问", err)
 			return info, nil
 		}
 	}

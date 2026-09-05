@@ -572,13 +572,19 @@ func splitComma(s string) []string {
 func matchSingle(part string, val, min, max int) bool {
 	// 处理步长 /
 	step := 1
+	sawStep := false
 	rangePart := part
 	for i := 0; i < len(part); i++ {
 		if part[i] == '/' {
 			rangePart = part[:i]
 			fmt.Sscanf(part[i+1:], "%d", &step)
+			sawStep = true
 			break
 		}
+	}
+	// 非法步长（如 "*/0"）按 1 处理，避免下方 for 循环 v+=step 死循环卡死调度器
+	if step <= 0 {
+		step = 1
 	}
 
 	if rangePart == "*" {
@@ -606,7 +612,12 @@ func matchSingle(part string, val, min, max int) bool {
 	if !sawRange {
 		var n int
 		if cnt, _ := fmt.Sscanf(rangePart, "%d", &n); cnt == 1 {
-			start, end = n, n
+			if sawStep {
+				// 标准 cron 语义："5/2" = 从 5 起到字段上限、步长 2（5,7,...,max）
+				start, end = n, max
+			} else {
+				start, end = n, n
+			}
 		}
 	}
 

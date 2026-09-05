@@ -320,6 +320,9 @@ func (s *Sender) compose(m *Message) ([]byte, error) {
 		altBoundary := genBoundary()
 		b.WriteString("Content-Type: multipart/alternative; boundary=\"" + altBoundary + "\"\r\n\r\n")
 		writeBodies(&b, altBoundary, m.TextBody, m.HTMLBody)
+		// 嵌套 alternative 层的结束边界（RFC 2046 close-delimiter 必填，
+		// 缺失会被严格 MUA/反垃圾判为结构非法）
+		writeBoundary(&b, altBoundary, true)
 		// 附件
 		for _, att := range m.Attachments {
 			writeBoundary(&b, boundary, false)
@@ -460,11 +463,14 @@ func dedupEmails(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
 	for _, e := range in {
-		e = strings.TrimSpace(strings.ToLower(e))
-		if e == "" || seen[e] {
+		e = strings.TrimSpace(e)
+		key := strings.ToLower(e)
+		if e == "" || seen[key] {
 			continue
 		}
-		seen[e] = true
+		seen[key] = true
+		// 保留原始大小写：RFC 5321 允许 local-part 区分大小写，
+		// 整址转小写会让 qmail 等敏感 MTA 投递失败或误投
 		out = append(out, e)
 	}
 	return out

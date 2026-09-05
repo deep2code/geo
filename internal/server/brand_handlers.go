@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"my-geo/internal/auth"
 	"my-geo/internal/brand"
 	"my-geo/internal/brand/crawlability"
 	"my-geo/internal/brand/discover"
@@ -359,6 +360,14 @@ func (s *Server) handleMailSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "仅支持 POST"})
 		return
+	}
+	// 借平台 SMTP 发信属敏感操作：启用账号体系时要求 PermSendMail
+	//（防止 Viewer 等只读角色把平台当垃圾邮件中继）。
+	if s.authSvc != nil && s.authSvc.Enabled() {
+		if err := auth.RequirePermission(r.Context(), auth.PermSendMail); err != nil {
+			writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
+			return
+		}
 	}
 	var body struct {
 		To           []string          `json:"to"`

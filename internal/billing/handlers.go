@@ -153,12 +153,24 @@ func (h HandlerSet) HandleActivate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "plan 不能为空"})
 		return
 	}
-	// 指定他人工作区时，仅允许平台管理员（owner 激活自身；admin 管理成员）。
+	// 指定他人工作区时：JWT 里的角色仅对"当前"工作区有效（每个用户在自己的
+	// 工作区都是 owner），必须实查 DB 中调用者在目标工作区的成员角色，
+	// 否则任意租户 owner 可给任意工作区无偿开通任意套餐。
 	target := wsID
 	if req.WorkspaceID != "" && req.WorkspaceID != wsID {
-		if !h.hasRole(r, auth.RoleOwner) {
+		uid := ""
+		if u := auth.UserFromContext(r.Context()); u != nil {
+			uid = u.ID
+		}
+		allowed := false
+		if uid != "" && h.AuthSvc != nil && h.AuthSvc.Enabled() {
+			if tRole, rerr := h.AuthSvc.Store().GetUserRoleInWorkspace(uid, req.WorkspaceID); rerr == nil {
+				allowed = tRole == auth.RoleOwner || tRole == auth.RoleAdmin
+			}
+		}
+		if !allowed {
 			httputil.WriteJSON(w, http.StatusForbidden, map[string]string{
-				"error": "仅工作区拥有者可代激活其他工作区",
+				"error": "仅目标工作区的拥有者或管理员可代激活其他工作区",
 			})
 			return
 		}

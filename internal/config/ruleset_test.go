@@ -17,8 +17,8 @@ func TestDefaultRuleSet(t *testing.T) {
 	if len(rs.Weights) != len(DefaultWeights()) {
 		t.Fatalf("默认权重条目数不符: got %d want %d", len(rs.Weights), len(DefaultWeights()))
 	}
-	if len(rs.StrategyEffectiveness) != len(StrategyEffectiveness) {
-		t.Fatalf("默认策略系数条目数不符: got %d want %d", len(rs.StrategyEffectiveness), len(StrategyEffectiveness))
+	if len(rs.StrategyEffectiveness) != len(StrategyEffectiveness()) {
+		t.Fatalf("默认策略系数条目数不符: got %d want %d", len(rs.StrategyEffectiveness), len(StrategyEffectiveness()))
 	}
 }
 
@@ -55,7 +55,7 @@ func TestLoadRuleSetInvalid(t *testing.T) {
 }
 
 func TestSetStrategyEffectiveness(t *testing.T) {
-	before := StrategyEffectiveness[models.StrategyQuotation]
+	before := StrategyEffectiveness()[models.StrategyQuotation]
 	rs := &RuleSet{
 		Version: "1.0.0", Name: "x",
 		StrategyEffectiveness: map[models.StrategyType]float64{
@@ -64,8 +64,8 @@ func TestSetStrategyEffectiveness(t *testing.T) {
 		},
 	}
 	SetStrategyEffectiveness(rs.StrategyEffectiveness)
-	if StrategyEffectiveness[models.StrategyQuotation] != 0.99 {
-		t.Fatalf("策略系数未覆盖: %v", StrategyEffectiveness[models.StrategyQuotation])
+	if StrategyEffectiveness()[models.StrategyQuotation] != 0.99 {
+		t.Fatalf("策略系数未覆盖: %v", StrategyEffectiveness()[models.StrategyQuotation])
 	}
 	// 还原，避免影响其他测试
 	SetStrategyEffectiveness(map[models.StrategyType]float64{models.StrategyQuotation: before})

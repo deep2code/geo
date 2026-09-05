@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"my-geo/internal/adapter"
 	"my-geo/internal/models"
@@ -252,7 +253,7 @@ var AllStrategies = []models.StrategyType{
 // StrategyEffectiveness 策略效果系数（来自 Princeton 论文实验数据）。
 //
 // 值表示该策略对可见度的提升幅度。
-var StrategyEffectiveness = map[models.StrategyType]float64{
+var defaultStrategyEffectiveness = map[models.StrategyType]float64{
 	models.StrategyQuotation:      0.41, // +41%
 	models.StrategyStatistics:     0.33, // +33%
 	models.StrategyFluency:        0.29, // +29%
@@ -266,6 +267,23 @@ var StrategyEffectiveness = map[models.StrategyType]float64{
 	models.StrategySchema:         0.30, // 结构化数据提升 LLM 提取准确率
 	models.StrategyEasyUnderstand: 0.15,
 	models.StrategyKeyword:        0.10,
+}
+
+// strategyEffPtr 当前生效的策略效果系数（copy-on-write：Set 整表替换指针，
+// 读侧无锁——避免请求期 Set 与并发评分读构成 concurrent map read/write fatal）。
+var strategyEffPtr atomic.Pointer[map[models.StrategyType]float64]
+
+func init() {
+	m := make(map[models.StrategyType]float64, len(defaultStrategyEffectiveness))
+	for k, v := range defaultStrategyEffectiveness {
+		m[k] = v
+	}
+	strategyEffPtr.Store(&m)
+}
+
+// StrategyEffectiveness 返回当前生效的策略效果系数快照（只读，勿修改返回值）。
+func StrategyEffectiveness() map[models.StrategyType]float64 {
+	return *strategyEffPtr.Load()
 }
 
 // GetPreset 获取指定引擎的预设。

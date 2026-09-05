@@ -305,22 +305,61 @@ func splitSentences(content string) []string {
 	return result
 }
 
+// tokenizeRetrieval 检索信号分词：英文按空白/整词，CJK 按单字切分。
+// strings.Fields 对无空格分隔的中文内容只能得到极少"词块"，
+// 导致长度/密度/多样性信号全部失真（中文文章被判"长度不达标"）。
+func tokenizeRetrieval(content string) []string {
+	var out []string
+	for _, tok := range strings.Fields(content) {
+		if !reHan.MatchString(tok) {
+			out = append(out, tok)
+			continue
+		}
+		var buf strings.Builder
+		flush := func() {
+			if buf.Len() > 0 {
+				out = append(out, buf.String())
+				buf.Reset()
+			}
+		}
+		for _, r := range tok {
+			if r >= 0x4e00 && r <= 0x9fff {
+				flush()
+				out = append(out, string(r))
+			} else {
+				buf.WriteRune(r)
+			}
+		}
+		flush()
+	}
+	return out
+}
+
 // calcRetrievalSignals 计算检索友好度信号。
 //
 // 基于 SAGEO Arena (2026) 研究发现：AutoGEO 的内容扩写策略导致检索排名下降 22.35，
 // 原因是关键词密度稀释和语义漂移。此函数评估内容对 BM25/神经检索器的友好程度。
 func calcRetrievalSignals(content string, a *models.ContentAnalysis) *models.RetrievalSignals {
-	words := strings.Fields(content)
+	words := tokenizeRetrieval(content)
 	wordCount := len(words)
 	if wordCount == 0 {
 		return &models.RetrievalSignals{RetrievalScore: 0}
 	}
+	cjkCount := 0
+	for _, w := range words {
+		if reHan.MatchString(w) {
+			cjkCount++
+		}
+	}
+	// CJK 占多数的内容：按字切分后无法做英文式"实体词保留"检测（该信号为英文设计）
+	isCJKDominant := cjkCount*2 > wordCount
 
 	// 1. 关键词密度：高频词占比（模拟 BM25 的词频信号）
 	termFreq := make(map[string]int)
 	for _, w := range words {
 		lower := strings.ToLower(w)
-		if utf8.RuneCountInString(lower) > 1 { // 过滤单字符
+		runes := utf8.RuneCountInString(lower)
+		if runes > 1 || (runes == 1 && reHan.MatchString(lower)) { // 过滤单字符（CJK 单字除外）
 			termFreq[lower]++
 		}
 	}
@@ -333,7 +372,7 @@ func calcRetrievalSignals(content string, a *models.ContentAnalysis) *models.Ret
 	// 关键词密度 = 最高频词出现次数 / 总词数（健康区间 0.01-0.05）
 	kwDensity := float64(maxFreq) / float64(wordCount)
 
-	// 2. 内容长度是否在检索友好区间
+	// 2. 内容长度是否在检索友好区间（口径与 a.WordCount 的中英文感知计数一致）
 	contentLengthOK := wordCount >= retrievalFullWordMin && wordCount <= retrievalFullWordMax
 
 	// 3. 无语义漂移：检查关键实体词是否保留（通过实体词占比估算）
@@ -359,8 +398,8 @@ func calcRetrievalSignals(content string, a *models.ContentAnalysis) *models.Ret
 			preservedCount++
 		}
 	}
-	// 保留率 > 5% 视为无语义漂移
-	noSemanticDrift := float64(preservedCount)/float64(wordCount) > 0.05
+	// 保留率 > 5% 视为无语义漂移；CJK 为主的内容该信号不适用，视为无漂移
+	noSemanticDrift := float64(preservedCount)/float64(wordCount) > 0.05 || isCJKDominant
 
 	// 4. 术语重叠得分：基于词汇多样性（Type-Token Ratio）
 	uniqueWords := make(map[string]bool)
@@ -379,11 +418,15 @@ func calcRetrievalSignals(content string, a *models.ContentAnalysis) *models.Ret
 	} else {
 		score += kwDensity * 2500 // 过稀扣分
 	}
-	// 内容长度得分（0-25）
+	// 内容长度得分（0-25）：区间内满分；偏短线性；超长线性衰减
+	//（原实现超长饱和为满分，与"过长稀释关键词密度"的建议文案相矛盾）
 	if contentLengthOK {
 		score += 25
-	} else if wordCount > 0 {
-		score += max(0, 25*min(float64(wordCount), float64(retrievalFullWordMax))/float64(retrievalFullWordMax))
+	} else if wordCount < retrievalFullWordMin {
+		score += max(0, 25*float64(wordCount)/float64(retrievalFullWordMin))
+	} else {
+		over := float64(wordCount - retrievalFullWordMax)
+		score += max(0, 25*(1-over/float64(retrievalFullWordMax)))
 	}
 	// 语义漂移得分（0-25）
 	if noSemanticDrift {

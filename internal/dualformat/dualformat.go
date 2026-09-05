@@ -107,11 +107,11 @@ func toHTML(content string, title string) string {
 	b.WriteString("<meta charset=\"UTF-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
 	if title != "" {
-		b.WriteString(fmt.Sprintf("<title>%s</title>\n", title))
+		b.WriteString(fmt.Sprintf("<title>%s</title>\n", html.EscapeString(title)))
 	}
 	b.WriteString(`<style>body{max-width:800px;margin:0 auto;padding:20px;line-height:1.6;font-family:system-ui,-apple-system,sans-serif}h1,h2,h3{color:#1a1a1a}code{background:#f4f4f4;padding:2px 6px;border-radius:3px}pre{background:#f4f4f4;padding:16px;border-radius:6px;overflow-x:auto}blockquote{border-left:4px solid #ddd;margin:0;padding:0 16px;color:#666}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f4f4f4}.metadata{color:#666;font-size:0.9em;border-bottom:1px solid #eee;padding-bottom:12px;margin-bottom:20px}</style>`)
 	b.WriteString("</head>\n<body>\n")
-	b.WriteString(fmt.Sprintf("<h1>%s</h1>\n", title))
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>\n", html.EscapeString(title)))
 
 	// 基本 Markdown → HTML 转换
 	lines := strings.Split(content, "\n")

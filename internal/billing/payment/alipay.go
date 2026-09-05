@@ -10,13 +10,14 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"math"
+	"my-geo/internal/config"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
-	"my-geo/internal/config"
 )
 
 // AlipayProvider 支付宝支付渠道（国内）。纯标准库实现，使用 RSA2（SHA256WithRSA）。
@@ -43,10 +44,12 @@ func init() {
 		}
 		priv, err := parseRSAPrivateKey(privPEM)
 		if err != nil {
+			slog.Warn("alipay: 私钥解析失败，支付渠道未启用", slog.Any("error", err))
 			return nil
 		}
 		pub, err := parseRSAPublicKey(pubPEM)
 		if err != nil {
+			slog.Warn("alipay: 公钥解析失败，支付渠道未启用", slog.Any("error", err))
 			return nil
 		}
 		gw := envOrEmpty("GEO_ALIPAY_GATEWAY")
@@ -195,7 +198,7 @@ func signSortedString(msg string, key *rsa.PrivateKey) (string, error) {
 
 // parseRSAPrivateKey 解析 PKCS1 或 PKCS8 PEM 私钥。
 func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
-	pemStr = normalizePEM(pemStr)
+	pemStr = normalizePEM(pemStr, "PRIVATE KEY")
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("alipay: 私钥 PEM 解析失败")
@@ -217,7 +220,7 @@ func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
 // parseRSAPublicKey 解析 PKIX PEM 公钥或 X.509 证书（微信平台证书为
 // -----BEGIN CERTIFICATE----- 形式，需先解析证书再取其公钥）。
 func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
-	pemStr = normalizePEM(pemStr)
+	pemStr = normalizePEM(pemStr, "PUBLIC KEY")
 	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("alipay: 公钥 PEM 解析失败")
@@ -244,8 +247,9 @@ func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
 }
 
 // normalizePEM 将可能被压缩成单行的 PEM（含 \n 转义或缺失换行）还原为标准 PEM。
-// 支付宝控制台导出的密钥常带换行，这里容错处理：若已含 BEGIN 标记则原样。
-func normalizePEM(s string) string {
+// 支付宝控制台导出的密钥常带换行，这里容错处理：若已含 BEGIN 标记则原样；
+// 纯 base64 单行则按 blockType（"PRIVATE KEY"/"PUBLIC KEY"）还原为 64 列 PEM。
+func normalizePEM(s, blockType string) string {
 	s = strings.TrimSpace(s)
 	if strings.Contains(s, "-----BEGIN") {
 		return s
@@ -256,7 +260,8 @@ func normalizePEM(s string) string {
 	if len(clean) < 100 {
 		return s
 	}
-	return "-----BEGIN PRIVATE KEY-----\n" + chunk64(clean) + "\n-----END PRIVATE KEY-----"
+	// chunk64 每列自带换行，END 前无需再补
+	return "-----BEGIN " + blockType + "-----\n" + chunk64(clean) + "-----END " + blockType + "-----"
 }
 
 func chunk64(s string) string {

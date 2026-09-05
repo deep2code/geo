@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"my-geo/internal/adapter"
@@ -465,6 +466,16 @@ type CorrectResultInput struct {
 //
 // 流程：读取历史记录 → 反序列化报告 → 修改 results[index]（记录原值+修正人+原因） →
 // 用修正后的 results 重算聚合统计/BVS/行动建议 → 原地更新该记录（report_json + 标量）。
+// correctionLocks 按 recordID 的进程内互斥（CorrectResult 读-改-写串行化）。
+var correctionLocks sync.Map // recordID -> *sync.Mutex
+
+func correctionLockFor(recordID int64) *sync.Mutex {
+	m, _ := correctionLocks.LoadOrStore(recordID, &sync.Mutex{})
+	return m.(*sync.Mutex)
+}
+
+// CorrectResult 对已完成的审计记录做人工修正（mentioned/cited/sentiment/position），
+// 并基于修正后的结果重算品牌可见度等聚合指标。
 // 原始判定值保留在 results[index].correction.prev_* 中，审计可追溯。
 //
 // 返回重算后的完整报告（与 Audit 输出同构，前端可直接替换展示）。
@@ -484,6 +495,12 @@ func (e *Engine) CorrectResult(ctx context.Context, in CorrectResultInput) (*Vis
 	if in.Mentioned == nil && in.Cited == nil && in.Sentiment == nil && in.Position == nil {
 		return nil, fmt.Errorf("至少提供一个要修正的字段（mentioned/cited/sentiment/position）")
 	}
+
+	// 串行化同记录的读-改-写：并发修正各自基于旧快照落库会互相覆盖（丢更新）。
+	// 进程内互斥即可覆盖单实例部署；多副本需迁移为 DB 乐观锁/行锁。
+	mu := correctionLockFor(in.RecordID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	rec, err := e.historyDB.GetByID(ctx, in.RecordID)
 	if err != nil {

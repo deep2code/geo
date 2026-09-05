@@ -178,6 +178,18 @@ func ModelPricingTable() map[string]ModelPricing {
 	return out
 }
 
+// fallbackPricing 未知模型的保守兜底单价（取表内最贵档）。
+// 表外模型（如新增的 gpt-5 系/deepseek-v4）若按零值计价，预算熔断将永久失效。
+var fallbackPricing = ModelPricing{PromptPer1K: 0.00250, CompletionPer1K: 0.01000}
+
+// pricingFor 取模型单价；表外模型回落到保守兜底价。
+func pricingFor(model string) ModelPricing {
+	if p, ok := modelPricing[model]; ok {
+		return p
+	}
+	return fallbackPricing
+}
+
 // CostRow 单模型成本聚合行。
 type CostRow struct {
 	Model            string  `json:"model"`
@@ -511,7 +523,7 @@ func (m *Manager) recordUsage(model string, u models.TokenUsage) {
 func (m *Manager) totalCostLocked() float64 {
 	var total float64
 	for model, a := range m.costByModel {
-		price := modelPricing[model]
+		price := pricingFor(model)
 		total += float64(a.prompt)/1000*price.PromptPer1K + float64(a.completion)/1000*price.CompletionPer1K
 	}
 	return total
@@ -524,7 +536,7 @@ func (m *Manager) Cost() CostReport {
 	rows := make([]CostRow, 0, len(m.costByModel))
 	var total float64
 	for model, a := range m.costByModel {
-		price := modelPricing[model]
+		price := pricingFor(model)
 		cost := float64(a.prompt)/1000*price.PromptPer1K + float64(a.completion)/1000*price.CompletionPer1K
 		rows = append(rows, CostRow{
 			Model:            model,

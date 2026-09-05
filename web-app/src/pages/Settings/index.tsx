@@ -5,7 +5,7 @@ import { Card } from '@/components/Card'
 import { Input, Button, Tabs, TabPane } from '@/components'
 import { useAppStore, type ThemeMode, type UIDensity } from '@/store/useAppStore'
 import { LANGUAGES, getCurrentLanguage, changeLanguage, type LanguageCode } from '@/i18n'
-import api from '@/services/api'
+import api, { applyApiRuntimeConfig } from '@/services/api'
 import type { ReadyCheck } from '@/types/api'
 import '../Dashboard/Dashboard.scss'
 
@@ -170,9 +170,11 @@ const Settings: React.FC = () => {
                     撤销
                   </Button>
                   <Button onClick={() => {
+                    const sec = Math.max(10, timeoutInput || 120)
                     setApiBaseUrl(baseUrlInput)
-                    setApiTimeout(Math.max(10, timeoutInput || 120))
-                    showToast('API 配置已保存', 'success')
+                    setApiTimeout(sec)
+                    applyApiRuntimeConfig(baseUrlInput, sec)
+                    showToast('API 配置已保存并即时生效', 'success')
                   }}>
                     💾 保存
                   </Button>

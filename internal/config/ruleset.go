@@ -66,8 +66,8 @@ func DefaultWeights() map[string]float64 {
 
 // DefaultRuleSet 返回内置默认规则集（与代码硬编码基线一致）。
 func DefaultRuleSet() *RuleSet {
-	se := make(map[models.StrategyType]float64, len(StrategyEffectiveness))
-	for k, v := range StrategyEffectiveness {
+	se := make(map[models.StrategyType]float64, len(StrategyEffectiveness()))
+	for k, v := range StrategyEffectiveness() {
 		se[k] = v
 	}
 	return &RuleSet{
@@ -112,23 +112,28 @@ func (rs *RuleSet) Validate() error {
 		if v < 0 {
 			return fmt.Errorf("策略效果系数 %s 为负: %v", k, v)
 		}
-		if _, ok := StrategyEffectiveness[k]; !ok {
+		if _, ok := StrategyEffectiveness()[k]; !ok {
 			return fmt.Errorf("未知策略类型: %s", k)
 		}
 	}
 	return nil
 }
 
-// SetStrategyEffectiveness 用规则集覆盖全局策略效果系数（启动时调用一次）。
-//
-// 仅覆盖合法策略键；未知键忽略。非并发安全——应在 Scorer 创建前调用。
+// SetStrategyEffectiveness 用规则集覆盖当前策略效果系数（copy-on-write，
+// 并发安全：整表替换原子指针，读侧无锁）。仅覆盖合法策略键，未知键与负值忽略。
 func SetStrategyEffectiveness(m map[models.StrategyType]float64) {
+	cur := *strategyEffPtr.Load()
+	next := make(map[models.StrategyType]float64, len(cur)+len(m))
+	for k, v := range cur {
+		next[k] = v
+	}
 	for k, v := range m {
 		if v < 0 {
 			continue
 		}
-		if _, ok := StrategyEffectiveness[k]; ok {
-			StrategyEffectiveness[k] = v
+		if _, ok := cur[k]; ok {
+			next[k] = v
 		}
 	}
+	strategyEffPtr.Store(&next)
 }

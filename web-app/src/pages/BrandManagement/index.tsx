@@ -44,6 +44,9 @@ const BrandManagement: React.FC = () => {
     if (!form.prompts || form.prompts.length === 0) {
       return showToast('至少添加一个查询词 (Prompt)', 'error')
     }
+    // 重名校验：store 按 name 匹配更新/删除，重名会导致误改误删 + React key 冲突
+    const dup = brands.some(b => b.name === form.name && b.name !== editingBrand?.name)
+    if (dup) return showToast('已存在同名品牌，请换一个名称', 'error')
     if (editingBrand) {
       updateBrand(editingBrand.name, form as BrandProfile)
       showToast('已更新品牌：' + form.name, 'success')

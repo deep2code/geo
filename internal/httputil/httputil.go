@@ -138,7 +138,9 @@ func StripPort(addr string) string {
 }
 
 // ClientIP 获取真实客户端 IP（仅信任来自可信代理的转发头）。
-// 解析顺序：X-Forwarded-For 从左到右第一个非可信代理地址 → X-Real-IP → RemoteAddr。
+// 解析顺序：X-Forwarded-For 从右往左第一个非可信代理地址 → X-Real-IP → RemoteAddr。
+// 必须从右往左（rightmost untrusted）：攻击者可伪造 "随机IP" 头，可信反代追加
+// 真实 IP 后为 "随机IP, 真实IP"，从左往右会取到伪造值，绕过限流/污染审计。
 func ClientIP(r *http.Request) string {
 	remoteIP := StripPort(r.RemoteAddr)
 	if !IsTrustedProxy(remoteIP) {
@@ -146,7 +148,7 @@ func ClientIP(r *http.Request) string {
 	}
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		parts := strings.Split(fwd, ",")
-		for i := range parts {
+		for i := len(parts) - 1; i >= 0; i-- {
 			ip := strings.TrimSpace(parts[i])
 			if ip == "" {
 				continue
@@ -155,7 +157,7 @@ func ClientIP(r *http.Request) string {
 				return ip
 			}
 		}
-		if len(parts) > 0 { // 所有段都是可信代理（极少数多层 LB），取第一个
+		if len(parts) > 0 { // 所有段都是可信代理（极少数多层 LB），取最左（最接近原始客户端）
 			return strings.TrimSpace(parts[0])
 		}
 	}

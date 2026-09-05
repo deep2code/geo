@@ -61,10 +61,20 @@ func HostThrottle(host string) {
 		return
 	}
 	sharedHostLimiter.mu.Lock()
+	// 惰性清理：长驻进程中每个新 host 永久占一条 map 记录会无限增长
+	if len(sharedHostLimiter.lastReq) > 4096 {
+		cutoff := time.Now().Add(-time.Hour)
+		for k, v := range sharedHostLimiter.lastReq {
+			if v.Before(cutoff) {
+				delete(sharedHostLimiter.lastReq, k)
+			}
+		}
+	}
 	last := sharedHostLimiter.lastReq[host]
 	sharedHostLimiter.lastReq[host] = time.Now()
+	minInt := sharedHostLimiter.minInt // 锁内一并读取，避免与 Set 构成数据竞态
 	sharedHostLimiter.mu.Unlock()
-	sleepFor := sharedHostLimiter.minInt - time.Since(last)
+	sleepFor := minInt - time.Since(last)
 	if sleepFor > 0 {
 		time.Sleep(sleepFor)
 	}
@@ -346,8 +356,19 @@ func IsPrivateOrLoopbackHost(hostname string) bool {
 		if err != nil || len(ips) == 0 {
 			return false
 		}
-		ip = ips[0]
+		// 必须遍历全部解析结果：攻击者域名可返回 "公网IP + 内网IP" 双 A 记录，
+		// 只查 ips[0] 会漏判（校验过公网、实际连内网）
+		for _, cand := range ips {
+			if isPrivateOrLoopbackIP(cand) {
+				return true
+			}
+		}
+		return false
 	}
+	return isPrivateOrLoopbackIP(ip)
+}
+
+func isPrivateOrLoopbackIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 

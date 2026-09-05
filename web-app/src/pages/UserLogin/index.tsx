@@ -15,9 +15,9 @@ const UserLogin: React.FC = () => {
 
   const redirect = (() => {
     const raw = sp.get('redirect')
-    if (raw && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
+    if (raw && /^\/(?!\/)[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
     const stateFrom = (location.state as { from?: string } | null)?.from
-    if (stateFrom && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(stateFrom)) return stateFrom
+    if (stateFrom && /^\/(?!\/)[A-Za-z0-9_\-/?=&.%#]*$/.test(stateFrom)) return stateFrom
     return '/dashboard'
   })()
 
@@ -58,10 +58,9 @@ const UserLogin: React.FC = () => {
         return
       }
       setApiAuthToken(res.tokens.access_token)
-      if (res.workspaces && res.workspaces.length > 0) {
-        const role = res.workspaces[0].role || 'viewer'
-        setUserRole(role)
-      }
+      // 无条件写入角色：workspaces 为空时显式置 viewer，
+      // 避免沿用上一个登录者在 localStorage 中的残留角色（共用电脑场景越权）
+      setUserRole(res.workspaces?.[0]?.role || 'viewer')
       showToast && showToast('登录成功', 'success')
       navigate(redirect, { replace: true })
     } finally {

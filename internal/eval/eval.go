@@ -190,10 +190,11 @@ func Evaluate(ctx context.Context, engine *geo.Engine, bench *Benchmark, opts ..
 		agg.AvgScoreAfter += resp.ScoreAfter
 		agg.AvgRelCitBefore += relBefore
 		agg.AvgRelCitProjected += relProjected
-		agg.AvgRelCitActual += relActual
+		// 用 r 字段累加：live 模式下 Actual 已被实测值覆盖，此处与逐用例数据保持一致
+		agg.AvgRelCitActual += r.RelCitActual
 		agg.AvgCitRateBefore += rateBefore
 		agg.AvgCitRateProjected += rateProjected
-		agg.AvgCitRateActual += rateActual
+		agg.AvgCitRateActual += r.CitRateActual
 		agg.AvgLiftPct += r.LiftPct
 	}
 	n := float64(agg.CaseCount)

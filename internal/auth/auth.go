@@ -1027,8 +1027,9 @@ func (svc *Service) Login(email, password, workspaceID string, ip, ua string) (*
 	if svc.store == nil {
 		return nil, nil, nil, errors.New("账号体系未启用")
 	}
-	// 暴力破解防护：连续失败达上限后临时锁定
-	key := strings.ToLower(strings.TrimSpace(email))
+	// 暴力破解防护：连续失败达上限后临时锁定。
+	// key 含 client IP：纯邮箱维度会让攻击者用 5 次错误密码恶意锁定任意受害者账号。
+	key := strings.ToLower(strings.TrimSpace(email)) + "|" + ip
 	now := time.Now().Unix()
 	svc.loginMu.Lock()
 	st, exists := svc.loginFails[key]
@@ -1296,11 +1297,12 @@ func WithAuthN(cfg MiddlewareConfig) func(http.Handler) http.Handler {
 			// （/landing、/dashboard、/admin/login 等）无敏感数据，handleWebSPA 负责
 			// 静态资源 + SPA fallback；数据与操作鉴权全部收敛在 /api/*（公开端点走下方
 			// 白名单，其余需 JWT，管理类另有 requireDataAdmin 等角色守卫）。
+			// 例外：/debug/pprof/* 会泄露堆/栈转储（含密钥、DSN），必须走下方 JWT 鉴权。
 			// 注意：仅注册/登录/刷新/登出这 4 个 auth 端点免鉴权；其余 /api/v1/auth/*
 			// （me / change-password / workspace/* / admin/audit）需要 JWT 上下文，
 			// 若整前缀豁免会让它们拿到 nil user → 一律 401/403（账号管理功能全废）。
 			if public[path] || isServerPublicPath(path) ||
-				!strings.HasPrefix(path, "/api/") ||
+				(!strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/debug/pprof/")) ||
 				path == "/api/v1/auth/register" || path == "/api/v1/auth/login" ||
 				path == "/api/v1/auth/refresh" || path == "/api/v1/auth/logout" ||
 				strings.HasPrefix(path, "/api/v1/billing/webhook/") {

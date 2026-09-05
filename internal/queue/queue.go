@@ -306,7 +306,9 @@ func (s *Server) processAudit(ctx context.Context, t *asynq.Task) error {
 	}
 	if rw := t.ResultWriter(); rw != nil {
 		if _, werr := rw.Write(resultJSON); werr != nil {
-			slog.Warn("queue: 写回结果失败", slog.String("job", p.ID), slog.Any("error", werr))
+			// 写回失败必须报错重试：否则任务被判 succeeded 但结果永久丢失，
+			// 前端轮询到"成功"却拿不到报告（审计成本已真实消耗）
+			return fmt.Errorf("queue: 写回结果失败（任务将重试）: %w", werr)
 		}
 	}
 	slog.Info("queue: 异步审计完成", slog.String("job", p.ID), slog.String("brand", p.BrandName))

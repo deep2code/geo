@@ -110,6 +110,18 @@ func normalizeBaseURL(raw string) string {
 func (p *OpenAIProvider) Name() string    { return "openai:" + p.model }
 func (p *OpenAIProvider) Available() bool { return p.apiKey != "" }
 
+// isReasoningModel 推理模型不接受自定义 temperature（仅默认 1）。
+// 按前缀识别：o1/o3/o4 系与 gpt-5 系。
+func isReasoningModel(model string) bool {
+	m := strings.ToLower(model)
+	for _, p := range []string{"o1", "o3", "o4", "gpt-5"} {
+		if strings.HasPrefix(m, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // Rewrite 调用 Chat Completions API（SDK）改写内容。
 func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (string, error) {
 	if !p.Available() {
@@ -134,7 +146,10 @@ func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (s
 			openai.SystemMessage(systemMsg),
 			openai.UserMessage(userMsg),
 		},
-		Temperature: openai.Float(p.temperature),
+	}
+	// 推理模型（o1/o3/o4、gpt-5 系）不接受自定义 temperature（仅默认 1），发送会 400
+	if !isReasoningModel(p.model) {
+		params.Temperature = openai.Float(p.temperature)
 	}
 	// P1-3：显式发送 max_completion_tokens 上限，token 成本可控（旧参数 max_tokens 已废弃）
 	if p.maxTokens > 0 {

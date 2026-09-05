@@ -6,6 +6,8 @@
 package scorer
 
 import (
+	"sync/atomic"
+
 	"my-geo/internal/config"
 	"my-geo/internal/models"
 )
@@ -19,47 +21,46 @@ const (
 	maxNegativeScore     = 10.0 // 负向信号（扣分制）
 )
 
-// 以下权重/参数默认值对标 AutoGEO 策略效果系数。全部为可覆盖变量（var），
-// 支持按行业/引擎偏好调参——调用 OverrideWeights 在启动时一次性覆盖，
-// 避免频繁调参需要改代码重编译（对标 AutoGEO rule extraction 的配置化思路）。
+// 以下权重/参数默认值对标 AutoGEO 策略效果系数。使用 atomic.Pointer +
+// copy-on-write 存储：OverrideWeights 可在运行期（评测请求）被调用，整表替换
+// 指针保证与并发评分读无数据竞争。
 
-// 可引用性信号各信号权重（参考策略效果系数）。
-var (
-	weightQuotation      = 8.0
-	weightStatistics     = 7.0
-	weightCiteSources    = 7.0
-	weightFluency        = 6.0
-	weightAuthoritative  = 5.0
-	weightTechnicalTerms = 4.0
-	weightUniqueWords    = 3.0
-)
+// weightSet 可覆盖权重集合。
+type weightSet struct {
+	// 可引用性信号（参考策略效果系数）
+	quotation, statistics, citeSources, fluency, authoritative, technicalTerms, uniqueWords float64
+	// 结构信号
+	headingHierarchy, frontLoading, lists, definitionOpening, tables, faq float64
+	// 质量/负向
+	evergreenScoreWeight     float64 // 常青度（0-100）折合权重，默认 12.0
+	negativePenaltyPerSignal float64 // 每个负向信号扣分，默认 2.5
+}
 
-// 结构信号各信号权重。
-var (
-	weightHeadingHierarchy  = 8.0
-	weightFrontLoading      = 7.0
-	weightLists             = 5.0
-	weightDefinitionOpening = 5.0
-	weightTables            = 3.0
-	weightFAQ               = 2.0
-)
+func defaultWeightSet() *weightSet {
+	return &weightSet{
+		quotation: 8.0, statistics: 7.0, citeSources: 7.0, fluency: 6.0,
+		authoritative: 5.0, technicalTerms: 4.0, uniqueWords: 3.0,
+		headingHierarchy: 8.0, frontLoading: 7.0, lists: 5.0,
+		definitionOpening: 5.0, tables: 3.0, faq: 2.0,
+		evergreenScoreWeight: 12.0, negativePenaltyPerSignal: 2.5,
+	}
+}
 
-// 内容质量评分参数。
+var globalWeights atomic.Pointer[weightSet]
+
+// 内容质量评分参数（不含运行期可覆盖项）。
 var (
-	qualityFullWordMin    = 300  // 词数达标（拿满分）下限
+	qualityFullWordMin    = 300 // 词数达标（拿满分）下限
 	qualityFullWordMax    = 2000 // 词数达标上限
-	qualityPartialWordMin = 100  // 词数部分得分下限
-	qualityFullScore      = 8.0  // 词数达标得分
-	qualityPartialScore   = 5.0  // 词数部分得分
-	qualityFloorScore     = 2.0  // 有词即得的最低分
-	evergreenScoreWeight  = 12.0 // 常青度（0-100）折合权重
+	qualityPartialWordMin = 100 // 词数部分得分下限
+	qualityFullScore      = 8.0 // 词数达标得分
+	qualityPartialScore   = 5.0 // 词数部分得分
+	qualityFloorScore     = 2.0 // 有词即得的最低分
 )
 
-// 负向信号扣分参数。
-var (
-	negativePenaltyPerSignal = 2.5 // 每个负向信号扣分
-	negativeFullSignals      = 4   // 达到该数量扣满本维度
-)
+func init() {
+	globalWeights.Store(defaultWeightSet())
+}
 
 // scoreRetrieval 检索友好度评分。
 func scoreRetrieval(rs *models.RetrievalSignals) float64 {
@@ -99,26 +100,28 @@ func OverrideWeights(w map[string]float64) {
 	if len(w) == 0 {
 		return
 	}
+	next := *globalWeights.Load()
 	set := func(name string, dst *float64) {
 		if v, ok := w[name]; ok && v >= 0 {
 			*dst = v
 		}
 	}
-	set("quotation", &weightQuotation)
-	set("statistics", &weightStatistics)
-	set("cite_sources", &weightCiteSources)
-	set("fluency", &weightFluency)
-	set("authoritative", &weightAuthoritative)
-	set("technical_terms", &weightTechnicalTerms)
-	set("unique_words", &weightUniqueWords)
-	set("heading_hierarchy", &weightHeadingHierarchy)
-	set("front_loading", &weightFrontLoading)
-	set("lists", &weightLists)
-	set("definition_opening", &weightDefinitionOpening)
-	set("tables", &weightTables)
-	set("faq", &weightFAQ)
-	set("negative_penalty", &negativePenaltyPerSignal)
-	set("evergreen", &evergreenScoreWeight)
+	set("quotation", &next.quotation)
+	set("statistics", &next.statistics)
+	set("cite_sources", &next.citeSources)
+	set("fluency", &next.fluency)
+	set("authoritative", &next.authoritative)
+	set("technical_terms", &next.technicalTerms)
+	set("unique_words", &next.uniqueWords)
+	set("heading_hierarchy", &next.headingHierarchy)
+	set("front_loading", &next.frontLoading)
+	set("lists", &next.lists)
+	set("definition_opening", &next.definitionOpening)
+	set("tables", &next.tables)
+	set("faq", &next.faq)
+	set("negative_penalty", &next.negativePenaltyPerSignal)
+	set("evergreen", &next.evergreenScoreWeight)
+	globalWeights.Store(&next)
 }
 
 // Scorer 评分引擎。
@@ -176,7 +179,7 @@ func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models
 	})
 
 	// 负向信号扣分（满分 10）
-	negScore := maxNegativeScore - float64(len(a.NegativeSignals))*negativePenaltyPerSignal
+	negScore := maxNegativeScore - float64(len(a.NegativeSignals))*globalWeights.Load().negativePenaltyPerSignal
 	if negScore < 0 {
 		negScore = 0
 	}
@@ -195,14 +198,15 @@ func (s *Scorer) ScoreFromAnalysis(a *models.ContentAnalysis) (float64, []models
 // scoreCitability 可引用性评分。
 func scoreCitability(signals map[string]bool) (float64, string) {
 	// 每个信号权重不同（参考效果系数）
+	w := globalWeights.Load()
 	weights := map[string]float64{
-		"quotation":       weightQuotation,
-		"statistics":      weightStatistics,
-		"cite_sources":    weightCiteSources,
-		"fluency":         weightFluency,
-		"authoritative":   weightAuthoritative,
-		"technical_terms": weightTechnicalTerms,
-		"unique_words":    weightUniqueWords,
+		"quotation":       w.quotation,
+		"statistics":      w.statistics,
+		"cite_sources":    w.citeSources,
+		"fluency":         w.fluency,
+		"authoritative":   w.authoritative,
+		"technical_terms": w.technicalTerms,
+		"unique_words":    w.uniqueWords,
 	}
 	var score float64
 	for sig, w := range weights {
@@ -218,13 +222,14 @@ func scoreCitability(signals map[string]bool) (float64, string) {
 
 // scoreStructure 结构评分。
 func scoreStructure(signals map[string]bool) (float64, string) {
+	w := globalWeights.Load()
 	weights := map[string]float64{
-		"heading_hierarchy":   weightHeadingHierarchy,
-		"front_loading":       weightFrontLoading,
-		"lists":               weightLists,
-		"definition_openings": weightDefinitionOpening,
-		"tables":              weightTables,
-		"faq":                 weightFAQ,
+		"heading_hierarchy":   w.headingHierarchy,
+		"front_loading":       w.frontLoading,
+		"lists":               w.lists,
+		"definition_openings": w.definitionOpening,
+		"tables":              w.tables,
+		"faq":                 w.faq,
 	}
 	var score float64
 	for sig, w := range weights {
@@ -251,7 +256,7 @@ func scoreQuality(a *models.ContentAnalysis) float64 {
 		score += qualityFloorScore
 	}
 	// 常青度
-	score += float64(a.EvergreenScore) / 100 * evergreenScoreWeight
+	score += float64(a.EvergreenScore) / 100 * globalWeights.Load().evergreenScoreWeight
 	if score > maxQualityScore {
 		score = maxQualityScore
 	}
@@ -267,8 +272,9 @@ func (s *Scorer) EstimateVisibility(scoreBefore float64, applied []models.Strate
 	}
 	// 累加策略效果
 	var improvement float64
+	se := config.StrategyEffectiveness()
 	for _, st := range applied {
-		improvement += config.StrategyEffectiveness[st]
+		improvement += se[st]
 	}
 	// 预估引用频率（基于评分与提升）
 	visibility.CitationFrequency = int(scoreBefore/citationFreqBaseDiv + improvement*citationFreqBoost)

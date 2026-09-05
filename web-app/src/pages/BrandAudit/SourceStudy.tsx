@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -27,10 +27,13 @@ const SourceStudy: React.FC<Props> = ({ brandName, engines }) => {
   const [top, setTop] = useState<SourceStat[]>([])
   const [trend, setTrend] = useState<TrendPoint[]>([])
   const [trendDomain, setTrendDomain] = useState('')
+  // 请求序号守卫：快速切换筛选时丢弃慢返回的旧响应，避免旧数据覆盖新结果
+  const loadSeq = useRef(0)
 
   const engineOptions = ['', ...Array.from(new Set(engines))]
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
     setError('')
     try {
@@ -40,13 +43,14 @@ const SourceStudy: React.FC<Props> = ({ brandName, engines }) => {
         api.engineSourcesTop({ ...base, engine: engine || undefined, limit: 10 }),
         api.engineSourcesTrend({ ...base, engine: engine || undefined })
       ])
+      if (seq !== loadSeq.current) return // 已有更新的请求，丢弃本批结果
       setCompare(c.engines || [])
       setTop(tp.sources || [])
       setTrend(tr.trend || [])
     } catch (e: any) {
-      setError(e.message || '加载失败')
+      if (seq === loadSeq.current) setError(e.message || '加载失败')
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [brandName, engine, days])
 
@@ -54,9 +58,11 @@ const SourceStudy: React.FC<Props> = ({ brandName, engines }) => {
 
   // 点击来源域名 → 查看该来源单域名趋势。
   const loadDomainTrend = async (domain: string) => {
+    const seq = ++loadSeq.current
     setTrendDomain(domain)
     try {
       const tr = await api.engineSourcesTrend({ brand: brandName || undefined, engine: engine || undefined, domain, days })
+      if (seq !== loadSeq.current) return
       setTrend(tr.trend || [])
     } catch { /* 保持原趋势 */ }
   }

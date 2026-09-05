@@ -7,6 +7,7 @@ package exsubmit
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"time"
 )
 
@@ -48,14 +49,8 @@ func (w *Worker) Stop() {
 }
 
 // run 定时循环：首次立即跑一次，之后按 interval 周期处理。
-// 单个记录的分析 panic 会被 recover，避免拖垮整个进程。
 func (w *Worker) run() {
 	defer close(w.done)
-	defer func() {
-		if r := recover(); r != nil {
-			slog.Error("external worker panic 已恢复", slog.Any("recover", r))
-		}
-	}()
 	// 首次启动稍作延迟，避免与接口写入争抢连接。
 	timer := time.NewTimer(10 * time.Second)
 	defer timer.Stop()
@@ -65,13 +60,25 @@ func (w *Worker) run() {
 			return
 		case <-timer.C:
 		}
-		n, err := w.ProcessOnce(context.Background())
-		if err != nil {
-			slog.Warn("external 分析批次失败", slog.Int("processed", n), slog.Any("error", err))
-		} else if n > 0 {
-			slog.Info("external 分析批次完成", slog.Int("processed", n))
-		}
+		w.runOnceSafe()
 		timer.Reset(w.interval)
+	}
+}
+
+// runOnceSafe 单批处理包 recover：panic 只丢失本批，worker 循环继续。
+// recover 放在循环外会让 goroutine 永久退出，pending 记录从此无人分析。
+func (w *Worker) runOnceSafe() {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("external worker panic 已恢复", slog.Any("recover", r),
+				slog.String("stack", string(debug.Stack())))
+		}
+	}()
+	n, err := w.ProcessOnce(context.Background())
+	if err != nil {
+		slog.Warn("external 分析批次失败", slog.Int("processed", n), slog.Any("error", err))
+	} else if n > 0 {
+		slog.Info("external 分析批次完成", slog.Int("processed", n))
 	}
 }
 

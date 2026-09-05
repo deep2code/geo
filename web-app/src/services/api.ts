@@ -55,10 +55,29 @@ import type {
 // API 基础前缀：优先显式注入 VITE_GEO_API_BASE，否则使用同源 /api/v1。
 // 部署反向代理、子域拆分或本地 Vite 代理时，可通过 .env 设置：
 //   VITE_GEO_API_BASE=https://geo.example.com/api/v1
-const API_BASE: string = (
+export const API_BASE: string = (
   (import.meta.env?.VITE_GEO_API_BASE as string | undefined) ||
   '/api/v1'
 ).replace(/\/+$/, '')
+
+// ---- 运行时 API 配置（Settings 页保存后即时生效，不再只是"死配置"）----
+let runtimeBaseOverride: string | null = null
+let runtimeTimeoutMs: number | null = null
+
+/** 设置运行时 API 基址/超时（秒）；传 null/0 还原默认。 */
+export function applyApiRuntimeConfig(baseUrl?: string | null, timeoutSec?: number | null): void {
+  runtimeBaseOverride = baseUrl && baseUrl.trim() ? baseUrl.trim().replace(/\/+$/, '') : null
+  runtimeTimeoutMs = timeoutSec && timeoutSec > 0 ? timeoutSec * 1000 : null
+}
+
+// 启动时从持久化 store 恢复（避免刷新后 Settings 里保存的配置失效）
+try {
+  const rawState = JSON.parse(localStorage.getItem('geo-app-storage') || '{}')?.state
+  if (rawState?.apiBaseUrl) runtimeBaseOverride = String(rawState.apiBaseUrl).trim().replace(/\/+$/, '') || null
+  if (rawState?.apiTimeout) runtimeTimeoutMs = Number(rawState.apiTimeout) > 0 ? Number(rawState.apiTimeout) * 1000 : null
+} catch {
+  /* ignore */
+}
 
 // 前端鉴权 Token 存储 Key（JWT access token，对应 Authorization: Bearer）。
 const AUTH_TOKEN_KEY = 'geo_api_token'
@@ -93,7 +112,11 @@ const TOKEN_EXP_KEY = 'geo_api_token_exp'
 /** 解码 JWT payload 的 exp 声明（不验证签名，仅客户端过期预检）。 */
 function parseJwtExp(token: string): number | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const part = token.split('.')[1]
+    if (!part) return null
+    // 后端用 base64url（RawURLEncoding，无 padding）：atob 前需转标准 base64 并补齐
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)))
     return typeof payload.exp === 'number' ? payload.exp : null
   } catch {
     return null
@@ -163,7 +186,9 @@ async function request<T>(
   path: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeout = 120000, headers, skipAuth, skipAuthRedirect, ...rest } = options
+  const { timeout: timeoutOpt, headers, skipAuth, skipAuthRedirect, ...rest } = options
+  // 优先级：调用方显式指定 > Settings 页运行时配置 > 默认
+  const timeout = timeoutOpt ?? runtimeTimeoutMs ?? 120000
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
@@ -182,7 +207,7 @@ async function request<T>(
   }
 
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await fetch(`${runtimeBaseOverride ?? API_BASE}${path}`, {
       ...rest,
       headers: mergedHeaders,
       signal: controller.signal

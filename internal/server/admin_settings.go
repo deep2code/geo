@@ -109,6 +109,10 @@ func (s *Server) handleAdminSettingsUpdate(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
 	}
+	// CORS 白名单缓存热生效（否则改到重启才生效，期间 CSRF 配置与实际不符）
+	if req.Key == "GEO_CORS_ORIGINS" {
+		ReloadCORSOrigins()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"key":               req.Key,
 		"updated":           true,
@@ -142,6 +146,10 @@ func (s *Server) handleAdminSettingsReset(w http.ResponseWriter, r *http.Request
 	if err := config.ResetSetting(r.Context(), req.Key); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
 		return
+	}
+	// 与 Update 一致：CORS 白名单改动即时热生效
+	if req.Key == "GEO_CORS_ORIGINS" {
+		ReloadCORSOrigins()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"key": req.Key, "reset": true})
 }

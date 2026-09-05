@@ -873,15 +873,16 @@ func parseLogLine(line string) *logEntry {
 	if len(line) < 10 {
 		return nil
 	}
-	// 查找 User-Agent（最后一个引号内的内容）
+	// 查找 User-Agent（日志行最后一个带引号字段，即倒数第二、一个引号之间的内容）
 	idx := strings.LastIndex(line, "\"")
-	if idx < 0 {
+	if idx <= 0 {
 		return nil
 	}
-	ua := line[idx+1:]
-	if endQuote := strings.LastIndex(ua, "\""); endQuote >= 0 {
-		ua = ua[:endQuote]
+	prev := strings.LastIndex(line[:idx], "\"")
+	if prev < 0 {
+		return nil
 	}
+	ua := line[prev+1 : idx]
 	return &logEntry{UserAgent: ua}
 }
 

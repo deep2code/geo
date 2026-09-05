@@ -127,14 +127,15 @@ func (m *meiliClient) Search(ctx context.Context, query, province, city string, 
 	if city != "" {
 		filter = append(filter, "city = "+quoteMeili(city))
 	}
-	reqBody := map[string]any{"q": query, "limit": topN}
+	// showRankingScore：让 Meilisearch 返回 _rankingScore（默认不返回）
+	reqBody := map[string]any{"q": query, "limit": topN, "showRankingScore": true}
 	if len(filter) > 0 {
 		reqBody["filter"] = strings.Join(filter, " AND ")
 	}
 	var resp struct {
 		Hits []struct {
 			Company
-			Score float64 `json:"_score"`
+			Score float64 `json:"_rankingScore"`
 		} `json:"hits"`
 	}
 	if err := m.do(ctx, http.MethodPost, "/indexes/"+m.index+"/search", reqBody, &resp); err != nil {

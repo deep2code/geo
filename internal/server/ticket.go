@@ -288,6 +288,14 @@ func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		// 状态变更属管理操作：启用账号体系时要求 PermManageData。
+		// 工单无创建者归属字段，无法限定"仅创建者可关单"，先按管理权限收敛。
+		if s.authSvc != nil && s.authSvc.Enabled() {
+			if err := auth.RequirePermission(r.Context(), auth.PermManageData); err != nil {
+				writeJSON(w, http.StatusForbidden, ErrorResponse{Error: err.Error(), Code: "PERMISSION_DENIED"})
+				return
+			}
+		}
 		ticketMu.Lock()
 		t.Status = body.Status
 		t.UpdatedAt = time.Now()

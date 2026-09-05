@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@/components/Card'
 import { Input, Button, Modal } from '@/components'
 import { useAppStore } from '@/store/useAppStore'
-import api, { getApiAuthToken } from '@/services/api'
+import api, { API_BASE, getApiAuthToken } from '@/services/api'
 import type { MailStatus, ReportEmailResponse } from '@/types/api'
 import '../Dashboard/Dashboard.scss'
 
@@ -29,9 +29,9 @@ const ReportExport: React.FC = () => {
     if (!brand) return showToast('请选择品牌', 'error')
     const encodedBrand = encodeURIComponent(brand)
     const map: Record<Format, string> = {
-      html: `/api/v1/brand/report/html?brand=${encodedBrand}`,
-      htmlDownload: `/api/v1/brand/report/download?brand=${encodedBrand}`,
-      pdf: `/api/v1/brand/report/pdf?brand=${encodedBrand}`
+      html: `${API_BASE}/brand/report/html?brand=${encodedBrand}`,
+      htmlDownload: `${API_BASE}/brand/report/download?brand=${encodedBrand}`,
+      pdf: `${API_BASE}/brand/report/pdf?brand=${encodedBrand}`
     }
     const url = map[fmt]
     // 走带 Authorization 的 fetch 再下载/打开：window.open 与 <a> 标签
@@ -45,10 +45,12 @@ const ReportExport: React.FC = () => {
       if (fmt === 'html') {
         const html = await res.text()
         const w = window.open('', '_blank')
-        if (w) {
-          w.document.write(html)
-          w.document.close()
+        if (!w) {
+          showToast('弹窗被浏览器拦截，请允许弹窗后重试', 'error')
+          return
         }
+        w.document.write(html)
+        w.document.close()
         showToast('导出成功', 'success')
         return
       }
