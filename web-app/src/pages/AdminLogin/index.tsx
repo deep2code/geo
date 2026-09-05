@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/Button'
 import { useAppStore, DEFAULT_WHITELABEL } from '@/store/useAppStore'
@@ -15,9 +15,9 @@ const AdminLogin: React.FC = () => {
 
   const redirect = (() => {
     const raw = sp.get('redirect')
-    if (raw && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
+    if (raw && /^\/(?!\/)[A-Za-z0-9_\-/?=&.%#]*$/.test(raw)) return raw
     const stateFrom = (location.state as { from?: string } | null)?.from
-    if (stateFrom && /^\/[A-Za-z0-9_\-/?=&.%#]*$/.test(stateFrom)) return stateFrom
+    if (stateFrom && /^\/(?!\/)[A-Za-z0-9_\-/?=&.%#]*$/.test(stateFrom)) return stateFrom
     return '/admin'
   })()
 
@@ -28,6 +28,17 @@ const AdminLogin: React.FC = () => {
   const [showPwd, setShowPwd] = useState(false)
   const [focused, setFocused] = useState<string | null>(null)
   const emailInputRef = useRef<HTMLInputElement>(null)
+
+  // 粒子位置固定一次，避免每次 re-render 重算导致背景闪跳
+  const particles = useMemo(
+    () =>
+      Array.from({ length: 20 }, () => ({
+        left: `${Math.random() * 100}%`,
+        animationDelay: `${Math.random() * 8}s`,
+        animationDuration: `${6 + Math.random() * 6}s`,
+      })),
+    []
+  )
 
   useEffect(() => {
     emailInputRef.current?.focus()
@@ -59,12 +70,14 @@ const AdminLogin: React.FC = () => {
         }
         return
       }
-      setApiAuthToken(res.tokens.access_token)
-      // 存储用户角色
-      if (res.workspaces && res.workspaces.length > 0) {
-        const role = res.workspaces[0].role || 'viewer'
-        setUserRole(role)
+      // 管理员登录页：非管理员直接拒绝，不落 token
+      const role = res.workspaces?.[0]?.role || 'viewer'
+      if (role !== 'owner' && role !== 'admin') {
+        setErrMsg('该账号无管理员权限。')
+        return
       }
+      setApiAuthToken(res.tokens.access_token)
+      setUserRole(role)
       showToast && showToast('登录成功', 'success')
       navigate(redirect, { replace: true })
     } finally {
@@ -84,12 +97,8 @@ const AdminLogin: React.FC = () => {
           <div className="login-bg-orb login-bg-orb--3" />
         </div>
         <div className="login-bg-particles" aria-hidden>
-          {Array.from({ length: 20 }).map((_, i) => (
-            <div key={i} className="login-particle" style={{
-              left: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 8}s`,
-              animationDuration: `${6 + Math.random() * 6}s`
-            }} />
+          {particles.map((style, i) => (
+            <div key={i} className="login-particle" style={style} />
           ))}
         </div>
       </div>
@@ -139,6 +148,7 @@ const AdminLogin: React.FC = () => {
                   <input
                     ref={emailInputRef}
                     id="login-email"
+                    name="email"
                     type="email"
                     autoComplete="username"
                     spellCheck={false}
@@ -159,6 +169,7 @@ const AdminLogin: React.FC = () => {
                   <span className="login-field-icon">🔒</span>
                   <input
                     id="login-password"
+                    name="password"
                     type={showPwd ? 'text' : 'password'}
                     autoComplete="current-password"
                     spellCheck={false}

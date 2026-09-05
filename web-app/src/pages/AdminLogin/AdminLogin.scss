@@ -229,7 +229,6 @@
     padding: 48px;
 
     @media (max-width: 1200px) {
-      flex: 1;
       padding: 48px 24px;
     }
   }
@@ -243,10 +242,6 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(20px);
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
-
-    @media (max-width: 1200px) {
-      max-width: 640px;
-    }
 
     @media (max-width: 640px) {
       padding: 48px 28px;
@@ -389,6 +384,8 @@
 
   .login-btn-secondary {
     flex: 0 0 auto;
+    min-height: 60px;
+    font-size: 18px;
     border-color: rgba(255, 255, 255, 0.1) !important;
     color: rgba(255, 255, 255, 0.6) !important;
     background: transparent !important;
@@ -402,6 +399,8 @@
 
   .login-btn-primary {
     flex: 1;
+    min-height: 60px;
+    font-size: 18px;
     background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important;
     border: none !important;
     color: white !important;

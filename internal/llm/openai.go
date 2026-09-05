@@ -1,20 +1,23 @@
-// openai.go OpenAI 兼容 LLM Provider 实现。
+// openai.go OpenAI 兼容 LLM Provider 实现（官方 SDK：github.com/openai/openai-go/v3）。
 //
-// 支持所有兼容 OpenAI Chat Completions API 的服务（OpenAI / Azure / GLM / 本地模型）。
-// 通过 BaseURL 可配置不同的兼容端点。
-
+// 支持所有兼容 OpenAI Chat Completions API 的服务（OpenAI / GLM / 本地模型）。
+// 通过 BaseURL 可配置不同的兼容端点：
+//   - 空          → SDK 默认（https://api.openai.com/v1/）
+//   - 仅主机名    → 自动补 /v1（如 https://api.openai.com → …/v1，与旧版行为一致）
+//   - 带版本路径  → 原样使用（如 https://open.bigmodel.cn/api/paas/v4）
 package llm
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 
 	"my-geo/internal/models"
 )
@@ -22,12 +25,13 @@ import (
 // OpenAIProvider OpenAI 兼容的 LLM 提供者。
 type OpenAIProvider struct {
 	apiKey  string
-	baseURL string // 默认 https://api.openai.com
+	baseURL string // 空 = SDK 默认；见文件头注释的补 /v1 规则
 	model   string // 默认 gpt-4o-mini
-	client  *http.Client
+	timeout time.Duration
+	sdk     openai.Client
 
 	// P1-3：成本控制参数（可通过 With 选项覆盖，默认值见 NewOpenAI）。
-	maxTokens   int     // 请求体 max_tokens，<=0 表示不发送（用服务端默认）
+	maxTokens   int     // 请求体 max_completion_tokens，<=0 表示不发送（用服务端默认）
 	temperature float64 // 请求体 temperature
 
 	// 最近一次调用的 token 用量（成本仪表盘用）。atomic.Value 存 models.TokenUsage，
@@ -48,12 +52,13 @@ func WithModel(model string) OpenAIOption {
 	return func(p *OpenAIProvider) { p.model = model }
 }
 
-// WithTimeout 设置 HTTP 超时。
+// WithTimeout 设置单次请求超时。
 func WithTimeout(d time.Duration) OpenAIOption {
-	return func(p *OpenAIProvider) { p.client.Timeout = d }
+	return func(p *OpenAIProvider) { p.timeout = d }
 }
 
-// WithMaxTokens 设置单次请求 max_tokens 上限（P1-3 成本控制；<=0 不发送）。
+// WithMaxTokens 设置单次请求 max_completion_tokens 上限（P1-3 成本控制；<=0 不发送）。
+// 注：Chat Completions 的 max_tokens 已废弃，推理模型（o 系/gpt-5 系）仅认本参数。
 func WithMaxTokens(n int) OpenAIOption {
 	return func(p *OpenAIProvider) { p.maxTokens = n }
 }
@@ -63,37 +68,59 @@ func WithTemperature(t float64) OpenAIOption {
 	return func(p *OpenAIProvider) { p.temperature = t }
 }
 
-// NewOpenAI 创建 OpenAI 兼容 Provider。
+// NewOpenAI 创建 OpenAI 兼容 Provider（官方 openai-go SDK v3）。
 // 默认 maxTokens=2048（控制单次改写成本），temperature=0.4。
 func NewOpenAI(apiKey string, opts ...OpenAIOption) *OpenAIProvider {
 	p := &OpenAIProvider{
 		apiKey:      apiKey,
-		baseURL:     "https://api.openai.com",
+		baseURL:     "",
 		model:       "gpt-4o-mini",
-		client:      &http.Client{Timeout: 60 * time.Second},
+		timeout:     60 * time.Second,
 		maxTokens:   2048,
 		temperature: 0.4,
 	}
 	for _, o := range opts {
 		o(p)
 	}
+
+	clientOpts := []option.RequestOption{
+		option.WithAPIKey(p.apiKey),
+		option.WithRequestTimeout(p.timeout),
+	}
+	if base := normalizeBaseURL(p.baseURL); base != "" {
+		clientOpts = append(clientOpts, option.WithBaseURL(base))
+	}
+	p.sdk = openai.NewClient(clientOpts...)
 	return p
+}
+
+// normalizeBaseURL 归一化兼容端点：仅主机名时补 /v1（旧版行为），带版本路径原样。
+func normalizeBaseURL(raw string) string {
+	raw = strings.TrimRight(raw, "/")
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Path == "" || u.Path == "/" {
+		return raw + "/v1"
+	}
+	return raw
 }
 
 func (p *OpenAIProvider) Name() string    { return "openai:" + p.model }
 func (p *OpenAIProvider) Available() bool { return p.apiKey != "" }
 
-// Rewrite 调用 Chat Completions API 改写内容。
+// Rewrite 调用 Chat Completions API（SDK）改写内容。
 func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (string, error) {
 	if !p.Available() {
 		return content, ErrNotConfigured
 	}
 
 	// P1-3：per-call 超时兜底——调用方 ctx 未设 deadline 时（如 Background），
-	// 派生 p.client.Timeout 作为单次调用上限，避免悬挂。
+	// 派生 p.timeout 作为单次调用上限，避免悬挂。
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, p.client.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 	}
 
@@ -101,87 +128,42 @@ func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (s
 	systemMsg := "你是一位 GEO（生成式引擎优化）专家，擅长优化内容使其更容易被 AI 搜索引擎引用。"
 	userMsg := prompt + "\n\n待优化内容：\n" + content
 
-	body := map[string]interface{}{
-		"model": p.model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemMsg},
-			{"role": "user", "content": userMsg},
+	params := openai.ChatCompletionNewParams{
+		Model: openai.ChatModel(p.model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(systemMsg),
+			openai.UserMessage(userMsg),
 		},
-		"temperature": p.temperature,
+		Temperature: openai.Float(p.temperature),
 	}
-	// P1-3：显式发送 max_tokens 上限，token 成本可控
+	// P1-3：显式发送 max_completion_tokens 上限，token 成本可控（旧参数 max_tokens 已废弃）
 	if p.maxTokens > 0 {
-		body["max_tokens"] = p.maxTokens
-	}
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return content, fmt.Errorf("序列化请求失败: %w", err)
+		params.MaxCompletionTokens = openai.Int(int64(p.maxTokens))
 	}
 
-	url := p.baseURL + "/v1/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	completion, err := p.sdk.Chat.Completions.New(ctx, params)
 	if err != nil {
-		return content, fmt.Errorf("创建请求失败: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
+		var apiErr *openai.Error
+		if errors.As(err, &apiErr) {
+			return content, fmt.Errorf("调用 LLM 失败: %s", apiErr.Error())
+		}
 		return content, fmt.Errorf("调用 LLM 失败: %w", err)
 	}
-	defer resp.Body.Close()
-
-	// P1-3：响应体限流读取（1MB cap）——恶意/异常响应不会导致内存暴涨
-	const maxRespBytes = 1 << 20 // 1 MiB
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes+1))
-	if err != nil {
-		return content, fmt.Errorf("读取响应失败: %w", err)
-	}
-	if len(respBody) > maxRespBytes {
-		return content, fmt.Errorf("LLM 响应体超过 %d 字节上限，已中止解析", maxRespBytes)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return content, fmt.Errorf("LLM 返回错误 %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		// usage 在成本仪表盘中用于 token 计费；旧模型可能不返回，故用指针可缺省。
-		Usage *struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return content, fmt.Errorf("解析响应失败: %w", err)
-	}
-	if result.Error != nil {
-		return content, fmt.Errorf("LLM 错误: %s", result.Error.Message)
-	}
-	if len(result.Choices) == 0 {
+	if len(completion.Choices) == 0 {
 		return content, fmt.Errorf("LLM 返回空结果")
 	}
 
-	rewritten := strings.TrimSpace(result.Choices[0].Message.Content)
+	rewritten := strings.TrimSpace(completion.Choices[0].Message.Content)
 	if rewritten == "" {
 		return content, fmt.Errorf("LLM 返回空内容")
 	}
 
 	// 记录 token 用量供成本仪表盘聚合（缺省 usage 时记为 0）。
-	if result.Usage != nil {
+	if usage := completion.Usage; usage.TotalTokens > 0 {
 		p.lastUsage.Store(models.TokenUsage{
-			PromptTokens:     result.Usage.PromptTokens,
-			CompletionTokens: result.Usage.CompletionTokens,
-			TotalTokens:      result.Usage.TotalTokens,
+			PromptTokens:     int(usage.PromptTokens),
+			CompletionTokens: int(usage.CompletionTokens),
+			TotalTokens:      int(usage.TotalTokens),
 		})
 	}
 	return rewritten, nil
