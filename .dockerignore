@@ -1,7 +1,8 @@
 # 构建产物
 bin/
 dist/
-build/
+build/*
+!build/geo-linux-*
 
 # 本地环境与依赖
 .env
