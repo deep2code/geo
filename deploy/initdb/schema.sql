@@ -284,22 +284,16 @@ CREATE TABLE IF NOT EXISTS companies (
     name                VARCHAR(255) NOT NULL,
     code                VARCHAR(32),
     established_date    VARCHAR(32),
-    industry            VARCHAR(255),
     legal_rep           VARCHAR(255),
     registered_capital  VARCHAR(128),
     business_scope      MEDIUMTEXT,
     province            VARCHAR(255),
-    city                VARCHAR(255),
     district            VARCHAR(255),
-    address             VARCHAR(255),
-    status              VARCHAR(64),
-    created_at          BIGINT NOT NULL,
-    updated_at          BIGINT NOT NULL
+    status              VARCHAR(64)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE UNIQUE INDEX idx_companies_code ON companies(code);
 CREATE INDEX idx_companies_province ON companies(province);
-CREATE INDEX idx_companies_city ON companies(city);
 -- 中文全文检索已迁移至外部 Meilisearch（MariaDB 不支持 MySQL 的 ngram 解析器）。
 -- companies 表仅作主存储（单一事实来源），搜索经 GEO_MEILISEARCH_URL 指向的
 -- Meilisearch 完成；本表不再建全文索引，普通索引仅供 Stats/Provinces 聚合查询使用。
@@ -519,17 +513,6 @@ VALUES
   ('GEO_LLM_MODEL_OPENAI', '', '', 'OpenAI 兼容模型', 'llm', '', 0, 0, 1, 0),
   ('GEO_EXTERNAL_API_KEY', '', '', '外部提交接口鉴权 Key（X-GEO-External-Key；留空则该接口 401）', 'admin', 'secret', 1, 0, 0, 0);
 
-CREATE TABLE IF NOT EXISTS enterprises (
-  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-  company_name VARCHAR(200) NOT NULL,
-  credit_code VARCHAR(20),
-  registration_date DATE,
-  legal_representative VARCHAR(50),
-  registered_capital VARCHAR(50),
-  business_scope TEXT,
-  INDEX idx_company (company_name)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- ============================================================================
--- 完成。全部 22 张表 + app_settings 默认值种子 + 索引就绪；应用启动不再执行任何建表迁移。
+-- 完成。全部 21 张表 + app_settings 默认值种子 + 索引就绪；应用启动不再执行任何建表迁移。
 -- ============================================================================

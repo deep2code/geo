@@ -46,10 +46,11 @@ ARG BUILD_OS=unknown
 ARG TARGETOS
 ARG TARGETARCH
 
-# Go 模块代理与校验库（默认官方源；国内/受限网络可传 build-arg 覆盖）
-ARG GOPROXY_URL=https://proxy.golang.org,direct
+# Go 模块代理与校验库（默认国内源，与基础镜像/发布脚本保持一致；
+# 官方源在国内/受限网络下会导致 go mod download 长时间无输出）
+ARG GOPROXY_URL=https://goproxy.cn,direct
 ENV GOPROXY=$GOPROXY_URL
-ARG GOSUMDB_URL=sum.golang.org
+ARG GOSUMDB_URL=off
 ENV GOSUMDB=$GOSUMDB_URL
 
 WORKDIR /build
@@ -76,7 +77,7 @@ COPY --from=web-builder /internal/server/web/dist ./internal/server/web/dist
 #     未带 -trimpath、与正式编译对不上，拷过去也用不上（纯属时间黑洞）。
 #   - sharing=locked：同一缓存目录多并发构建时串行化，防缓存写入撕裂。
 RUN --mount=type=cache,id=gocache,sharing=locked,target=/gocache \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOCACHE=/gocache go build -v \
     -trimpath \
     -ldflags "-s -w -X 'main.version=${VERSION}' -X 'main.commit=${COMMIT}' -X 'main.buildAt=${BUILD_AT}' -X 'main.buildOS=${BUILD_OS}'" \
     -o /out/geo \

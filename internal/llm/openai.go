@@ -1,23 +1,23 @@
-// openai.go OpenAI 兼容 LLM Provider 实现（官方 SDK：github.com/openai/openai-go/v3）。
+// openai.go OpenAI 兼容 LLM Provider 实现。
 //
 // 支持所有兼容 OpenAI Chat Completions API 的服务（OpenAI / GLM / 本地模型）。
 // 通过 BaseURL 可配置不同的兼容端点：
-//   - 空          → SDK 默认（https://api.openai.com/v1/）
+//   - 空          → API 默认（https://api.openai.com/v1/）
 //   - 仅主机名    → 自动补 /v1（如 https://api.openai.com → …/v1，与旧版行为一致）
 //   - 带版本路径  → 原样使用（如 https://open.bigmodel.cn/api/paas/v4）
 package llm
 
 import (
+	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/option"
 
 	"my-geo/internal/models"
 )
@@ -25,10 +25,10 @@ import (
 // OpenAIProvider OpenAI 兼容的 LLM 提供者。
 type OpenAIProvider struct {
 	apiKey  string
-	baseURL string // 空 = SDK 默认；见文件头注释的补 /v1 规则
+	baseURL string // 空 = API 默认；见文件头注释的补 /v1 规则
 	model   string // 默认 gpt-4o-mini
 	timeout time.Duration
-	sdk     openai.Client
+	http    *http.Client
 
 	// P1-3：成本控制参数（可通过 With 选项覆盖，默认值见 NewOpenAI）。
 	maxTokens   int     // 请求体 max_completion_tokens，<=0 表示不发送（用服务端默认）
@@ -37,6 +37,39 @@ type OpenAIProvider struct {
 	// 最近一次调用的 token 用量（成本仪表盘用）。atomic.Value 存 models.TokenUsage，
 	// 避免与并发调用竞争——成本统计为近似值，允许极小误差。
 	lastUsage atomic.Value
+}
+
+const defaultOpenAIBaseURL = "https://api.openai.com/v1"
+
+type openAIChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIChatRequest struct {
+	Model               string              `json:"model"`
+	Messages            []openAIChatMessage `json:"messages"`
+	Temperature         *float64            `json:"temperature,omitempty"`
+	MaxCompletionTokens *int64              `json:"max_completion_tokens,omitempty"`
+}
+
+type openAIChatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+type openAIErrorResponse struct {
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 // OpenAIOption 配置选项。
@@ -68,14 +101,15 @@ func WithTemperature(t float64) OpenAIOption {
 	return func(p *OpenAIProvider) { p.temperature = t }
 }
 
-// NewOpenAI 创建 OpenAI 兼容 Provider（官方 openai-go SDK v3）。
+// NewOpenAI 创建 OpenAI 兼容 Provider。
 // 默认 maxTokens=2048（控制单次改写成本），temperature=0.4。
 func NewOpenAI(apiKey string, opts ...OpenAIOption) *OpenAIProvider {
 	p := &OpenAIProvider{
 		apiKey:      apiKey,
-		baseURL:     "",
+		baseURL:     defaultOpenAIBaseURL,
 		model:       "gpt-4o-mini",
 		timeout:     60 * time.Second,
+		http:        &http.Client{},
 		maxTokens:   2048,
 		temperature: 0.4,
 	}
@@ -83,15 +117,17 @@ func NewOpenAI(apiKey string, opts ...OpenAIOption) *OpenAIProvider {
 		o(p)
 	}
 
-	clientOpts := []option.RequestOption{
-		option.WithAPIKey(p.apiKey),
-		option.WithRequestTimeout(p.timeout),
-	}
-	if base := normalizeBaseURL(p.baseURL); base != "" {
-		clientOpts = append(clientOpts, option.WithBaseURL(base))
-	}
-	p.sdk = openai.NewClient(clientOpts...)
+	p.http.Timeout = p.timeout
 	return p
+}
+
+func (p *OpenAIProvider) chatCompletionsURL() string {
+	base := strings.TrimRight(p.baseURL, "/")
+	if base == "" {
+		base = defaultOpenAIBaseURL
+	}
+	base = normalizeBaseURL(base)
+	return base + "/chat/completions"
 }
 
 // normalizeBaseURL 归一化兼容端点：仅主机名时补 /v1（旧版行为），带版本路径原样。
@@ -122,7 +158,7 @@ func isReasoningModel(model string) bool {
 	return false
 }
 
-// Rewrite 调用 Chat Completions API（SDK）改写内容。
+// Rewrite 调用 Chat Completions API 改写内容。
 func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (string, error) {
 	if !p.Available() {
 		return content, ErrNotConfigured
@@ -140,29 +176,55 @@ func (p *OpenAIProvider) Rewrite(ctx context.Context, prompt, content string) (s
 	systemMsg := "你是一位 GEO（生成式引擎优化）专家，擅长优化内容使其更容易被 AI 搜索引擎引用。"
 	userMsg := prompt + "\n\n待优化内容：\n" + content
 
-	params := openai.ChatCompletionNewParams{
-		Model: openai.ChatModel(p.model),
-		Messages: []openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(systemMsg),
-			openai.UserMessage(userMsg),
+	params := openAIChatRequest{
+		Model: p.model,
+		Messages: []openAIChatMessage{
+			{Role: "system", Content: systemMsg},
+			{Role: "user", Content: userMsg},
 		},
 	}
 	// 推理模型（o1/o3/o4、gpt-5 系）不接受自定义 temperature（仅默认 1），发送会 400
 	if !isReasoningModel(p.model) {
-		params.Temperature = openai.Float(p.temperature)
+		temperature := p.temperature
+		params.Temperature = &temperature
 	}
 	// P1-3：显式发送 max_completion_tokens 上限，token 成本可控（旧参数 max_tokens 已废弃）
 	if p.maxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(int64(p.maxTokens))
+		maxCompletionTokens := int64(p.maxTokens)
+		params.MaxCompletionTokens = &maxCompletionTokens
 	}
 
-	completion, err := p.sdk.Chat.Completions.New(ctx, params)
+	body, err := json.Marshal(params)
 	if err != nil {
-		var apiErr *openai.Error
-		if errors.As(err, &apiErr) {
-			return content, fmt.Errorf("调用 LLM 失败: %s", apiErr.Error())
-		}
 		return content, fmt.Errorf("调用 LLM 失败: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.chatCompletionsURL(), bytes.NewReader(body))
+	if err != nil {
+		return content, fmt.Errorf("调用 LLM 失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return content, fmt.Errorf("调用 LLM 失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+		var apiErr openAIErrorResponse
+		if json.Unmarshal(respBody, &apiErr) == nil {
+			if message := strings.TrimSpace(apiErr.Error.Message); message != "" {
+				return content, fmt.Errorf("调用 LLM 失败: HTTP %d: %s", resp.StatusCode, message)
+			}
+		}
+		return content, fmt.Errorf("调用 LLM 失败: HTTP %d", resp.StatusCode)
+	}
+
+	var completion openAIChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
+		return content, fmt.Errorf("解析 LLM 返回失败: %w", err)
 	}
 	if len(completion.Choices) == 0 {
 		return content, fmt.Errorf("LLM 返回空结果")
