@@ -519,6 +519,17 @@ VALUES
   ('GEO_LLM_MODEL_OPENAI', '', '', 'OpenAI 兼容模型', 'llm', '', 0, 0, 1, 0),
   ('GEO_EXTERNAL_API_KEY', '', '', '外部提交接口鉴权 Key（X-GEO-External-Key；留空则该接口 401）', 'admin', 'secret', 1, 0, 0, 0);
 
+CREATE TABLE IF NOT EXISTS enterprises (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  company_name VARCHAR(200) NOT NULL,
+  credit_code VARCHAR(20),
+  registration_date DATE,
+  legal_representative VARCHAR(50),
+  registered_capital VARCHAR(50),
+  business_scope TEXT,
+  INDEX idx_company (company_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================================
--- 完成。全部 21 张表 + app_settings 默认值种子 + 索引就绪；应用启动不再执行任何建表迁移。
+-- 完成。全部 22 张表 + app_settings 默认值种子 + 索引就绪；应用启动不再执行任何建表迁移。
 -- ============================================================================

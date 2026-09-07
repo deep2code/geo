@@ -242,11 +242,12 @@ do_build() {
         mkdir -p "$PROJECT_DIR/build"
         # 前端构建（Vite → internal/server/web/dist，go:embed 读取）：仅源码/配置有变化时重建
         if needs_web; then
-            info "前端有变化或 dist 缺失，重新构建前端"
+            info "[$(date '+%T')] 前端有变化或 dist 缺失，重新构建前端（npm install 增量 + vite，预计 1-3 分钟）"
             # 显式传入 NPM_REGISTRY（国内环境加速；与 Dockerfile 保持一致）
             # npm install(增量)而非 npm ci(全删重装):2G 小内存机 npm ci 的小文件写风暴会打满
             # 系统盘 IOPS。锁文件没变的包不动,写量大减;偶发构建诡异错时手动删 node_modules 重跑即可
             (cd "$PROJECT_DIR/web-app" && npm_config_registry="${NPM_REGISTRY:-https://registry.npmmirror.com}" npm install --prefer-offline --no-audit --no-fund && npm run build)
+            info "[$(date '+%T')] 前端构建完成"
         else
             info "前端无变化，复用已有 internal/server/web/dist"
         fi
@@ -261,6 +262,7 @@ do_build() {
             aarch64|arm64) host_arch=arm64 ;;
             *) host_arch=unknown ;;
         esac
+        go_start=$(date +%s)
         for arch in ${archs//,/ }; do
             out="$PROJECT_DIR/build/geo-linux-${arch}"
             if [[ "$host_os" == "Linux" && "$host_arch" == "$arch" ]]; then
@@ -275,11 +277,12 @@ do_build() {
                 -ldflags "-s -w -X 'main.version=${version}' -X 'main.commit=${commit}' -X 'main.buildAt=${build_at}' -X 'main.buildOS=${build_os}'" \
                 -o "$out" ./cmd/geo)
         done
+        info "[$(date '+%T')] Go 编译完成，耗时 $(( $(date +%s) - go_start ))s（上方 -v 包名流 = 实时进度；某包静默数分钟属正常，openai-go 尤甚）"
         # 轻量打包（仅 COPY 二进制；buildx 多平台时按 TARGETARCH 匹配 build/geo-linux-<arch>）
         if [[ "$PLATFORM" == *","* ]]; then
-            run docker buildx build --platform "$PLATFORM" --push -f Dockerfile.local -t "$ACR_IMAGE" .
+            run docker buildx build --platform "$PLATFORM" --progress=plain --push -f Dockerfile.local -t "$ACR_IMAGE" .
         else
-            run docker buildx build --platform "$PLATFORM" --load -f Dockerfile.local -t "$ACR_IMAGE" .
+            run docker buildx build --platform "$PLATFORM" --progress=plain --load -f Dockerfile.local -t "$ACR_IMAGE" .
         fi
         info "镜像打包完成: ${ACR_IMAGE}"
         return

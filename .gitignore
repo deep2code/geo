@@ -38,3 +38,5 @@ docs/roadmap.md
 .logo-preview/
 
 remote-deploy.sh
+data/
+deploy/

@@ -17,9 +17,10 @@
 
 services:
   mariadb:
-    # 定制 mariadb 镜像（由 publish.sh 构建并推 ACR，tag=mariadb）：已固化 schema.sql，
-    # 初次启动（空卷）自动建库建表 + 创建 geo 账号，运行机器无需任何本地文件。
-    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:mariadb
+    # 带企业数据的 mariadb 镜像（579万条记录，1978-2019年）
+    # 本地构建: docker build -f deploy/mariadb/Dockerfile.data -t geo:mariadb-data-final deploy
+    # ACR: crpi-.../codeup2026/geo:mariadb-data
+    image: crpi-0xi5k79l9j4opzta.cn-hangzhou.personal.cr.aliyuncs.com/codeup2026/geo:mariadb-data
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MARIADB_ROOT_PASSWORD: geoRootPass
